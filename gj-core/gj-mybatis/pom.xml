@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.gj.llm</groupId>
+        <artifactId>gj-core</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>gj-mybatis</artifactId>
+    <name>gj-mybatis</name>
+    <description>
+        MyBatis-Plus 配置模块 —— 统一管理 Mapper 扫描、分页插件、自动填充等 MyBatis 基础设施，
+        其他业务模块只需引入此模块即可获得完整的 MyBatis-Plus 能力。
+    </description>
+
+    <dependencies>
+        <!-- JDBC：提供 HikariCP 连接池 + Spring JDBC，使 DataSourceAutoConfiguration 生效 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+
+        <!-- MyBatis-Plus Starter（含 MyBatis + 自动配置） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
+        </dependency>
+
+        <!-- MyBatis-Plus JSqlParser：分页插件（3.5.9+ 从核心包拆分） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+</project>

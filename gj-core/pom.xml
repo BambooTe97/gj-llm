@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.gj.llm</groupId>
+        <artifactId>gj-llm</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>gj-core</artifactId>
+    <packaging>pom</packaging>
+
+    <name>gj-core</name>
+    <description>
+        核心公共模块 —— 聚合 gj-security（安全）、gj-mybatis（持久层）等基础设施模块，
+        后续 gj-common、gj-cache 等公共模块均放在此处。
+    </description>
+
+    <modules>
+        <module>gj-security</module>
+        <module>gj-mybatis</module>
+    </modules>
+
+</project>
