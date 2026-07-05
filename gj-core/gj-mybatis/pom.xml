@@ -18,6 +18,13 @@
     </description>
 
     <dependencies>
+        <!-- gj-common：公共工具模块（SecurityUtils 等） -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- JDBC：提供 HikariCP 连接池 + Spring JDBC，使 DataSourceAutoConfiguration 生效 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

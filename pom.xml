@@ -20,7 +20,7 @@
 
     <modules>
         <module>gj-core</module>
-        <module>gj-auth-admin</module>
+        <module>gj-base-admin</module>
         <module>gj-llm-admin</module>
     </modules>
 

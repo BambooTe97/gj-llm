@@ -10,10 +10,10 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>gj-auth-admin</artifactId>
-    <name>gj-auth-admin</name>
+    <artifactId>gj-base-admin</artifactId>
+    <name>gj-base-admin</name>
     <description>
-        认证与管理后台业务模块 —— 提供认证接口（登录/登出/刷新 Token）、
+        基础管理业务模块 —— 提供认证接口（登录/登出/刷新 Token）、
         用户管理、角色管理等 REST API，基于 MySQL + MyBatis-Plus 持久化。
     </description>
 

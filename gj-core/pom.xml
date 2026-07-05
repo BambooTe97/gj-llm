@@ -20,8 +20,10 @@
     </description>
 
     <modules>
+        <module>gj-common</module>
         <module>gj-security</module>
         <module>gj-mybatis</module>
+        <module>gj-file</module>
     </modules>
 
 </project>

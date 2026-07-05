@@ -37,6 +37,9 @@ Thumbs.db
 *.swo
 *~
 
+# ====== Uploads ======
+/uploads/
+
 # ====== Environment ======
 .env
 .env.local

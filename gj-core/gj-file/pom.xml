@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.gj.llm</groupId>
+        <artifactId>gj-core</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>gj-file</artifactId>
+    <name>gj-file</name>
+    <description>
+        文件管理模块 —— 提供文件上传、下载、列表查询、删除等 REST API，
+        文件存储到本地磁盘，支持配置上传目录、文件大小限制和允许的扩展名。
+    </description>
+
+    <dependencies>
+        <!-- Web MVC：提供 @RestController、MultipartFile、ResponseEntity&lt;Resource&gt; -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+
+        <!-- gj-mybatis：MyBatis-Plus 配置模块（提供 BaseMapper、分页、ASSIGN_ID 雪花算法） -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-mybatis</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>
