@@ -1,5 +1,162 @@
-// Element Plus CSS 变量覆盖示例
-// 如需自定义主题色，取消注释对应变量
+// ========== Apple 玻璃水滴风格 — CSS 自定义属性 & Element Plus 覆盖 ==========
 :root {
-  // --el-color-primary: #409eff;
+  // ---- 主色系 (Apple blue) ----
+  --el-color-primary: #0071e3;
+  --el-color-primary-light-3: #4d9ff7;
+  --el-color-primary-light-5: #80bdf9;
+  --el-color-primary-light-7: #b3d7fb;
+  --el-color-primary-light-8: #cce5fc;
+  --el-color-primary-light-9: #e5f2fd;
+  --el-color-primary-dark-2: #005bb8;
+
+  --el-color-success: #34c759;
+  --el-color-warning: #ff9f0a;
+  --el-color-danger: #ff453a;
+  --el-color-info: #8e8e93;
+
+  // ---- 文字色 ----
+  --el-text-color-primary: #1d1d1f;
+  --el-text-color-regular: #515154;
+  --el-text-color-secondary: #86868b;
+  --el-text-color-placeholder: #aeaeb2;
+
+  // ---- 边框 ----
+  --el-border-color: rgba(210, 210, 215, 0.55);
+  --el-border-color-light: rgba(210, 210, 215, 0.35);
+  --el-border-color-lighter: rgba(210, 210, 215, 0.2);
+
+  // ---- 背景 ----
+  --el-bg-color: #f0f2f5;
+  --el-bg-color-page: linear-gradient(135deg, #e8ecf1 0%, #f0f2f5 30%, #f5f5f7 60%, #e8ecf1 100%);
+  --el-bg-color-overlay: rgba(255, 255, 255, 0.85);
+
+  // ---- 圆角 ----
+  --el-border-radius-base: 10px;
+  --el-border-radius-small: 6px;
+  --el-border-radius-round: 20px;
+
+  // ---- 阴影 ----
+  --el-box-shadow-light: 0 8px 32px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
+
+  // ---- 字体 ----
+  --el-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+
+  // ========== 玻璃效果自定义属性 ==========
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-bg-strong: rgba(255, 255, 255, 0.82);
+  --glass-bg-hover: rgba(255, 255, 255, 0.88);
+  --glass-bg-sidebar: rgba(30, 32, 48, 0.88);
+  --glass-border: rgba(255, 255, 255, 0.4);
+  --glass-border-strong: rgba(210, 210, 215, 0.55);
+  --glass-blur: 20px;
+  --glass-blur-strong: 24px;
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --glass-shadow-hover: 0 12px 40px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --glass-radius: 16px;
+  --glass-radius-sm: 10px;
+  --glass-transition: 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+// ========== Element Plus 下拉菜单玻璃效果 ==========
+.el-dropdown__popper {
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border: 1px solid rgba(210, 210, 215, 0.5) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+}
+
+// ========== Element Plus 弹窗玻璃效果 ==========
+.el-message-box {
+  background: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border: 1px solid rgba(210, 210, 215, 0.5) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.06) !important;
+}
+
+// ========== Element Plus 输入框玻璃效果 ==========
+.el-input__wrapper {
+  background: rgba(255, 255, 255, 0.55) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  border: 1px solid rgba(210, 210, 215, 0.4) !important;
+  transition: all 0.25s cubic-bezier(0.25, 0.1, 0.25, 1) !important;
+
+  &:hover {
+    border-color: rgba(0, 113, 227, 0.4) !important;
+    background: rgba(255, 255, 255, 0.75) !important;
+  }
+
+  &.is-focus {
+    border-color: var(--el-color-primary) !important;
+    background: rgba(255, 255, 255, 0.85) !important;
+    box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12) !important;
+  }
+}
+
+.el-textarea__inner {
+  background: rgba(255, 255, 255, 0.55) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(210, 210, 215, 0.4) !important;
+  box-shadow: none !important;
+  transition: all 0.25s cubic-bezier(0.25, 0.1, 0.25, 1) !important;
+
+  &:hover {
+    border-color: rgba(0, 113, 227, 0.4) !important;
+  }
+
+  &:focus {
+    border-color: var(--el-color-primary) !important;
+    box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12) !important;
+  }
+}
+
+// ========== Element Plus 按钮微调 ==========
+.el-button--primary {
+  border-radius: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.01em;
+}
+
+// ========== Element Plus 表格玻璃效果 ==========
+.el-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: rgba(255, 255, 255, 0.5);
+  --el-table-row-hover-bg-color: rgba(0, 113, 227, 0.04);
+  --el-table-border-color: rgba(210, 210, 215, 0.3);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+// ========== Element Plus 卡片覆盖 ==========
+.el-card {
+  border-radius: 16px !important;
+  border: 1px solid rgba(210, 210, 215, 0.4) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.03) !important;
+}
+
+// ========== Element Plus 分页 ==========
+.el-pagination {
+  .el-pager li {
+    border-radius: 8px !important;
+  }
+}
+
+// ========== Element Plus 标签 ==========
+.el-tag {
+  border-radius: 6px !important;
+}
+
+// ========== Element Plus Alert ==========
+.el-alert {
+  border-radius: 10px !important;
 }

@@ -1,3 +1,51 @@
+// ========== 玻璃水滴效果 Mixin ==========
+@mixin glass($opacity: 0.65, $blur: 20px) {
+  background: rgba(255, 255, 255, $opacity);
+  backdrop-filter: blur($blur);
+  -webkit-backdrop-filter: blur($blur);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+@mixin glass-strong($opacity: 0.82, $blur: 24px) {
+  background: rgba(255, 255, 255, $opacity);
+  backdrop-filter: blur($blur);
+  -webkit-backdrop-filter: blur($blur);
+  border: 1px solid rgba(210, 210, 215, 0.55);
+}
+
+@mixin glass-dark($opacity: 0.85, $blur: 20px) {
+  background: rgba(30, 32, 48, $opacity);
+  backdrop-filter: blur($blur);
+  -webkit-backdrop-filter: blur($blur);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@mixin glass-elevated {
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.06),
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+@mixin glass-interactive {
+  transition: all 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow:
+      0 12px 40px rgba(0, 0, 0, 0.08),
+      0 4px 12px rgba(0, 0, 0, 0.04);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.06),
+      0 1px 4px rgba(0, 0, 0, 0.04);
+  }
+}
+
 // ========== Flex 布局 ==========
 @mixin flex-center {
   display: flex;
@@ -36,7 +84,7 @@
     width: 6px;
   }
   &::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.15);
+    background-color: rgba(0, 0, 0, 0.12);
     border-radius: 3px;
   }
   &::-webkit-scrollbar-track {

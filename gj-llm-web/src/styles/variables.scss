@@ -1,16 +1,25 @@
-// ========== 颜色变量 ==========
-$color-primary: #409eff;
-$color-success: #67c23a;
-$color-warning: #e6a23c;
-$color-danger: #f56c6c;
-$color-info: #909399;
+// ========== 颜色变量 (Apple 玻璃水滴风格) ==========
+$color-primary: #0071e3;
+$color-primary-light: #4d9ff7;
+$color-success: #34c759;
+$color-warning: #ff9f0a;
+$color-danger: #ff453a;
+$color-info: #8e8e93;
 
-$color-bg: #f5f7fa;
-$color-bg-sidebar: #1d1e2c;
-$color-bg-header: #ffffff;
-$color-text-primary: #303133;
-$color-text-regular: #606266;
-$color-text-secondary: #909399;
+$color-bg: #f0f2f5;
+$color-bg-sidebar: rgba(30, 32, 48, 0.88);
+$color-bg-header: rgba(255, 255, 255, 0.72);
+$color-text-primary: #1d1d1f;
+$color-text-regular: #515154;
+$color-text-secondary: #86868b;
+
+// ========== 玻璃效果变量 ==========
+$glass-bg: rgba(255, 255, 255, 0.65);
+$glass-bg-strong: rgba(255, 255, 255, 0.8);
+$glass-border: rgba(255, 255, 255, 0.4);
+$glass-border-strong: rgba(210, 210, 215, 0.6);
+$glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
+$glass-blur: 20px;
 
 // ========== 布局变量 ==========
 $sidebar-width: 260px;
@@ -23,3 +32,10 @@ $font-size-sm: 13px;
 $font-size-base: 14px;
 $font-size-lg: 16px;
 $font-size-xl: 18px;
+
+// ========== 圆角变量 ==========
+$radius-sm: 8px;
+$radius-md: 12px;
+$radius-lg: 16px;
+$radius-xl: 20px;
+$radius-round: 50%;

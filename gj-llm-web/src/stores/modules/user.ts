@@ -15,7 +15,8 @@ export const useUserStore = defineStore('user', () => {
   async function login(data: LoginRequest): Promise<{ success: boolean; message?: string }> {
     try {
       const res = await authApi.login(data)
-      const { token: tk, username: uname, avatar: avt } = res.data
+      // res.data 是 ApiResponse 包装层，内层 data 才是 LoginResponse
+      const { accessToken: tk, username: uname, avatar: avt } = res.data.data
       token.value = tk
       username.value = uname
       avatar.value = avt || null

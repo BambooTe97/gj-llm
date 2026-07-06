@@ -13,7 +13,7 @@ export const authApi = {
   },
 
   /** 刷新 Token */
-  refreshToken(): Promise<ApiResponse<{ token: string }>> {
+  refreshToken(): Promise<ApiResponse<LoginResponse>> {
     return http.post('/auth/refresh')
   },
 }

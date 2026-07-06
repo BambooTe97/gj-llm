@@ -42,8 +42,11 @@ async function handleSend(content: string) {
 
     <!-- 空状态 -->
     <div class="chat-empty" v-else>
-      <el-icon :size="64" color="#c0c4cc"><ChatDotRound /></el-icon>
-      <p>开始一段新的对话</p>
+      <div class="chat-empty__icon">
+        <el-icon :size="48"><ChatDotRound /></el-icon>
+      </div>
+      <p class="chat-empty__text">开始一段新的对话</p>
+      <p class="chat-empty__hint">在下方输入消息，Enter 发送</p>
     </div>
 
     <!-- 输入区域 -->
@@ -62,6 +65,14 @@ async function handleSend(content: string) {
   flex: 1;
   overflow-y: auto;
   padding: 24px;
+
+  &::-webkit-scrollbar {
+    width: 5px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 3px;
+  }
 }
 
 .chat-empty {
@@ -70,8 +81,33 @@ async function handleSend(content: string) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  color: #909399;
-  font-size: 16px;
+  gap: 8px;
+
+  &__icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #86868b;
+    margin-bottom: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  }
+
+  &__text {
+    font-size: 16px;
+    color: #515154;
+    font-weight: 500;
+  }
+
+  &__hint {
+    font-size: 13px;
+    color: #aeaeb2;
+  }
 }
 </style>

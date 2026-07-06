@@ -15,10 +15,17 @@
     <description>gj-llm 管理后台应用 —— Spring Boot 可运行入口</description>
 
     <dependencies>
-        <!-- 认证与管理后台模块：包含认证、用户/角色管理 -->
+        <!-- 基础管理模块：包含认证、用户/角色管理 -->
         <dependency>
             <groupId>com.gj.llm</groupId>
-            <artifactId>gj-auth-admin</artifactId>
+            <artifactId>gj-base-admin</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- 文件管理模块：文件上传/下载/删除 -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-file</artifactId>
             <version>${project.version}</version>
         </dependency>
 
@@ -28,7 +35,7 @@
             <artifactId>spring-boot-starter-restclient</artifactId>
         </dependency>
 
-        <!-- Web MVC（由 gj-auth-admin 传递依赖，此处显式声明以便 IDE 识别） -->
+        <!-- Web MVC（由 gj-base-admin 传递依赖，此处显式声明以便 IDE 识别） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>

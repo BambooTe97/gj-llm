@@ -54,8 +54,10 @@ function handleKeydown(e: Event | KeyboardEvent) {
 <style lang="scss" scoped>
 .chat-input {
   padding: 16px 24px;
-  background-color: #fff;
-  border-top: 1px solid #e4e7ed;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(210, 210, 215, 0.4);
 }
 
 .chat-input__inner {

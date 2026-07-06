@@ -16,7 +16,7 @@ export const useConversationStore = defineStore('conversation', () => {
     loading.value = true
     try {
       const res = await conversationApi.getList()
-      list.value = res.data
+      list.value = res.data.data
     } finally {
       loading.value = false
     }
@@ -25,9 +25,9 @@ export const useConversationStore = defineStore('conversation', () => {
   async function create(title?: string): Promise<Conversation | null> {
     try {
       const res = await conversationApi.create(title)
-      list.value.unshift(res.data)
-      currentId.value = res.data.id
-      return res.data
+      list.value.unshift(res.data.data)
+      currentId.value = res.data.data.id
+      return res.data.data
     } catch {
       return null
     }

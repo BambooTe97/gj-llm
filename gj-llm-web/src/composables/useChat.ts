@@ -29,7 +29,7 @@ export function useChat() {
     chatStore.setStreaming(true)
     try {
       const res = await chatApi.sendMessage({ conversationId: convId, content: text })
-      chatStore.addMessage(res.data)
+      chatStore.addMessage(res.data.data)
     } finally {
       chatStore.setStreaming(false)
     }

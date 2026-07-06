@@ -29,19 +29,24 @@ const appStore = useAppStore()
 }
 
 .layout-aside {
-  background-color: #1d1e2c;
-  transition: width 0.3s;
+  background: linear-gradient(180deg, rgba(26, 28, 44, 0.9) 0%, rgba(32, 34, 52, 0.88) 100%);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  transition: width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
   overflow: hidden;
 }
 
 .layout-header {
-  background-color: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(210, 210, 215, 0.4);
   padding: 0 20px;
 }
 
 .layout-main {
-  background-color: #f5f7fa;
+  background: transparent;
   padding: 0;
   overflow: hidden;
 }

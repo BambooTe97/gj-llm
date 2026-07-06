@@ -6,7 +6,6 @@ import { storage } from '@/utils/storage'
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
   timeout: 30_000,
-  headers: { 'Content-Type': 'application/json' },
 })
 
 // ========== 请求拦截器 ==========

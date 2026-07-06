@@ -11,7 +11,7 @@ defineProps<{
   <div class="chat-message" :class="[`chat-message--${message.role}`]">
     <div class="chat-message__avatar">
       <el-avatar v-if="message.role === 'user'" :size="36" icon="UserFilled" />
-      <el-avatar v-else :size="36" style="background-color: #409eff" icon="Cpu" />
+      <el-avatar v-else :size="36" style="background: linear-gradient(135deg, #0071e3, #4d9ff7)" icon="Cpu" />
     </div>
     <div class="chat-message__body">
       <div class="chat-message__role">
@@ -33,17 +33,22 @@ defineProps<{
 
   &--assistant {
     .chat-message__content {
-      background-color: #fff;
-      border-radius: 4px 16px 16px 16px;
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 6px 16px 16px 16px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
     }
   }
 
   &--user {
     flex-direction: row-reverse;
     .chat-message__content {
-      background-color: #409eff;
+      background: linear-gradient(135deg, #0071e3, #3395ff);
       color: #fff;
-      border-radius: 16px 4px 16px 16px;
+      border-radius: 16px 6px 16px 16px;
+      box-shadow: 0 4px 16px rgba(0, 113, 227, 0.3);
     }
     .chat-message__role {
       text-align: right;
@@ -58,8 +63,9 @@ defineProps<{
 
 .chat-message__role {
   font-size: 12px;
-  color: #909399;
+  color: #86868b;
   margin-bottom: 4px;
+  font-weight: 500;
 }
 
 .chat-message__content {
@@ -69,13 +75,19 @@ defineProps<{
   word-break: break-word;
 
   &.streaming {
-    background-color: #fff;
-    border-radius: 4px 16px 16px 16px;
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 6px 16px 16px 16px;
+    color: #1d1d1f;
   }
 }
 
 .cursor-blink {
   animation: blink 1s infinite;
+  color: #0071e3;
+  font-weight: 300;
 }
 
 @keyframes blink {

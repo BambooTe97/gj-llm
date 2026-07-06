@@ -48,7 +48,17 @@ async function handleLogin() {
 
 <template>
   <div class="login-container">
+    <!-- 背景装饰 -->
+    <div class="login-bg-orb login-bg-orb--1"></div>
+    <div class="login-bg-orb login-bg-orb--2"></div>
+    <div class="login-bg-orb login-bg-orb--3"></div>
+
     <div class="login-card">
+      <div class="login-icon">
+        <div class="login-icon__circle">
+          <el-icon :size="32"><Cpu /></el-icon>
+        </div>
+      </div>
       <h2 class="login-title">GJ-LLM</h2>
       <p class="login-subtitle">LLM 管理平台</p>
 
@@ -89,28 +99,100 @@ async function handleLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0a1628 0%, #1a2a4a 30%, #1d3a5c 60%, #0f1f38 100%);
+  overflow: hidden;
+  position: relative;
+}
+
+// ---- 背景光晕装饰 ----
+.login-bg-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.3;
+  pointer-events: none;
+
+  &--1 {
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(0, 113, 227, 0.5), transparent);
+    top: -100px;
+    right: -80px;
+    animation: float 8s ease-in-out infinite;
+  }
+
+  &--2 {
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(52, 199, 89, 0.4), transparent);
+    bottom: -60px;
+    left: -60px;
+    animation: float 10s ease-in-out infinite reverse;
+  }
+
+  &--3 {
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(255, 159, 10, 0.35), transparent);
+    top: 40%;
+    left: 50%;
+    animation: float 7s ease-in-out infinite 2s;
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -20px) scale(1.05); }
+  66% { transform: translate(-20px, 15px) scale(0.95); }
 }
 
 .login-card {
   width: 420px;
-  padding: 40px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  padding: 44px 40px 40px;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 20px;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.2),
+    0 4px 16px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  position: relative;
+  z-index: 1;
+}
+
+.login-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+
+  &__circle {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0071e3, #4d9ff7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    box-shadow: 0 8px 24px rgba(0, 113, 227, 0.35);
+  }
 }
 
 .login-title {
   text-align: center;
   font-size: 28px;
-  color: #303133;
+  font-weight: 700;
+  color: #1d1d1f;
   margin-bottom: 4px;
+  letter-spacing: -0.02em;
 }
 
 .login-subtitle {
   text-align: center;
   font-size: 14px;
-  color: #909399;
+  color: #86868b;
   margin-bottom: 32px;
 }
 

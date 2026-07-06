@@ -52,7 +52,7 @@ export const useChatStore = defineStore('chat', () => {
     })
 
     const res = await chatApi.sendMessage({ conversationId, content })
-    addMessage(res.data)
+    addMessage(res.data.data)
   }
 
   return {

@@ -6,8 +6,10 @@ export interface LoginRequest {
 
 /** 登录响应 */
 export interface LoginResponse {
-  token: string
+  accessToken: string
+  refreshToken: string
   username: string
+  nickname: string
   avatar?: string
 }
 
@@ -32,5 +34,17 @@ export interface Conversation {
   title: string
   lastMessage?: string
   updatedAt: string
+  createdAt: string
+}
+
+/** 文件记录 */
+export interface FileRecord {
+  id: number
+  originalName: string
+  extension: string
+  size: number
+  contentType: string
+  createBy: string
+  url: string
   createdAt: string
 }

@@ -59,10 +59,18 @@ function handleLogout() {
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 10px;
+  transition: background 0.2s;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
 }
 
 .app-header__username {
   font-size: 14px;
-  color: #303133;
+  color: #1d1d1f;
+  font-weight: 500;
 }
 </style>

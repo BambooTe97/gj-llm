@@ -38,6 +38,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/settings/SettingsView.vue'),
         meta: { title: '设置' },
       },
+      {
+        path: 'files',
+        name: 'Files',
+        component: () => import('@/views/file/FileView.vue'),
+        meta: { title: '知识库' },
+      },
     ],
   },
   {
