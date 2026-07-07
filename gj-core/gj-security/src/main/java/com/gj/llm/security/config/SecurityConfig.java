@@ -1,11 +1,14 @@
 package com.gj.llm.security.config;
 
+import com.gj.llm.common.util.JacksonUtils;
 import com.gj.llm.security.filter.JwtAuthenticationFilter;
 import com.gj.llm.security.properties.SecurityProperties;
 import com.gj.llm.security.service.SecurityUserService;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -19,6 +22,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 /**
  * Spring Security 核心配置类 —— 定义安全过滤器链、认证提供者、密码编码器等核心 Bean。
@@ -70,7 +76,18 @@ public class SecurityConfig {
                 // 在 Spring Security 内置认证过滤器之前插入 JWT 过滤器
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 // 注册自定义认证提供者（DAO 模式 + BCrypt）
-                .authenticationProvider(authenticationProvider());
+                .authenticationProvider(authenticationProvider())
+                // 异常处理：未认证返回 JSON 格式 401，与前端 ApiResponse 契约对齐
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                            response.getWriter().write(JacksonUtils.toJson(
+                                    Map.of("code", 401, "data", null, "message", "认证失败，请重新登录"))
+                            );
+                        })
+                );
 
         return http.build();
     }

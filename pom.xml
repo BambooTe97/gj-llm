@@ -29,6 +29,9 @@
         <spring-ai.version>2.0.0</spring-ai.version>
         <jjwt.version>0.12.6</jjwt.version>
         <mybatis-plus.version>3.5.16</mybatis-plus.version>
+        <fastjson.version>2.0.62</fastjson.version>
+        <commons.io.version>2.22.0</commons.io.version>
+        <apache.commons.version>3.20.0</apache.commons.version>
     </properties>
 
     <dependencyManagement>
@@ -70,6 +73,33 @@
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-jackson</artifactId>
                 <version>${jjwt.version}</version>
+            </dependency>
+
+            <!-- 阿里JSON解析器 -->
+            <dependency>
+                <groupId>com.alibaba.fastjson2</groupId>
+                <artifactId>fastjson2</artifactId>
+                <version>${fastjson.version}</version>
+            </dependency>
+
+            <!-- io常用工具类 -->
+            <dependency>
+                <groupId>commons-io</groupId>
+                <artifactId>commons-io</artifactId>
+                <version>${commons.io.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-lang3</artifactId>
+                <version>${apache.commons.version}</version>
+            </dependency>
+
+
+            <dependency>
+                <groupId>com.gj.llm</groupId>
+                <artifactId>gj-common</artifactId>
+                <version>${project.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

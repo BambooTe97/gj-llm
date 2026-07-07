@@ -8,6 +8,16 @@ const http = axios.create({
   timeout: 30_000,
 })
 
+/** 跳转到登录页，携带当前页面路径以便登录后返回 */
+function redirectToLogin() {
+  // 避免在登录页重复跳转
+  if (window.location.pathname === '/login') return
+
+  storage.remove(TOKEN_KEY)
+  const redirect = encodeURIComponent(window.location.pathname + window.location.search)
+  window.location.href = `/login?redirect=${redirect}`
+}
+
 // ========== 请求拦截器 ==========
 http.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
@@ -28,8 +38,7 @@ http.interceptors.response.use(
     if (!data || typeof data.code === 'undefined') return response
 
     if (data.code === 401) {
-      storage.remove(TOKEN_KEY)
-      window.location.href = '/login'
+      redirectToLogin()
       return Promise.reject(new Error('登录已过期'))
     }
 
@@ -45,9 +54,8 @@ http.interceptors.response.use(
     const serverMessage = error.response?.data?.message
 
     if (error.response?.status === 401) {
-      storage.remove(TOKEN_KEY)
-      window.location.href = '/login'
       ElMessage.error(serverMessage || '登录已过期，请重新登录')
+      redirectToLogin()
     } else if (error.response?.status === 500) {
       ElMessage.error(serverMessage || '服务器错误')
     } else if (error.message?.includes('timeout')) {

@@ -62,6 +62,7 @@ public class GlobalExceptionHandler {
      * 返回 401，前端拦截器据此跳转登录页。
      */
     @ExceptionHandler(AuthenticationException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ApiResponse<Void> handleAuthenticationException(AuthenticationException e) {
         log.warn("认证失败: {}", e.getMessage());
         return ApiResponse.unauthorized("认证失败，请重新登录");
