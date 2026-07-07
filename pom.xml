@@ -32,6 +32,7 @@
         <fastjson.version>2.0.62</fastjson.version>
         <commons.io.version>2.22.0</commons.io.version>
         <apache.commons.version>3.20.0</apache.commons.version>
+        <yauaa.version>8.1.1</yauaa.version>
     </properties>
 
     <dependencyManagement>
@@ -95,11 +96,17 @@
                 <version>${apache.commons.version}</version>
             </dependency>
 
-
             <dependency>
                 <groupId>com.gj.llm</groupId>
                 <artifactId>gj-common</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+
+            <!-- 解析客户端操作系统、浏览器等 -->
+            <dependency>
+                <groupId>nl.basjes.parse.useragent</groupId>
+                <artifactId>yauaa</artifactId>
+                <version>${yauaa.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

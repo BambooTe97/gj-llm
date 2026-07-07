@@ -5,7 +5,7 @@ import java.io.Serial;
 /**
  * 工具类异常
  *
- * @author xiangxun
+ * @author gj-llm
  */
 public class UtilException extends RuntimeException {
     @Serial

@@ -15,7 +15,7 @@ import java.util.Date;
 /**
  * 时间工具类
  *
- * @author xiangxun
+ * @author gj-llm
  */
 @SuppressWarnings("deprecation")
 public class DateUtils extends org.apache.commons.lang3.time.DateUtils {
