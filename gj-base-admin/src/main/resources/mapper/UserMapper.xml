@@ -3,7 +3,7 @@
 <mapper namespace="com.gj.llm.admin.mapper.UserMapper">
 
     <!-- 结果映射：用户基础字段 -->
-    <resultMap id="BaseResultMap" type="com.gj.llm.admin.entity.UserEntity">
+    <resultMap id="BaseResultMap" type="com.gj.llm.base.entity.UserEntity">
         <id     column="id"         property="id"/>
         <result column="username"   property="username"/>
         <result column="password"   property="password"/>

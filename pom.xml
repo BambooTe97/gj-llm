@@ -22,6 +22,7 @@
         <module>gj-core</module>
         <module>gj-base-admin</module>
         <module>gj-llm-admin</module>
+        <module>gj-llm-start</module>
     </modules>
 
     <properties>

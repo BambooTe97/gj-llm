@@ -27,7 +27,7 @@ import java.time.LocalDateTime;
  * @author gj-llm
  */
 @Configuration
-@MapperScan({"com.gj.llm.admin.mapper", "com.gj.llm.file.mapper"})
+@MapperScan(value = "com.gj.llm.**.mapper")
 public class MyBatisGlobalConfig {
 
     // ==================== 分页插件 ====================

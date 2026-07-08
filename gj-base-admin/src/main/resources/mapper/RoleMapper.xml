@@ -3,7 +3,7 @@
 <mapper namespace="com.gj.llm.admin.mapper.RoleMapper">
 
     <!-- 结果映射：角色字段 -->
-    <resultMap id="BaseResultMap" type="com.gj.llm.admin.entity.RoleEntity">
+    <resultMap id="BaseResultMap" type="com.gj.llm.base.entity.RoleEntity">
         <id     column="id"          property="id"/>
         <result column="name"        property="name"/>
         <result column="code"        property="code"/>

@@ -1,0 +1,18 @@
+mybatis-plus:
+  # XML 映射文件路径（自定义 SQL 放在 resources/mapper/ 下）
+  mapper-locations: classpath*:/mapper/**/*.xml
+  # 实体类别名包（在 XML 中可直接使用类名）
+  type-aliases-package: com.gj.llm.admin.entity
+  configuration:
+    # 数据库字段下划线 → Java 属性驼峰自动映射
+    map-underscore-to-camel-case: true
+    # SQL 日志输出（开发环境可打开）
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      # 主键自增策略
+      id-type: auto
+      # 逻辑删除字段（当前未启用，预留）
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0

@@ -1,0 +1,22 @@
+spring:
+  # ==================== AI 配置 ====================
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        model: deepseek-r1:latest
+      embedding:
+        model: bge-m3:latest
+    vectorstore:
+      milvus:
+        initialize-schema: false
+        database-name: default
+        collection-name: vector_store_first
+        embedding-dimension: 1024
+        index-type: ivf_flat
+        metric-type: cosine
+        client:
+          host: 192.168.0.130
+          port: 19530
+          username: root
+          password: milvus

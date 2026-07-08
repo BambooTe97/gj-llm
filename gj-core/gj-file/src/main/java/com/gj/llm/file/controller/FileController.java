@@ -1,7 +1,7 @@
 package com.gj.llm.file.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.gj.llm.file.model.ApiResponse;
+import com.gj.llm.common.web.ApiResponse;
 import com.gj.llm.file.model.FileInfo;
 import com.gj.llm.file.service.FileStorageService;
 import lombok.RequiredArgsConstructor;

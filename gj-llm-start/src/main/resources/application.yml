@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: gj-llm
+
+  profiles:
+    active: ai, mybatis, file
+
+  # ==================== 文件上传配置 ====================
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+  # ==================== 数据库配置 ====================
+  datasource:
+    url: jdbc:mysql://localhost:3306/gj_llm?useSSL=false&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: Xx123@pwd
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+# ==================== 安全配置 ====================
+app:
+  security:
+    jwt:
+      # JWT 签名密钥（Base64 编码，至少 256 bit）
+      # 留空时应用自动生成随机密钥（仅开发环境，重启后所有 Token 失效）
+      # 生产环境务必配置固定密钥：secret: ${JWT_SECRET}
+      secret: ""
+      # Access Token 有效期（毫秒），默认 24 小时
+      access-token-expiration: 86400000
+      # Refresh Token 有效期（毫秒），默认 7 天
+      refresh-token-expiration: 604800000
+    # 无需认证即可访问的路径（Ant 风格匹配）
+    ignore-paths:
+      - /api/auth/login
+      - /api/auth/refresh
