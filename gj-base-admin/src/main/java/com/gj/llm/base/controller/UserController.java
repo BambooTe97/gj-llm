@@ -1,10 +1,10 @@
 package com.gj.llm.base.controller;
 
 import com.gj.llm.base.entity.UserEntity;
-import com.gj.llm.base.model.ApiResponse;
 import com.gj.llm.base.model.UserCreateRequest;
 import com.gj.llm.base.model.UserUpdateRequest;
 import com.gj.llm.base.service.UserService;
+import com.gj.llm.common.web.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;

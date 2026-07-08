@@ -1,6 +1,6 @@
 package com.gj.llm.base.handler;
 
-import com.gj.llm.base.model.ApiResponse;
+import com.gj.llm.common.web.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;

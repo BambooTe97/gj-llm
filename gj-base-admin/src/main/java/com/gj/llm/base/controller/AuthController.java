@@ -1,9 +1,9 @@
 package com.gj.llm.base.controller;
 
-import com.gj.llm.base.model.ApiResponse;
 import com.gj.llm.base.model.LoginRequest;
 import com.gj.llm.base.model.LoginResponse;
 import com.gj.llm.base.service.AuthService;
+import com.gj.llm.common.web.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;

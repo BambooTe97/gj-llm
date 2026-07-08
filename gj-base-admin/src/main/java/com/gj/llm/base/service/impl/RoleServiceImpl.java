@@ -1,38 +1,31 @@
 package com.gj.llm.base.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.gj.llm.base.entity.RoleEntity;
 import com.gj.llm.base.mapper.RoleMapper;
 import com.gj.llm.base.model.RoleCreateRequest;
 import com.gj.llm.base.service.RoleService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/**
- * 角色管理服务实现 —— 基于 MyBatis-Plus，提供角色的增删查操作。
- *
- * @author gj-llm
- */
 @Slf4j
 @Service
-@RequiredArgsConstructor
-public class RoleServiceImpl implements RoleService {
-
-    private final RoleMapper roleMapper;
+public class RoleServiceImpl extends ServiceImpl<RoleMapper, RoleEntity> implements RoleService {
 
     @Override
     public List<RoleEntity> listAll() {
-        return roleMapper.selectList(null);
+        return list();
     }
 
     @Override
     @Transactional
     public RoleEntity create(RoleCreateRequest request) {
-        // 编码唯一性检查
-        if (roleMapper.countByCode(request.getCode()) > 0) {
+        long count = count(new LambdaQueryWrapper<RoleEntity>().eq(RoleEntity::getCode, request.getCode()));
+        if (count > 0) {
             throw new RuntimeException("角色编码已存在: " + request.getCode());
         }
 
@@ -42,7 +35,7 @@ public class RoleServiceImpl implements RoleService {
                 .description(request.getDescription())
                 .build();
 
-        roleMapper.insert(role);
+        save(role);
         log.info("创建角色成功: {}", role.getCode());
         return role;
     }
@@ -50,10 +43,10 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional
     public void delete(Long id) {
-        if (roleMapper.selectById(id) == null) {
+        if (getById(id) == null) {
             throw new RuntimeException("角色不存在: id=" + id);
         }
-        roleMapper.deleteById(id);
+        removeById(id);
         log.info("删除角色成功: id={}", id);
     }
 }

@@ -48,7 +48,7 @@ function handleDelete(id: string) {
 
     <!-- 会话列表 -->
     <div class="sidebar-list" v-if="!appStore.sidebarCollapsed">
-      <!-- 知识库入口 — 独立分组 -->
+      <!-- 浏览入口 — 独立分组 -->
       <div class="sidebar-section">
         <div class="sidebar-section__label">浏览</div>
         <div
@@ -60,6 +60,17 @@ function handleDelete(id: string) {
             <el-icon :size="16"><Folder /></el-icon>
           </span>
           <span class="sidebar-list__title">知识库</span>
+          <el-icon class="sidebar-list__arrow" :size="14"><ArrowRight /></el-icon>
+        </div>
+        <div
+          class="sidebar-list__item sidebar-list__item--kb"
+          :class="{ active: route.path === '/vector-models' }"
+          @click="router.push('/vector-models')"
+        >
+          <span class="sidebar-list__icon sidebar-list__icon--kb">
+            <el-icon :size="16"><DataAnalysis /></el-icon>
+          </span>
+          <span class="sidebar-list__title">向量模型库</span>
           <el-icon class="sidebar-list__arrow" :size="14"><ArrowRight /></el-icon>
         </div>
       </div>

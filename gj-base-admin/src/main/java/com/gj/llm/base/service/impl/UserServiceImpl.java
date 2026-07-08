@@ -1,14 +1,16 @@
 package com.gj.llm.base.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.gj.llm.base.entity.RoleEntity;
 import com.gj.llm.base.entity.UserEntity;
+import com.gj.llm.base.entity.UserRoleEntity;
 import com.gj.llm.base.mapper.RoleMapper;
 import com.gj.llm.base.mapper.UserMapper;
 import com.gj.llm.base.mapper.UserRoleMapper;
 import com.gj.llm.base.model.UserCreateRequest;
 import com.gj.llm.base.model.UserUpdateRequest;
 import com.gj.llm.base.service.UserService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,30 +19,25 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashSet;
 import java.util.List;
 
-/**
- * 用户管理服务实现 —— 基于 MyBatis-Plus，提供用户的增删改查操作。
- *
- * <p>创建用户时自动使用 BCrypt 加密密码；更新用户时不会修改密码；
- * 角色关联通过 {@link UserRoleMapper} 管理（先删后插策略）。</p>
- *
- * @author gj-llm
- */
 @Slf4j
 @Service
-@RequiredArgsConstructor
-public class UserServiceImpl implements UserService {
+public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> implements UserService {
 
-    private final UserMapper userMapper;
     private final RoleMapper roleMapper;
     private final UserRoleMapper userRoleMapper;
     private final PasswordEncoder passwordEncoder;
 
+    public UserServiceImpl(RoleMapper roleMapper, UserRoleMapper userRoleMapper, PasswordEncoder passwordEncoder) {
+        this.roleMapper = roleMapper;
+        this.userRoleMapper = userRoleMapper;
+        this.passwordEncoder = passwordEncoder;
+    }
+
     @Override
     public List<UserEntity> listAll() {
-        List<UserEntity> users = userMapper.selectList(null);
-        // 为每个用户加载角色
+        List<UserEntity> users = list();
         users.forEach(user -> {
-            List<RoleEntity> roles = roleMapper.selectByUserId(user.getId());
+            List<RoleEntity> roles = findRolesByUserId(user.getId());
             user.setRoles(new HashSet<>(roles));
         });
         return users;
@@ -48,12 +45,11 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserEntity getById(Long id) {
-        UserEntity user = userMapper.selectById(id);
+        UserEntity user = super.getById(id);
         if (user == null) {
             throw new RuntimeException("用户不存在: id=" + id);
         }
-        // 加载角色
-        List<RoleEntity> roles = roleMapper.selectByUserId(id);
+        List<RoleEntity> roles = findRolesByUserId(id);
         user.setRoles(new HashSet<>(roles));
         return user;
     }
@@ -61,41 +57,37 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserEntity create(UserCreateRequest request) {
-        // 用户名唯一性检查
-        if (userMapper.countByUsername(request.getUsername()) > 0) {
+        long count = count(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getUsername, request.getUsername()));
+        if (count > 0) {
             throw new RuntimeException("用户名已存在: " + request.getUsername());
         }
 
-        // 构造用户实体（密码 BCrypt 加密）
         UserEntity user = UserEntity.builder()
                 .username(request.getUsername())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .nickname(request.getNickname())
                 .email(request.getEmail())
-                .status(1)   // 默认启用
+                .status(1)
                 .build();
 
-        userMapper.insert(user);
+        save(user);
         log.info("创建用户成功: {}, id={}", user.getUsername(), user.getId());
 
-        // 关联角色
         if (request.getRoleIds() != null && !request.getRoleIds().isEmpty()) {
             userRoleMapper.insertBatch(user.getId(), request.getRoleIds().stream().toList());
         }
 
-        // 返回带角色的用户
         return getById(user.getId());
     }
 
     @Override
     @Transactional
     public UserEntity update(Long id, UserUpdateRequest request) {
-        UserEntity user = userMapper.selectById(id);
+        UserEntity user = super.getById(id);
         if (user == null) {
             throw new RuntimeException("用户不存在: id=" + id);
         }
 
-        // 更新允许修改的字段
         if (request.getNickname() != null) {
             user.setNickname(request.getNickname());
         }
@@ -106,10 +98,9 @@ public class UserServiceImpl implements UserService {
             user.setStatus(request.getStatus());
         }
 
-        userMapper.updateById(user);
+        updateById(user);
         log.info("更新用户成功: {}", user.getUsername());
 
-        // 更新角色（全量替换：先删后插）
         if (request.getRoleIds() != null) {
             userRoleMapper.deleteByUserId(id);
             if (!request.getRoleIds().isEmpty()) {
@@ -117,19 +108,27 @@ public class UserServiceImpl implements UserService {
             }
         }
 
-        // 返回带角色的用户
         return getById(id);
     }
 
     @Override
     @Transactional
     public void delete(Long id) {
-        if (userMapper.selectById(id) == null) {
+        if (super.getById(id) == null) {
             throw new RuntimeException("用户不存在: id=" + id);
         }
-        // 先删角色关联，再删用户
         userRoleMapper.deleteByUserId(id);
-        userMapper.deleteById(id);
+        removeById(id);
         log.info("删除用户成功: id={}", id);
+    }
+
+    private List<RoleEntity> findRolesByUserId(Long userId) {
+        List<Long> roleIds = userRoleMapper.selectList(
+                        new LambdaQueryWrapper<UserRoleEntity>().eq(UserRoleEntity::getUserId, userId))
+                .stream().map(UserRoleEntity::getRoleId).toList();
+        if (roleIds.isEmpty()) {
+            return List.of();
+        }
+        return roleMapper.selectList(new LambdaQueryWrapper<RoleEntity>().in(RoleEntity::getId, roleIds));
     }
 }

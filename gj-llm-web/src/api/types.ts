@@ -48,3 +48,24 @@ export interface FileRecord {
   url: string
   createdAt: string
 }
+
+/** 向量模型库 */
+export interface VectorModel {
+  id: number
+  typeCode: string
+  typeName: string
+  collectionName: string
+  description: string | null
+  status: number
+  createdAt: string
+  updatedAt: string
+}
+
+/** MyBatis-Plus IPage 分页响应 */
+export interface PageData<T> {
+  records: T[]
+  total: number
+  size: number
+  current: number
+  pages: number
+}

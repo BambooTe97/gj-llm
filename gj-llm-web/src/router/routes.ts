@@ -44,6 +44,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/file/FileView.vue'),
         meta: { title: '知识库' },
       },
+      {
+        path: 'vector-models',
+        name: 'VectorModels',
+        component: () => import('@/views/vectormodel/VectorModelView.vue'),
+        meta: { title: '向量模型库' },
+      },
     ],
   },
   {

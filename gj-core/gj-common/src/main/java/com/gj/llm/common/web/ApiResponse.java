@@ -48,6 +48,16 @@ public class ApiResponse<T> {
         return fail(400, message);
     }
 
+    /** 未认证 (401) */
+    public static <T> ApiResponse<T> unauthorized(String message) {
+        return fail(401, message);
+    }
+
+    /** 无权限 (403) */
+    public static <T> ApiResponse<T> forbidden(String message) {
+        return fail(403, message);
+    }
+
     /** 服务器错误 (500) */
     public static <T> ApiResponse<T> error(String message) {
         return fail(500, message);

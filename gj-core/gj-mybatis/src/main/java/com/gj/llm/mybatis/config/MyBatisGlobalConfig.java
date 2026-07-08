@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
  * 由 Spring Boot 自动配置（{@code DataSourceAutoConfiguration} +
  * {@code MybatisPlusAutoConfiguration}）管理，此类仅负责：
  * <ul>
- *   <li>Mapper 接口统一扫描（按模块显式列出 mapper 包，新增模块需在此追加）</li>
+ *   <li>Mapper 接口统一扫描</li>
  *   <li>分页插件注册</li>
  *   <li>自动填充（审计字段：createBy / updateBy / createdAt / updatedAt）</li>
  * </ul>
