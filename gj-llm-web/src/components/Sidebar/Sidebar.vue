@@ -53,24 +53,13 @@ function handleDelete(id: string) {
         <div class="sidebar-section__label">浏览</div>
         <div
           class="sidebar-list__item sidebar-list__item--kb"
-          :class="{ active: route.path === '/files' }"
-          @click="router.push('/files')"
+          :class="{ active: route.path.startsWith('/datasets') }"
+          @click="router.push('/datasets')"
         >
           <span class="sidebar-list__icon sidebar-list__icon--kb">
             <el-icon :size="16"><Folder /></el-icon>
           </span>
           <span class="sidebar-list__title">知识库</span>
-          <el-icon class="sidebar-list__arrow" :size="14"><ArrowRight /></el-icon>
-        </div>
-        <div
-          class="sidebar-list__item sidebar-list__item--kb"
-          :class="{ active: route.path === '/vector-models' }"
-          @click="router.push('/vector-models')"
-        >
-          <span class="sidebar-list__icon sidebar-list__icon--kb">
-            <el-icon :size="16"><DataAnalysis /></el-icon>
-          </span>
-          <span class="sidebar-list__title">向量模型库</span>
           <el-icon class="sidebar-list__arrow" :size="14"><ArrowRight /></el-icon>
         </div>
       </div>

@@ -1,6 +1,7 @@
 package com.gj.llm.agent.vector;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.gj.llm.agent.constant.VectorStoreConstants;
 import com.gj.llm.agent.vector.reader.FileContentReader;
 import com.gj.llm.file.model.FileInfo;
 import com.gj.llm.file.service.FileStorageService;
@@ -58,7 +59,7 @@ public class FileVectorStoreHandler {
                 System.err.println("向量化文件失败: " + fileInfo.getOriginalName() + " - " + e.getMessage());
             }
         }
-        log.info("成功向量化 {} 个文件到集合: collection_{}", count, type);
+        log.info("成功向量化 {} 个文件到集合: {}{}", count, VectorStoreConstants.COLLECTION_PREFIX, type);
         return count;
     }
 
@@ -79,7 +80,7 @@ public class FileVectorStoreHandler {
         });
         List<Document> splits = textSplitter.apply(documents);
         vectorStore.add(splits);
-        log.info("成功将文件存入集合: collection_{}, 文件: {}", type, fileInfo.getOriginalName());
+        log.info("成功将文件存入集合: {}{}, 文件: {}", VectorStoreConstants.COLLECTION_PREFIX, type, fileInfo.getOriginalName());
     }
 
     /**

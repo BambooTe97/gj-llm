@@ -1,6 +1,7 @@
 package com.gj.llm.agent.controller;
 
 import com.gj.llm.agent.vector.DynamicVectorStoreManager;
+import com.gj.llm.common.web.ApiResponse;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
@@ -10,7 +11,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -25,13 +28,12 @@ public class AgentChatController {
     }
 
     @PostMapping("/api/agent/ask")
-    public String askAgent(@RequestBody AgentRequest request) {
+    public ApiResponse<Map<String, Object>> askAgent(@RequestBody AgentRequest request) {
 
         // 1. 动态获取向量库
         VectorStore vectorStore = storeManager.getVectorStore(request.getType());
 
-        // 2. 手动执行检索
-        // 根据用户问题，在指定的集合里搜索最相似的 Top 5 个片段
+        // 2. 检索 Top 5 相似片段
         List<Document> similarDocuments = vectorStore.similaritySearch(
                 SearchRequest.builder()
                         .query(request.getQuestion())
@@ -41,12 +43,11 @@ public class AgentChatController {
         );
 
         // 3. 组装上下文
-        // 将搜索到的文档内容拼接成一个字符串
         String context = similarDocuments.stream()
                 .map(Document::getText)
                 .collect(Collectors.joining("\n\n"));
 
-        // 4. 定义 System Prompt (根据类型动态切换人设)
+        // 4. 根据类型动态切换人设
         String systemPrompt = switch (request.getType()) {
             case "medical" ->
                     "你是一个专业的医疗助手。请根据【参考上下文】回答用户的问题。如果上下文中没有答案，请诚实地告诉用户你不知道，不要编造。";
@@ -54,12 +55,11 @@ public class AgentChatController {
             default -> "你是一个智能助手。请根据【参考上下文】回答问题。";
         };
 
-        // 5. 构建最终发送给大模型的 Prompt
-        // 模板：系统指令 + 参考上下文 + 用户问题
+        // 5. 构建 Prompt
         String userContent = String.format("""
                 参考上下文:
                 %s
-                
+
                 用户问题:
                 %s
                 """, context, request.getQuestion());
@@ -69,9 +69,14 @@ public class AgentChatController {
                 .defaultSystem(systemPrompt)
                 .build();
 
-        return chatClient.prompt()
+        String answer = chatClient.prompt()
                 .user(userContent)
                 .call()
                 .content();
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("answer", answer);
+        data.put("type", request.getType());
+        return ApiResponse.ok(data);
     }
 }

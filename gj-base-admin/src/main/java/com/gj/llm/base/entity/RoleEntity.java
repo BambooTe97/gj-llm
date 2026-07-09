@@ -23,8 +23,8 @@ import java.time.LocalDateTime;
 @TableName("sys_role")
 public class RoleEntity {
 
-    /** 主键（自增） */
-    @TableId(type = IdType.AUTO)
+    /** 主键（雪花算法） */
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     /** 角色名称（展示用），例如 "系统管理员" */

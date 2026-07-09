@@ -24,8 +24,8 @@ import java.util.Set;
 @TableName("sys_user")
 public class UserEntity {
 
-    /** 主键（自增） */
-    @TableId(type = IdType.AUTO)
+    /** 主键（雪花算法） */
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     /** 用户名（登录凭证），唯一 */

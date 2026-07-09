@@ -24,17 +24,17 @@ export const fileApi = {
   },
 
   /** 删除文件（按记录 ID） */
-  deleteById(id: number): Promise<ApiResponse<null>> {
+  deleteById(id: string): Promise<ApiResponse<null>> {
     return http.delete(`/files/${id}`)
   },
 
   /** 获取文件下载地址（按记录 ID） */
-  getDownloadUrl(id: number): string {
+  getDownloadUrl(id: string): string {
     return `${import.meta.env.VITE_API_BASE_URL}/files/${id}`
   },
 
   /** 下载文件（通过 axios 携带认证 Token） */
-  async download(id: number, fileName: string): Promise<void> {
+  async download(id: string, fileName: string): Promise<void> {
     const response = await http.get(`/files/${id}`, {
       responseType: 'blob',
     })

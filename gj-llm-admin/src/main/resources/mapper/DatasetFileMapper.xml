@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gj.llm.agent.mapper.DatasetFileMapper">
+
+    <!-- 通用结果映射 -->
+    <resultMap id="BaseResultMap" type="com.gj.llm.agent.entity.DatasetFileEntity">
+        <id     column="id"            property="id" />
+        <result column="dataset_id"    property="datasetId" />
+        <result column="file_id"       property="fileId" />
+        <result column="status"        property="status" />
+        <result column="error_message" property="errorMessage" />
+        <result column="segment_count" property="segmentCount" />
+        <result column="created_at"    property="createdAt" />
+        <result column="updated_at"    property="updatedAt" />
+    </resultMap>
+
+    <!-- 通用查询列 -->
+    <sql id="Base_Column_List">
+        id, dataset_id, file_id, status, error_message, segment_count, created_at, updated_at
+    </sql>
+
+</mapper>

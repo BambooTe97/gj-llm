@@ -1,5 +1,6 @@
 package com.gj.llm.agent.vector;
 
+import com.gj.llm.agent.constant.VectorStoreConstants;
 import io.milvus.client.MilvusServiceClient;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -23,8 +24,10 @@ public class DynamicVectorStoreManager {
     }
 
     /**
-     * 获取特定类型的 VectorStore（按 collectionName 区分）
-     * @param type 类型 (如 "medical", "story")
+     * 获取指定类型的 VectorStore（按 collectionName 区分）。
+     * <p>集合命名规范：{@code collection_} + type，例如 type 为 "medical" 则集合名为 "collection_medical"。</p>
+     *
+     * @param type 类型标识（如 "medical"、"story"，不含前缀）
      * @return VectorStore 实例
      */
     public VectorStore getVectorStore(String type) {
@@ -32,10 +35,10 @@ public class DynamicVectorStoreManager {
     }
 
     private VectorStore createNewVectorStore(String type) {
-        String collectionName = "collection_" + type;
+        String collectionName = VectorStoreConstants.COLLECTION_PREFIX + type;
         return MilvusVectorStore.builder(milvusClient, embeddingModel)
                 .collectionName(collectionName)
-                .databaseName("default")
+                .databaseName(VectorStoreConstants.DEFAULT_DATABASE)
                 .initializeSchema(true)
                 .build();
     }

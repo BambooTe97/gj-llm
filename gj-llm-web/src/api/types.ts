@@ -37,9 +37,9 @@ export interface Conversation {
   createdAt: string
 }
 
-/** 文件记录 */
+/** 文件记录（file_record 表） */
 export interface FileRecord {
-  id: number
+  id: string
   originalName: string
   extension: string
   size: number
@@ -49,16 +49,45 @@ export interface FileRecord {
   createdAt: string
 }
 
-/** 向量模型库 */
-export interface VectorModel {
-  id: number
-  typeCode: string
-  typeName: string
-  collectionName: string
+/** 知识库 */
+export interface Dataset {
+  id: string
+  name: string
   description: string | null
-  status: number
+  embeddingModel: string
+  vectorStoreType: string
+  collectionName: string
+  chunkSize: number
+  chunkOverlap: number
+  status: string
+  docCount: number
+  segmentCount: number
   createdAt: string
   updatedAt: string
+}
+
+/** 知识库-文件关联记录（含文件信息） */
+export interface DatasetFile {
+  id: string
+  datasetId: string
+  fileId: string
+  fileName: string
+  fileType: string
+  fileSize: number
+  fileUrl: string
+  status: string
+  errorMessage: string | null
+  segmentCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+/** 检索测试结果项 */
+export interface SearchResultItem {
+  rank: number
+  content: string
+  score: number
+  metadata: Record<string, any>
 }
 
 /** MyBatis-Plus IPage 分页响应 */

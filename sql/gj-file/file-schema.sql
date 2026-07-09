@@ -15,7 +15,5 @@ CREATE TABLE IF NOT EXISTS file_record (
     update_by     VARCHAR(100)  NULL COMMENT '更新者（自动填充）',
     created_at    DATETIME      COMMENT '创建时间 / 上传时间',
     updated_at    DATETIME      COMMENT '更新时间',
-    PRIMARY KEY (id),
-    INDEX idx_created_at (created_at),
-    INDEX idx_create_by (create_by)
+    PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文件上传记录表';
