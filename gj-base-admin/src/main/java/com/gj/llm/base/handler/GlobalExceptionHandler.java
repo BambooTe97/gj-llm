@@ -86,7 +86,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RuntimeException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleRuntimeException(RuntimeException e) {
-        log.warn("业务异常: {}", e.getMessage());
+        log.warn("业务异常: {}", e.getMessage(), e);
         return ApiResponse.badRequest(e.getMessage());
     }
 

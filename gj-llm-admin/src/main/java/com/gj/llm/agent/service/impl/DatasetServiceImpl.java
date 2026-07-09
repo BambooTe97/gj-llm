@@ -75,12 +75,8 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
         save(entity);
 
         // 在 Milvus 中创建对应的集合（DynamicVectorStoreManager 会自动加 collection_ 前缀）
-        try {
-            storeManager.getVectorStore(finalTypeName);
-            log.info("Milvus 集合创建/确认成功: {}{}", VectorStoreConstants.COLLECTION_PREFIX, finalTypeName);
-        } catch (Exception e) {
-            log.error("Milvus 集合创建失败: {}{}, 错误: {}", VectorStoreConstants.COLLECTION_PREFIX, finalTypeName, e.getMessage());
-        }
+        storeManager.getVectorStore(finalTypeName);
+        log.info("Milvus 集合创建/确认成功: {}{}", VectorStoreConstants.COLLECTION_PREFIX, finalTypeName);
 
         log.info("创建知识库成功: name={}, collectionName={}", entity.getName(), entity.getCollectionName());
         return entity;
@@ -116,9 +112,11 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
     @Override
     @Transactional
     public void delete(Long id) {
-        if (getById(id) == null) {
+        DatasetEntity entity = getById(id);
+        if (entity == null) {
             throw new RuntimeException("知识库不存在: id=" + id);
         }
         removeById(id);
+        log.info("删除知识库成功: id={}, collectionName={}", id, entity.getCollectionName());
     }
 }
