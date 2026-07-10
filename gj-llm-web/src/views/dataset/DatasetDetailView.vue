@@ -376,8 +376,10 @@ onMounted(() => {
                       </el-select>
                     </template>
                   </el-input>
-                  <el-button type="primary" :loading="searching" @click="handleSearch">
-                    <el-icon><Search /></el-icon>
+                  <el-button type="primary" :disabled="searching" @click="handleSearch">
+                    <span :class="{ 'is-loading': searching }" style="display: inline-flex">
+                      <el-icon><Search /></el-icon>
+                    </span>
                     检索
                   </el-button>
                 </div>

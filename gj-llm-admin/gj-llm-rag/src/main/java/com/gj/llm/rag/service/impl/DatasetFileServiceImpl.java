@@ -275,6 +275,7 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
             if (documents.isEmpty()) {
                 throw new RuntimeException("不支持的文件类型或文件内容为空");
             }
+            log.info("PDF 读取完成: dfId={}, pages={}", dfId, documents.size());
 
             documents.forEach(d -> {
                 d.getMetadata().put("dataset_id", df.getDatasetId());
@@ -288,8 +289,13 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
                     .withMinChunkLengthToEmbed(20)
                     .build();
             List<Document> splits = splitter.apply(documents);
+            log.info("文本切分完成: dfId={}, chunks={}", dfId, splits.size());
 
+            log.info("开始向量嵌入与写入 Milvus: dfId={}, chunks={}, model={}", dfId, splits.size(), dataset.getEmbeddingModel());
+            long embedStart = System.currentTimeMillis();
             vectorStore.add(splits);
+            long embedCost = System.currentTimeMillis() - embedStart;
+            log.info("向量嵌入完成: dfId={}, cost={}ms, avg={}ms/chunk", dfId, embedCost, embedCost / Math.max(1, splits.size()));
 
             // 保存切片元数据（用于后续删除定位）
             for (Document split : splits) {
