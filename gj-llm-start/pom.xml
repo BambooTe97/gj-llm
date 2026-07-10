@@ -15,10 +15,24 @@
     <description>gj-llm 启动模块 —— Spring Boot 可运行入口</description>
 
     <dependencies>
-        <!-- 管理后台模块：包含所有业务和 AI 能力 -->
+        <!-- Chat 模块：AI 对话能力 -->
         <dependency>
             <groupId>com.gj.llm</groupId>
-            <artifactId>gj-llm-admin</artifactId>
+            <artifactId>gj-llm-chat</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- MCP 模块：Model Context Protocol 能力 -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-llm-mcp</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- RAG 模块：知识库与向量检索能力 -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-llm-rag</artifactId>
             <version>${project.version}</version>
         </dependency>
     </dependencies>

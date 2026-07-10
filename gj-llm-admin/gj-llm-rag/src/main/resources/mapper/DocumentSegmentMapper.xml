@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gj.llm.rag.mapper.DocumentSegmentMapper">
+
+    <!-- 通用结果映射 -->
+    <resultMap id="BaseResultMap" type="com.gj.llm.rag.entity.DocumentSegmentEntity">
+        <id     column="id"               property="id" />
+        <result column="dataset_file_id"  property="datasetFileId" />
+        <result column="segment_id"       property="segmentId" />
+        <result column="content"          property="content" />
+        <result column="meta_data"        property="metaData" />
+        <result column="created_at"       property="createdAt" />
+    </resultMap>
+
+    <!-- 通用查询列 -->
+    <sql id="Base_Column_List">
+        id, dataset_file_id, segment_id, content, meta_data, created_at
+    </sql>
+
+</mapper>
