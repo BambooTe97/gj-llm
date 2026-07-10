@@ -15,6 +15,7 @@ import com.gj.llm.rag.service.DatasetFileService;
 import com.gj.llm.rag.service.DatasetService;
 import com.gj.llm.rag.vector.DynamicVectorStoreManager;
 import com.gj.llm.rag.vector.reader.FileContentReader;
+import com.gj.llm.common.util.JacksonUtils;
 import com.gj.llm.file.model.FileInfo;
 import com.gj.llm.file.service.FileStorageService;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +27,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
@@ -295,7 +297,7 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
                         .datasetFileId(dfId)
                         .segmentId(split.getId())
                         .content(split.getText())
-                        .metaData(split.getMetadata() != null ? split.getMetadata().toString() : null)
+                        .metaData(!CollectionUtils.isEmpty(split.getMetadata()) ? JacksonUtils.toJson(split.getMetadata()) : null)
                         .build();
                 segmentMapper.insert(seg);
             }

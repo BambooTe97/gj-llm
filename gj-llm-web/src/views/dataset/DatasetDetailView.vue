@@ -143,9 +143,21 @@ async function handleReParse(row: DatasetFile) {
   try {
     await datasetApi.reparseDocument(datasetId, row.id)
     ElMessage.success('已触发重新解析')
+    pollUntilDone(row.id)
+  } catch { /* 拦截器统一处理 */ }
+}
+
+function pollUntilDone(dfId: number) {
+  const timer = setInterval(async () => {
     await loadDocuments()
     await loadDataset()
-  } catch { /* 拦截器统一处理 */ }
+    const file = docList.value.find((f) => f.id === dfId)
+    if (!file || file.status === 'COMPLETED' || file.status === 'FAILED') {
+      clearInterval(timer)
+      if (file?.status === 'COMPLETED') ElMessage.success('重新解析完成')
+      else if (file?.status === 'FAILED') ElMessage.error('重新解析失败：' + (file.errorMessage || '未知错误'))
+    }
+  }, 2000)
 }
 
 onMounted(() => {
@@ -307,20 +319,22 @@ onMounted(() => {
                   <el-table-column label="切片数" width="80" align="center">
                     <template #default="{ row }">{{ row.segmentCount || '-' }}</template>
                   </el-table-column>
-                  <el-table-column label="操作" width="160" align="center" fixed="right">
+                  <el-table-column label="操作" min-width="160" align="center" fixed="right">
                     <template #default="{ row }">
-                      <el-button
-                        v-if="row.status === 'FAILED' || row.status === 'COMPLETED'"
-                        text size="small" type="primary"
-                        @click="handleReParse(row)"
-                      >
-                        <el-icon><RefreshRight /></el-icon>
-                        重新解析
-                      </el-button>
-                      <el-button text size="small" type="danger" @click="handleDeleteDoc(row)">
-                        <el-icon><Delete /></el-icon>
-                        删除
-                      </el-button>
+                      <div class="action-btns">
+                        <el-button
+                          v-if="row.status === 'FAILED' || row.status === 'COMPLETED'"
+                          text size="small" type="primary"
+                          @click="handleReParse(row)"
+                        >
+                          <el-icon><RefreshRight /></el-icon>
+                          重新解析
+                        </el-button>
+                        <el-button text size="small" type="danger" @click="handleDeleteDoc(row)">
+                          <el-icon><Delete /></el-icon>
+                          删除
+                        </el-button>
+                      </div>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -589,6 +603,14 @@ onMounted(() => {
     display: flex;
     flex-direction: column;
   }
+}
+
+// ---- 操作按钮 ----
+.action-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 // ---- 文件名单元格 ----

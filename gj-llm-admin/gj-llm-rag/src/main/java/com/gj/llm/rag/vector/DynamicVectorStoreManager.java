@@ -117,6 +117,7 @@ public class DynamicVectorStoreManager {
                 .collectionName(collectionName)
                 .databaseName(VectorStoreConstants.DEFAULT_DATABASE)
                 .initializeSchema(false)
+                .autoId(true)
                 .build();
     }
 }

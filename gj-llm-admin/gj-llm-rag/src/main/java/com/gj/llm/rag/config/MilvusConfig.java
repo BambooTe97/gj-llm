@@ -5,12 +5,12 @@ import io.milvus.v2.client.ConnectConfig;
 import io.milvus.v2.client.MilvusClientV2;
 import org.springframework.ai.vectorstore.milvus.autoconfigure.MilvusServiceClientProperties;
 import org.springframework.ai.vectorstore.milvus.autoconfigure.MilvusVectorStoreProperties;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@ConditionalOnBean({MilvusServiceClientProperties.class, MilvusVectorStoreProperties.class})
+@ConditionalOnClass({MilvusServiceClientProperties.class, MilvusVectorStoreProperties.class})
 public class MilvusConfig {
 
     @Bean
