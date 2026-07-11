@@ -5,10 +5,10 @@ import { conversationApi } from '@/api/modules/conversation'
 
 export const useConversationStore = defineStore('conversation', () => {
   const list = ref<Conversation[]>([])
-  const currentId = ref<number | string | null>(null)
+  const currentId = ref<string | null>(null)
   const loading = ref(false)
 
-  function setCurrentId(id: number | string | null) {
+  function setCurrentId(id: string | null) {
     currentId.value = id
   }
 
@@ -22,7 +22,7 @@ export const useConversationStore = defineStore('conversation', () => {
     }
   }
 
-  async function create(title?: string, datasetId?: number): Promise<Conversation | null> {
+  async function create(title?: string, datasetId?: string): Promise<Conversation | null> {
     try {
       const res = await conversationApi.create(title, datasetId)
       list.value.unshift(res.data.data)
@@ -33,7 +33,7 @@ export const useConversationStore = defineStore('conversation', () => {
     }
   }
 
-  async function remove(id: number | string) {
+  async function remove(id: string) {
     try {
       await conversationApi.remove(id)
       list.value = list.value.filter((c) => c.id !== id)
@@ -45,7 +45,7 @@ export const useConversationStore = defineStore('conversation', () => {
     }
   }
 
-  async function rename(id: number | string, title: string) {
+  async function rename(id: string, title: string) {
     try {
       await conversationApi.rename(id, title)
       const target = list.value.find((c) => c.id === id)

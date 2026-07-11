@@ -8,17 +8,17 @@ export const conversationApi = {
   },
 
   /** 创建新会话 */
-  create(title?: string, datasetId?: number): Promise<ApiResponse<Conversation>> {
+  create(title?: string, datasetId?: string): Promise<ApiResponse<Conversation>> {
     return http.post('/v1/conversations', { title, datasetId })
   },
 
   /** 删除会话 */
-  remove(id: number | string): Promise<ApiResponse<null>> {
+  remove(id: string): Promise<ApiResponse<null>> {
     return http.delete(`/v1/conversations/${id}`)
   },
 
   /** 重命名会话 */
-  rename(id: number | string, title: string): Promise<ApiResponse<Conversation>> {
+  rename(id: string, title: string): Promise<ApiResponse<Conversation>> {
     return http.patch(`/v1/conversations/${id}`, { title })
   },
 }

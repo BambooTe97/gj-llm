@@ -2,6 +2,7 @@
 import { useAppStore } from '@/stores/modules/app'
 import { useUserStore } from '@/stores/modules/user'
 import { useRouter } from 'vue-router'
+import { Fold, Expand, Setting, SwitchButton } from '@element-plus/icons-vue'
 
 const appStore = useAppStore()
 const userStore = useUserStore()

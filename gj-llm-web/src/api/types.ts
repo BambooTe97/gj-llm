@@ -16,7 +16,7 @@ export interface LoginResponse {
 /** 消息结构 */
 export interface ChatMessage {
   id: string
-  conversationId: number | string
+  conversationId: string
   role: 'user' | 'assistant' | 'system'
   content: string
   createdAt: string
@@ -24,17 +24,17 @@ export interface ChatMessage {
 
 /** 发送消息请求 */
 export interface SendMessageRequest {
-  conversationId?: number
+  conversationId?: string
   content: string
-  datasetId?: number
+  datasetId?: string
   type?: string
 }
 
 /** 会话结构 */
 export interface Conversation {
-  id: number | string
+  id: string
   title: string
-  datasetId?: number
+  datasetId?: string
   lastMessage?: string
   messageCount?: number
   updatedAt: string

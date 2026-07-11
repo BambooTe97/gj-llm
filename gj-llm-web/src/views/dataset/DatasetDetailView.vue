@@ -5,6 +5,10 @@ import { ElMessage } from 'element-plus'
 import type { UploadInstance, UploadRawFile } from 'element-plus'
 import { datasetApi } from '@/api/modules/dataset'
 import type { Dataset, DatasetFile, SearchResultItem } from '@/api/types'
+import {
+  UploadFilled, Refresh, Document, Loading, RefreshRight,
+  Delete, QuestionFilled, Search,
+} from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()

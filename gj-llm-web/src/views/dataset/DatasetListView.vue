@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { datasetApi } from '@/api/modules/dataset'
 import type { Dataset } from '@/api/types'
+import { Plus, Setting, Delete, FolderOpened } from '@element-plus/icons-vue'
 
 const router = useRouter()
 

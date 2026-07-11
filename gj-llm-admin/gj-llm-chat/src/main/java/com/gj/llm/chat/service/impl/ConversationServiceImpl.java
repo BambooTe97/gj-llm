@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -36,10 +37,14 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
 
     @Override
     public List<ConversationVO> listByUser() {
-        String username = SecurityUtils.getCurrentUsername();
-        // 简单用用户名匹配（后续可优化为 userId 查询）
+        Long userId = SecurityUtils.getCurrentUserId();
+        // 非登录用户不返回任何会话
+        if (userId == null) {
+            return Collections.emptyList();
+        }
         List<ConversationEntity> entities = list(
                 new LambdaQueryWrapper<ConversationEntity>()
+                        .eq(ConversationEntity::getUserId, userId)
                         .orderByDesc(ConversationEntity::getUpdatedAt));
 
         return entities.stream().map(this::toVO).collect(Collectors.toList());
@@ -48,10 +53,14 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
     @Override
     @Transactional
     public ConversationVO create(String title, Long datasetId) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new RuntimeException("用户未登录，无法创建会话");
+        }
         ConversationEntity entity = ConversationEntity.builder()
                 .title(title != null && !title.isBlank() ? title : "新对话")
                 .datasetId(datasetId)
-                .userId(getCurrentUserId())
+                .userId(userId)
                 .build();
         save(entity);
         log.info("创建会话成功: id={}, title={}", entity.getId(), entity.getTitle());
@@ -104,10 +113,4 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
                 .build();
     }
 
-    /** 获取当前用户 ID（从 SecurityContext 中解析） */
-    private Long getCurrentUserId() {
-        // 使用用户名 hash 作为简单 userId（后续可改为从 UserDetails 中获取真实 ID）
-        String username = SecurityUtils.getCurrentUsername();
-        return (long) Math.abs(username.hashCode());
-    }
 }

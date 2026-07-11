@@ -1,11 +1,18 @@
 <script setup lang="ts">
+import { ref, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useConversationStore } from '@/stores/modules/conversation'
 import { useChatStore } from '@/stores/modules/chat'
+import { Plus, ChatDotRound, Delete, ChatLineSquare } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const conversationStore = useConversationStore()
 const chatStore = useChatStore()
+
+/** 正在重命名的会话 ID（null 表示无） */
+const renamingId = ref<string | null>(null)
+const renameTitle = ref('')
+let renameInputRef: HTMLInputElement | null = null
 
 function handleNewChat() {
   chatStore.clearMessages()
@@ -13,13 +20,52 @@ function handleNewChat() {
   router.push('/chat')
 }
 
-function handleSelect(id: number | string) {
+function handleSelect(id: string) {
+  if (renamingId.value) return  // 重命名中不切换
   conversationStore.setCurrentId(id)
   router.push(`/chat/${id}`)
 }
 
-function handleDelete(id: number | string) {
+function handleDelete(id: string) {
   conversationStore.remove(id)
+}
+
+/** 双击标题进入重命名模式 */
+function startRename(id: string, currentTitle: string) {
+  renamingId.value = id
+  renameTitle.value = currentTitle || '新对话'
+  nextTick(() => {
+    renameInputRef?.focus()
+    renameInputRef?.select()
+  })
+}
+
+/** 确认重命名 */
+async function confirmRename() {
+  const id = renamingId.value
+  const title = renameTitle.value.trim()
+  if (id && title) {
+    await conversationStore.rename(id, title)
+  }
+  renamingId.value = null
+  renameTitle.value = ''
+}
+
+/** 取消重命名 */
+function cancelRename() {
+  renamingId.value = null
+  renameTitle.value = ''
+}
+
+/** 重命名输入框按键处理 */
+function handleRenameKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    confirmRename()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    cancelRename()
+  }
 }
 </script>
 
@@ -49,7 +95,23 @@ function handleDelete(id: number | string) {
             <span class="sub-panel-list__icon">
               <el-icon :size="16"><ChatDotRound /></el-icon>
             </span>
-            <span class="sub-panel-list__title">{{ item.title || '新对话' }}</span>
+            <!-- 重命名输入框 -->
+            <input
+              v-if="renamingId === item.id"
+              v-model="renameTitle"
+              class="sub-panel-list__rename-input"
+              @keydown="handleRenameKeydown"
+              @blur="confirmRename"
+              @click.stop
+              :ref="(el: any) => { if (renamingId === item.id) renameInputRef = el as HTMLInputElement }"
+            />
+            <!-- 普通标题 -->
+            <span
+              v-else
+              class="sub-panel-list__title"
+              @dblclick.stop="startRename(item.id, item.title || '新对话')"
+              :title="'双击重命名'"
+            >{{ item.title || '新对话' }}</span>
             <el-button
               text
               size="small"
@@ -258,6 +320,23 @@ $icon-size: 32px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  user-select: none;
+}
+
+// ========================= 重命名输入框 =========================
+.sub-panel-list__rename-input {
+  flex: 1;
+  height: 24px;
+  padding: 0 6px;
+  border: 1.5px solid $blue-accent;
+  border-radius: 5px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 450;
+  color: $text-primary;
+  background: rgba(255, 255, 255, 0.8);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
 }
 
 // ========================= 删除按钮 =========================

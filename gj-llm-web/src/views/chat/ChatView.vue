@@ -5,6 +5,7 @@ import { useChatStore } from '@/stores/modules/chat'
 import { useConversationStore } from '@/stores/modules/conversation'
 import { datasetApi } from '@/api/modules/dataset'
 import type { Dataset } from '@/api/types'
+import { ChatDotRound } from '@element-plus/icons-vue'
 import ChatMessage from '@/components/ChatMessage/ChatMessage.vue'
 import ChatInput from '@/components/ChatInput/ChatInput.vue'
 
@@ -15,7 +16,7 @@ const conversationStore = useConversationStore()
 
 /** 知识库列表（用于选择器） */
 const datasets = ref<Dataset[]>([])
-const selectedDatasetId = ref<number | undefined>()
+const selectedDatasetId = ref<string | undefined>()
 
 onMounted(async () => {
   // 加载知识库列表
@@ -35,18 +36,34 @@ watch(
   () => route.params.id,
   async (newId) => {
     if (newId) {
-      const numId = Number(newId)
-      conversationStore.setCurrentId(numId)
-      await chatStore.loadHistory(numId)
+      const convIdStr = String(newId)
+      conversationStore.setCurrentId(convIdStr)
+      // 仅当消息不属于当前会话时才从后端加载历史（避免覆盖 handleSend 中已添加的用户消息）
+      const alreadyHasMessages = chatStore.messages.length > 0
+        && String(chatStore.messages[0].conversationId) === convIdStr
+      if (!alreadyHasMessages) {
+        await chatStore.loadHistory(convIdStr)
+      }
       // 恢复关联的知识库
-      const conv = conversationStore.list.find((c) => c.id === numId)
-      selectedDatasetId.value = conv?.datasetId ?? undefined
+      const conv = conversationStore.list.find((c) => String(c.id) === convIdStr)
+      selectedDatasetId.value = conv?.datasetId != null ? String(conv.datasetId) : undefined
     } else {
       chatStore.clearMessages()
       selectedDatasetId.value = undefined
     }
   },
   { immediate: true },
+)
+
+/** 自动滚动到底部（新消息 / 思考中 / 流式输出变化时触发） */
+watch(
+  () => [chatStore.messages.length, chatStore.currentAssistantMsg, chatStore.thinking],
+  () => {
+    const el = document.querySelector('.chat-messages')
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    }
+  },
 )
 
 /** 发送消息 */
@@ -68,7 +85,7 @@ async function handleSend(content: string) {
 }
 
 /** 切换知识库 */
-function handleDatasetChange(datasetId: number | undefined) {
+function handleDatasetChange(datasetId: string | undefined) {
   selectedDatasetId.value = datasetId
 }
 </script>
@@ -114,6 +131,15 @@ function handleDatasetChange(datasetId: number | undefined) {
         }"
         :streaming="true"
       />
+      <!-- 思考中指示器 -->
+      <div class="chat-thinking" v-if="chatStore.streaming && !chatStore.currentAssistantMsg">
+        <div class="chat-thinking__dots">
+          <span class="chat-thinking__dot" />
+          <span class="chat-thinking__dot" />
+          <span class="chat-thinking__dot" />
+        </div>
+        <span class="chat-thinking__text">{{ chatStore.thinking || '正在思考...' }}</span>
+      </div>
       <!-- 引用来源 -->
       <div class="chat-references" v-if="chatStore.references.length > 0 && !chatStore.streaming">
         <div class="chat-references__title">📎 参考来源</div>
@@ -224,6 +250,49 @@ function handleDatasetChange(datasetId: number | undefined) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+}
+
+.chat-thinking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+  padding-left: 48px;
+
+  &__dots {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+  }
+
+  &__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #007aff;
+    animation: thinkingBounce 1.4s ease-in-out infinite both;
+
+    &:nth-child(1) { animation-delay: 0s; }
+    &:nth-child(2) { animation-delay: 0.2s; }
+    &:nth-child(3) { animation-delay: 0.4s; }
+  }
+
+  &__text {
+    font-size: 13px;
+    color: #86868b;
+    font-weight: 450;
+  }
+}
+
+@keyframes thinkingBounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 

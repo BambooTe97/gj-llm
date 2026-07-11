@@ -1,5 +1,6 @@
 package com.gj.llm.security.model;
 
+import com.gj.llm.common.util.UserIdProvider;
 import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -18,7 +19,7 @@ import java.util.List;
  * @author gj-llm
  */
 @Getter
-public class SecurityUser implements UserDetails {
+public class SecurityUser implements UserDetails, UserIdProvider {
 
     /** 用户 ID（数据库主键） */
     private final Long userId;

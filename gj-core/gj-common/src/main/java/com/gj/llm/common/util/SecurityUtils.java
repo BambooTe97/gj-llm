@@ -56,6 +56,25 @@ public final class SecurityUtils {
         return getAuthentication().isPresent();
     }
 
+    /**
+     * 获取当前登录用户 ID。
+     *
+     * <p>通过 {@link UserIdProvider} 接口从 SecurityContext 中的 principal 提取 userId；
+     * principal 未实现该接口或未认证时返回 {@code null}。</p>
+     *
+     * @return 当前用户数据库主键 ID，获取失败返回 {@code null}
+     */
+    public static Long getCurrentUserId() {
+        return getAuthentication()
+                .map(auth -> {
+                    if (auth.getPrincipal() instanceof UserIdProvider provider) {
+                        return provider.getUserId();
+                    }
+                    return null;
+                })
+                .orElse(null);
+    }
+
     // ==================== 私有方法 ====================
 
     private static String extractUsername(Authentication authentication) {

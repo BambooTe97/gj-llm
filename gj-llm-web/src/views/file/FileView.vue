@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { fileApi } from '@/api/modules/file'
 import type { FileRecord } from '@/api/types'
 import type { UploadInstance, UploadRawFile } from 'element-plus'
+import { UploadFilled, Document, Download, Delete } from '@element-plus/icons-vue'
 
 const fileList = ref<FileRecord[]>([])
 const loading = ref(false)

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ChatMessage } from '@/api/types'
+import { UserFilled, Cpu } from '@element-plus/icons-vue'
 
 defineProps<{
   message: ChatMessage
@@ -10,8 +11,8 @@ defineProps<{
 <template>
   <div class="chat-message" :class="[`chat-message--${message.role}`]">
     <div class="chat-message__avatar">
-      <el-avatar v-if="message.role === 'user'" :size="36" icon="UserFilled" />
-      <el-avatar v-else :size="36" style="background: linear-gradient(135deg, #0071e3, #4d9ff7)" icon="Cpu" />
+      <el-avatar v-if="message.role === 'user'" :size="36" :icon="UserFilled" />
+      <el-avatar v-else :size="36" style="background: linear-gradient(135deg, #0071e3, #4d9ff7)" :icon="Cpu" />
     </div>
     <div class="chat-message__body">
       <div class="chat-message__role">

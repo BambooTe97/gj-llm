@@ -16,7 +16,7 @@ export const chatApi = {
   },
 
   /** 获取对话历史消息（通过会话 ID） */
-  getMessages(conversationId: number | string): Promise<ApiResponse<ChatMessage[]>> {
+  getMessages(conversationId: string): Promise<ApiResponse<ChatMessage[]>> {
     return http.get(`/v1/conversations/${conversationId}/messages`)
   },
 }

@@ -7,6 +7,7 @@ export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
   const streaming = ref(false)
   const currentAssistantMsg = ref('')
+  const thinking = ref('')
   const references = ref<Array<{ rank: number; content: string; score: number }>>([])
   let abortController: AbortController | null = null
 
@@ -21,6 +22,7 @@ export const useChatStore = defineStore('chat', () => {
   function clearMessages() {
     messages.value = []
     currentAssistantMsg.value = ''
+    thinking.value = ''
     references.value = []
   }
 
@@ -36,7 +38,7 @@ export const useChatStore = defineStore('chat', () => {
     references.value = refs
   }
 
-  function commitStreamMessage(conversationId: number | string) {
+  function commitStreamMessage(conversationId: string) {
     const msg: ChatMessage = {
       id: Date.now().toString(),
       conversationId,
@@ -57,9 +59,9 @@ export const useChatStore = defineStore('chat', () => {
 
   /** 流式发送消息 */
   async function sendMessageStream(
-    conversationId: number | string,
+    conversationId: string,
     content: string,
-    datasetId?: number,
+    datasetId?: string,
   ) {
     // 添加用户消息
     addMessage({
@@ -72,6 +74,7 @@ export const useChatStore = defineStore('chat', () => {
 
     streaming.value = true
     currentAssistantMsg.value = ''
+    thinking.value = '正在思考...'
     references.value = []
     abortController = new AbortController()
 
@@ -125,7 +128,9 @@ export const useChatStore = defineStore('chat', () => {
               const event = JSON.parse(jsonStr)
               switch (event.type) {
                 case 'thinking':
-                  // 检索提示，可忽略或在 UI 显示状态
+                  if (event.content) {
+                    thinking.value = event.content
+                  }
                   break
                 case 'references':
                   if (event.items) {
@@ -133,6 +138,8 @@ export const useChatStore = defineStore('chat', () => {
                   }
                   break
                 case 'content':
+                  // 首段内容到达时清除思考状态
+                  thinking.value = ''
                   if (event.content) {
                     currentAssistantMsg.value += event.content
                   }
@@ -142,6 +149,7 @@ export const useChatStore = defineStore('chat', () => {
                   break
                 case 'error':
                   console.error('SSE error:', event.message)
+                  thinking.value = ''
                   break
               }
             } catch {
@@ -152,12 +160,14 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       // 流结束后提交消息
+      thinking.value = ''
       if (currentAssistantMsg.value) {
         commitStreamMessage(conversationId)
       }
     } catch (e: unknown) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       console.error('流式请求失败:', e)
+      thinking.value = ''
       // 保留已接收的内容作为消息
       if (currentAssistantMsg.value) {
         commitStreamMessage(conversationId)
@@ -169,7 +179,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /** 加载历史消息 */
-  async function loadHistory(conversationId: number | string) {
+  async function loadHistory(conversationId: string) {
     try {
       const res = await chatApi.getMessages(conversationId)
       messages.value = res.data.data || []
@@ -182,6 +192,7 @@ export const useChatStore = defineStore('chat', () => {
     messages,
     streaming,
     currentAssistantMsg,
+    thinking,
     references,
     setMessages,
     addMessage,

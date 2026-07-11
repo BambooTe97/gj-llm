@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/modules/app'
+import { ChatDotRound, Collection, Setting } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
