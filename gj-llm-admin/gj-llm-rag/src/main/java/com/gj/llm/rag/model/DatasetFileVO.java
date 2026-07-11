@@ -23,6 +23,8 @@ public class DatasetFileVO {
     private String status;
     private String errorMessage;
     private Integer segmentCount;
+    private Integer progressPercent;
+    private String currentStep;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

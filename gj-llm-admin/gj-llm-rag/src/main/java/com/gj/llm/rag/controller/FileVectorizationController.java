@@ -18,8 +18,9 @@ public class FileVectorizationController {
     }
 
     @PostMapping("/vectorize/all")
-    public ApiResponse<Map<String, Object>> vectorizeAll(@RequestParam String type) {
-        int count = fileVectorStoreHandler.vectorizeAllFiles(type);
+    public ApiResponse<Map<String, Object>> vectorizeAll(@RequestParam String type,
+                                                         @RequestParam(required = false) Integer chunkSize) {
+        int count = fileVectorStoreHandler.vectorizeAllFiles(type, chunkSize);
         Map<String, Object> data = Map.of(
                 "type", type,
                 "fileCount", count,
@@ -29,8 +30,9 @@ public class FileVectorizationController {
 
     @PostMapping("/vectorize/file/{fileId}")
     public ApiResponse<Map<String, Object>> vectorizeFile(@RequestParam String type,
-                                                           @PathVariable Long fileId) {
-        fileVectorStoreHandler.vectorizeFile(type, fileId);
+                                                           @PathVariable Long fileId,
+                                                           @RequestParam(required = false) Integer chunkSize) {
+        fileVectorStoreHandler.vectorizeFile(type, fileId, chunkSize);
         Map<String, Object> data = Map.of(
                 "type", type,
                 "fileId", fileId,

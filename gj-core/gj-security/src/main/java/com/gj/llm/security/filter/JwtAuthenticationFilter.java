@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
@@ -58,14 +59,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 1. 从请求头提取 JWT
         String token = extractToken(request);
         if (token == null) {
-            // 无 Token，直接放行交给后续鉴权规则处理（通常返回 401）
             filterChain.doFilter(request, response);
             return;
         }
 
         // 2. 校验 Access Token
         if (!jwtUtils.validateAccessToken(token)) {
-            log.debug("请求携带的 Access Token 无效或已过期");
+            log.warn("JWT 校验失败, path={}", request.getRequestURI());
             filterChain.doFilter(request, response);
             return;
         }
@@ -77,7 +77,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 4. 加载完整用户信息
         Optional<SecurityUser> userOpt = securityUserService.findByUsername(username);
         if (userOpt.isEmpty()) {
-            log.debug("Token 中的用户已不存在: {}", username);
+            log.warn("Token 中的用户已不存在, username={}", username);
             filterChain.doFilter(request, response);
             return;
         }
@@ -86,23 +86,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // 5. 检查账户是否被禁用
         if (!securityUser.isEnabled()) {
-            log.debug("用户已被禁用: {}", username);
+            log.warn("用户已被禁用, username={}", username);
             filterChain.doFilter(request, response);
             return;
         }
 
         // 6. 构造认证对象并写入 SecurityContext
+        // 注意：必须创建新的 SecurityContext 替换旧的，而非原地修改。
+        // SecurityContextHolderFilter 通过引用比较（!=）判断是否需要
+        // 将 context 持久化到 SecurityContextRepository；
+        // 原地修改会导致异步 dispatch 时认证信息丢失。
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(
-                        securityUser,       // principal: 用户信息
-                        null,               // credentials: Token 已验证，无需凭证
-                        securityUser.getAuthorities()
-                );
+                        securityUser, null, securityUser.getAuthorities());
         authentication.setDetails(
                 new WebAuthenticationDetailsSource().buildDetails(request));
-        SecurityContextHolder.getContext().setAuthentication(authentication);
+        SecurityContext newContext = SecurityContextHolder.createEmptyContext();
+        newContext.setAuthentication(authentication);
+        SecurityContextHolder.setContext(newContext);
 
-        log.debug("JWT 认证成功: userId={}, username={}", userId, username);
         filterChain.doFilter(request, response);
     }
 

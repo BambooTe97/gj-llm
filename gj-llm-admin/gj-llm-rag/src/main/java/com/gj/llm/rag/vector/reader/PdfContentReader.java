@@ -3,7 +3,7 @@ package com.gj.llm.rag.vector.reader;
 import com.gj.llm.file.constant.FileTypeEnum;
 import com.gj.llm.file.model.FileInfo;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.reader.pdf.PagePdfDocumentReader;
+import org.springframework.ai.reader.pdf.ParagraphPdfDocumentReader;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 
@@ -19,7 +19,7 @@ public class PdfContentReader implements FileContentReader {
 
     @Override
     public List<Document> read(Resource resource, FileInfo fileInfo) {
-        PagePdfDocumentReader reader = new PagePdfDocumentReader(resource);
+        ParagraphPdfDocumentReader reader = new ParagraphPdfDocumentReader(resource);
         return reader.get();
     }
 }

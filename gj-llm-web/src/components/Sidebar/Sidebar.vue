@@ -16,12 +16,12 @@ function handleNewChat() {
   router.push('/chat')
 }
 
-function handleSelect(id: string) {
+function handleSelect(id: number | string) {
   conversationStore.setCurrentId(id)
   router.push(`/chat/${id}`)
 }
 
-function handleDelete(id: string) {
+function handleDelete(id: number | string) {
   conversationStore.remove(id)
 }
 </script>
@@ -36,6 +36,20 @@ function handleDelete(id: string) {
         </span>
         <span v-else key="icon" class="sidebar-logo__icon">G</span>
       </Transition>
+      <!-- 图钉固定（右上角小图标） -->
+      <div
+        v-if="!appStore.sidebarCollapsed"
+        class="sidebar-logo__pin"
+        :class="{ 'is-pinned': appStore.sidebarPinned }"
+        @click.stop="appStore.togglePin()"
+        title="固定侧边栏"
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2v3.5M12 5.5L9.5 3M12 5.5L14.5 3"/>
+          <line x1="12" y1="10" x2="12" y2="22"/>
+          <rect x="8" y="5.5" width="8" height="4.5" rx="1"/>
+        </svg>
+      </div>
     </div>
 
     <!-- 新建对话 -->
@@ -57,7 +71,7 @@ function handleDelete(id: string) {
           @click="router.push('/datasets')"
         >
           <span class="sidebar-list__icon sidebar-list__icon--kb">
-            <el-icon :size="16"><Folder /></el-icon>
+            <el-icon :size="16"><Collection /></el-icon>
           </span>
           <span class="sidebar-list__title">知识库</span>
           <el-icon class="sidebar-list__arrow" :size="14"><ArrowRight /></el-icon>
@@ -109,6 +123,19 @@ function handleDelete(id: string) {
       </div>
     </div>
     <div class="sidebar-footer sidebar-footer--collapsed" v-else>
+      <el-button
+        text
+        class="sidebar-footer__pin-btn"
+        :class="{ 'is-pinned': appStore.sidebarPinned }"
+        @click="appStore.togglePin()"
+        title="固定侧边栏"
+      >
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2v3.5M12 5.5L9.5 3M12 5.5L14.5 3"/>
+          <line x1="12" y1="10" x2="12" y2="22"/>
+          <rect x="8" y="5.5" width="8" height="4.5" rx="1"/>
+        </svg>
+      </el-button>
       <el-button text @click="router.push('/settings')">
         <el-icon :size="18"><Setting /></el-icon>
       </el-button>
@@ -135,6 +162,7 @@ $icon-size: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   overflow: hidden;
 
@@ -165,6 +193,55 @@ $icon-size: 32px;
     background: linear-gradient(135deg, #0071e3, #4d9ff7);
     border-radius: 10px;
     box-shadow: 0 4px 12px rgba(0, 113, 227, 0.4);
+  }
+
+  // ---- 图钉（右上角） ----
+  &__pin {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px;
+    color: rgba(255, 255, 255, 0.35);
+    cursor: pointer;
+    transition:
+      color 0.25s ease,
+      background 0.2s ease,
+      transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    &:hover {
+      color: rgba(255, 255, 255, 0.8);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    &:active {
+      transform: translateY(-50%) scale(0.9);
+    }
+
+    &.is-pinned {
+      color: #80bdf9;
+      background: rgba(0, 113, 227, 0.2);
+      box-shadow: 0 0 8px rgba(0, 113, 227, 0.25);
+
+      svg {
+        transform: rotate(-45deg);
+      }
+
+      &:hover {
+        background: rgba(0, 113, 227, 0.3);
+        color: #fff;
+      }
+    }
+
+    svg {
+      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transform-origin: center center;
+    }
   }
 }
 
@@ -426,8 +503,45 @@ $icon-size: 32px;
 
   &--collapsed {
     display: flex;
-    justify-content: center;
-    padding: 12px;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 12px 0;
+  }
+
+  // ---- 图钉按钮 ----
+  &__pin-btn {
+    color: rgba(255, 255, 255, 0.45);
+    padding: 6px !important;
+    border-radius: 8px;
+    transition:
+      color 0.25s ease,
+      background 0.2s ease,
+      transform 0.25s ease;
+
+    &:hover {
+      color: rgba(255, 255, 255, 0.85);
+      background: rgba(255, 255, 255, 0.08) !important;
+    }
+
+    &.is-pinned {
+      color: #80bdf9;
+      background: rgba(0, 113, 227, 0.2) !important;
+
+      svg {
+        transform: rotate(-45deg);
+      }
+
+      &:hover {
+        background: rgba(0, 113, 227, 0.3) !important;
+        color: #fff;
+      }
+    }
+
+    svg {
+      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transform-origin: center center;
+    }
   }
 }
 

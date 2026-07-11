@@ -1,38 +1,28 @@
 import { useChatStore } from '@/stores/modules/chat'
 import { useConversationStore } from '@/stores/modules/conversation'
-import { chatApi } from '@/api/modules/chat'
 
+/**
+ * 对话组合式函数 —— 封装流式发送消息的完整流程。
+ */
 export function useChat() {
   const chatStore = useChatStore()
   const conversationStore = useConversationStore()
 
-  /** 发送消息（非流式） */
-  async function send(text: string) {
+  /** 流式发送消息 */
+  async function send(text: string, datasetId?: number) {
     if (!text.trim()) return
 
     let convId = conversationStore.currentId
     if (!convId) {
-      const conv = await conversationStore.create()
+      const conv = await conversationStore.create(undefined, datasetId)
       if (!conv) return
       convId = conv.id
     }
 
-    // 添加用户消息
-    chatStore.addMessage({
-      id: Date.now().toString(),
-      conversationId: convId,
-      role: 'user',
-      content: text,
-      createdAt: new Date().toISOString(),
-    })
+    await chatStore.sendMessageStream(convId, text, datasetId)
 
-    chatStore.setStreaming(true)
-    try {
-      const res = await chatApi.sendMessage({ conversationId: convId, content: text })
-      chatStore.addMessage(res.data.data)
-    } finally {
-      chatStore.setStreaming(false)
-    }
+    // 刷新会话列表（更新标题等）
+    await conversationStore.fetchList()
   }
 
   return { send }

@@ -22,6 +22,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextRepository;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -68,6 +70,10 @@ public class SecurityConfig {
                 // 无状态会话策略：不创建 HttpSession，不生成 JSESSIONID Cookie
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // SecurityContext 存储策略：使用 Request 属性存储，
+                // 确保异步 dispatch（如 SSE 流式响应）时认证信息不丢失
+                .securityContext(securityContext -> securityContext
+                        .securityContextRepository(securityContextRepository()))
                 // 请求授权规则
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(ignorePaths).permitAll()   // 白名单放行
@@ -140,5 +146,18 @@ public class SecurityConfig {
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
+    }
+
+    /**
+     * SecurityContext 存储策略 —— 使用 HttpServletRequest 属性存储。
+     *
+     * <p>为什么不用默认的 HttpSession：{@link SessionCreationPolicy#STATELESS}
+     * 不创建 Session，HttpSession 方案无法保存 Context。
+     * 而 {@link RequestAttributeSecurityContextRepository} 将 Context
+     * 保存在 HttpServletRequest 属性中，跨异步 dispatch 依然可用。</p>
+     */
+    @Bean
+    public SecurityContextRepository securityContextRepository() {
+        return new RequestAttributeSecurityContextRepository();
     }
 }

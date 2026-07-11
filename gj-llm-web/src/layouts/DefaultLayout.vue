@@ -8,7 +8,12 @@ const appStore = useAppStore()
 
 <template>
   <el-container class="default-layout">
-    <el-aside :width="appStore.sidebarCollapsed ? '64px' : '260px'" class="layout-aside">
+    <el-aside
+      :width="appStore.sidebarCollapsed ? '64px' : '260px'"
+      class="layout-aside"
+      @mouseenter="appStore.onSidebarEnter()"
+      @mouseleave="appStore.onSidebarLeave()"
+    >
       <Sidebar />
     </el-aside>
     <el-container>

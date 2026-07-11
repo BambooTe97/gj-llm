@@ -87,6 +87,8 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
                     .status(df.getStatus())
                     .errorMessage(df.getErrorMessage())
                     .segmentCount(df.getSegmentCount())
+                    .progressPercent(df.getProgressPercent())
+                    .currentStep(df.getCurrentStep())
                     .createdAt(df.getCreatedAt())
                     .updatedAt(df.getUpdatedAt())
                     .build();
@@ -219,6 +221,8 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
         df.setStatus("PENDING");
         df.setErrorMessage(null);
         df.setSegmentCount(0);
+        df.setProgressPercent(0);
+        df.setCurrentStep(null);
         updateById(df);
 
         // 发布事件，由 @TransactionalEventListener(afterCommit) 触发异步向量化
@@ -258,6 +262,8 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
 
         try {
             df.setStatus("PROCESSING");
+            df.setProgressPercent(5);
+            df.setCurrentStep("正在准备处理...");
             updateById(df);
 
             DatasetEntity dataset = datasetService.getById(df.getDatasetId());
@@ -277,6 +283,10 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
             }
             log.info("PDF 读取完成: dfId={}, pages={}", dfId, documents.size());
 
+            df.setProgressPercent(30);
+            df.setCurrentStep("文本切分中...");
+            updateById(df);
+
             documents.forEach(d -> {
                 d.getMetadata().put("dataset_id", df.getDatasetId());
                 d.getMetadata().put("dataset_file_id", dfId);
@@ -291,11 +301,19 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
             List<Document> splits = splitter.apply(documents);
             log.info("文本切分完成: dfId={}, chunks={}", dfId, splits.size());
 
+            df.setProgressPercent(50);
+            df.setCurrentStep("向量嵌入中（最耗时）...");
+            updateById(df);
+
             log.info("开始向量嵌入与写入 Milvus: dfId={}, chunks={}, model={}", dfId, splits.size(), dataset.getEmbeddingModel());
             long embedStart = System.currentTimeMillis();
             vectorStore.add(splits);
             long embedCost = System.currentTimeMillis() - embedStart;
             log.info("向量嵌入完成: dfId={}, cost={}ms, avg={}ms/chunk", dfId, embedCost, embedCost / Math.max(1, splits.size()));
+
+            df.setProgressPercent(90);
+            df.setCurrentStep("保存切片元数据...");
+            updateById(df);
 
             // 保存切片元数据（用于后续删除定位）
             for (Document split : splits) {
@@ -310,6 +328,8 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
 
             df.setStatus("COMPLETED");
             df.setSegmentCount(splits.size());
+            df.setProgressPercent(100);
+            df.setCurrentStep(null);
             updateById(df);
 
             dataset.setSegmentCount(dataset.getSegmentCount() + splits.size());
@@ -320,6 +340,8 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
             log.error("文件向量化失败: dfId={}", dfId, e);
             df.setStatus("FAILED");
             df.setErrorMessage(e.getMessage());
+            df.setProgressPercent(0);
+            df.setCurrentStep(null);
             updateById(df);
         }
     }

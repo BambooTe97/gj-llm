@@ -16,7 +16,7 @@ export interface LoginResponse {
 /** 消息结构 */
 export interface ChatMessage {
   id: string
-  conversationId: string
+  conversationId: number | string
   role: 'user' | 'assistant' | 'system'
   content: string
   createdAt: string
@@ -24,15 +24,19 @@ export interface ChatMessage {
 
 /** 发送消息请求 */
 export interface SendMessageRequest {
-  conversationId?: string
+  conversationId?: number
   content: string
+  datasetId?: number
+  type?: string
 }
 
 /** 会话结构 */
 export interface Conversation {
-  id: string
+  id: number | string
   title: string
+  datasetId?: number
   lastMessage?: string
+  messageCount?: number
   updatedAt: string
   createdAt: string
 }
@@ -78,6 +82,8 @@ export interface DatasetFile {
   status: string
   errorMessage: string | null
   segmentCount: number
+  progressPercent: number
+  currentStep: string | null
   createdAt: string
   updatedAt: string
 }

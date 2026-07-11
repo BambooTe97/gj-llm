@@ -4,7 +4,8 @@ spring:
     ollama:
       base-url: http://localhost:11434
       chat:
-        model: deepseek-r1:latest
+        # model: deepseek-r1:latest
+        model: qwen3:8b
       embedding:
         model: bge-m3:latest
     vectorstore:
@@ -16,7 +17,7 @@ spring:
         index-type: ivf_flat
         metric-type: cosine
         client:
-          host: 192.168.0.130
+          host: 192.168.0.105
           port: 19530
           username: root
           password: milvus

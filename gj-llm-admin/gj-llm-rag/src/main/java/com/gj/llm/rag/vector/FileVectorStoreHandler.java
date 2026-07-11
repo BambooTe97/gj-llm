@@ -19,10 +19,12 @@ import java.util.List;
 @Service
 public class FileVectorStoreHandler {
 
+    private static final int DEFAULT_CHUNK_SIZE = 800;
+    private static final int DEFAULT_MIN_CHUNK_LENGTH = 20;
+
     private final FileStorageService fileStorageService;
     private final DynamicVectorStoreManager storeManager;
     private final List<FileContentReader> readers;
-    private final TokenTextSplitter textSplitter = TokenTextSplitter.builder().build();
 
     public FileVectorStoreHandler(FileStorageService fileStorageService, DynamicVectorStoreManager storeManager, List<FileContentReader> readers) {
         this.fileStorageService = fileStorageService;
@@ -31,12 +33,15 @@ public class FileVectorStoreHandler {
     }
 
     /**
-     * 将已上传的所有文件向量化并存入指定类型的向量库
-     * @param type 向量库类型（如 "medical", "story"）
+     * 将已上传的所有文件向量化并存入指定类型的向量库。
+     *
+     * @param type      向量库类型（如 "medical", "story"）
+     * @param chunkSize 切片大小（token 数），传 null 使用默认 800
      * @return 处理的文件数量
      */
-    public int vectorizeAllFiles(String type) {
+    public int vectorizeAllFiles(String type, Integer chunkSize) {
         VectorStore vectorStore = storeManager.getVectorStore(type);
+        TokenTextSplitter splitter = buildSplitter(chunkSize);
         List<FileInfo> allFiles = fetchAllFiles();
         int count = 0;
         for (FileInfo fileInfo : allFiles) {
@@ -49,12 +54,12 @@ public class FileVectorStoreHandler {
                         doc.getMetadata().put("source", fileInfo.getOriginalName());
                         doc.getMetadata().put("fileId", fileInfo.getId());
                     });
-                    List<Document> splits = textSplitter.apply(documents);
+                    List<Document> splits = splitter.apply(documents);
                     vectorStore.add(splits);
                     count++;
                 }
             } catch (Exception e) {
-                System.err.println("向量化文件失败: " + fileInfo.getOriginalName() + " - " + e.getMessage());
+                log.error("向量化文件失败: {} - {}", fileInfo.getOriginalName(), e.getMessage());
             }
         }
         log.info("成功向量化 {} 个文件到集合: {}{}", count, VectorStoreConstants.COLLECTION_PREFIX, type);
@@ -62,12 +67,15 @@ public class FileVectorStoreHandler {
     }
 
     /**
-     * 向量化单个已上传的文件
-     * @param type 向量库类型
-     * @param fileId 文件记录 ID
+     * 向量化单个已上传的文件。
+     *
+     * @param type      向量库类型
+     * @param fileId    文件记录 ID
+     * @param chunkSize 切片大小（token 数），传 null 使用默认 800
      */
-    public void vectorizeFile(String type, Long fileId) {
+    public void vectorizeFile(String type, Long fileId, Integer chunkSize) {
         VectorStore vectorStore = storeManager.getVectorStore(type);
+        TokenTextSplitter splitter = buildSplitter(chunkSize);
         FileInfo fileInfo = fileStorageService.getById(fileId);
         Resource resource = fileStorageService.loadFileAsResource(fileId);
         List<Document> documents = readFile(resource, fileInfo);
@@ -76,9 +84,17 @@ public class FileVectorStoreHandler {
             doc.getMetadata().put("source", fileInfo.getOriginalName());
             doc.getMetadata().put("fileId", fileInfo.getId());
         });
-        List<Document> splits = textSplitter.apply(documents);
+        List<Document> splits = splitter.apply(documents);
         vectorStore.add(splits);
         log.info("成功将文件存入集合: {}{}, 文件: {}", VectorStoreConstants.COLLECTION_PREFIX, type, fileInfo.getOriginalName());
+    }
+
+    private TokenTextSplitter buildSplitter(Integer chunkSize) {
+        int size = chunkSize != null && chunkSize > 0 ? chunkSize : DEFAULT_CHUNK_SIZE;
+        return TokenTextSplitter.builder()
+                .withChunkSize(size)
+                .withMinChunkLengthToEmbed(DEFAULT_MIN_CHUNK_LENGTH)
+                .build();
     }
 
     /**

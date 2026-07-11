@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
+defineProps<{
+  disabled?: boolean
+}>()
+
 const emit = defineEmits<{
   send: [content: string]
 }>()
@@ -36,12 +40,12 @@ function handleKeydown(e: Event | KeyboardEvent) {
         :rows="3"
         placeholder="输入消息，Enter 发送，Shift+Enter 换行"
         resize="none"
-        :disabled="sending"
+        :disabled="disabled || sending"
         @keydown="handleKeydown"
       />
       <el-button
         type="primary"
-        :disabled="!inputText.trim() || sending"
+        :disabled="!inputText.trim() || disabled || sending"
         :loading="sending"
         @click="handleSend"
       >

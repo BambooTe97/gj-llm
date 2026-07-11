@@ -15,7 +15,7 @@ export function useStream() {
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/chat/send/stream`,
+        `${import.meta.env.VITE_API_BASE_URL}/v1/chat/send/stream`,
         {
           method: 'POST',
           headers: {
@@ -28,6 +28,13 @@ export function useStream() {
       )
 
       if (!response.ok) {
+        // 认证失败 → 跳转登录页
+        if (response.status === 401 || response.status === 403) {
+          localStorage.removeItem('ACCESS_TOKEN')
+          const redirect = encodeURIComponent(window.location.pathname + window.location.search)
+          window.location.href = `/login?redirect=${redirect}`
+          return
+        }
         throw new Error(`HTTP ${response.status}`)
       }
 

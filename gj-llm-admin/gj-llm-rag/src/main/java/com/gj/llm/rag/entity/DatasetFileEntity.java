@@ -48,6 +48,13 @@ public class DatasetFileEntity {
     @Builder.Default
     private Integer segmentCount = 0;
 
+    /** 向量化进度百分比 0-100 */
+    @Builder.Default
+    private Integer progressPercent = 0;
+
+    /** 当前处理阶段描述：读取文件/文本切分/向量嵌入/写入向量库 */
+    private String currentStep;
+
     /** 创建时间（自动填充） */
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;

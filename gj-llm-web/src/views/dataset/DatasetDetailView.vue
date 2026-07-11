@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import type { UploadInstance, UploadRawFile } from 'element-plus'
 import { datasetApi } from '@/api/modules/dataset'
 import type { Dataset, DatasetFile, SearchResultItem } from '@/api/types'
@@ -29,6 +29,66 @@ const searchQuery = ref('')
 const searchTopK = ref(3)
 const searching = ref(false)
 const searchResults = ref<SearchResultItem[]>([])
+
+// ---- 自动轮询（文件处理状态） ----
+const pollingEnabled = ref(true)
+const pollingInterval = ref(30) // 秒
+let pollingTimer: ReturnType<typeof setInterval> | null = null
+
+function hasProcessingFiles(): boolean {
+  return docList.value.some((f) => f.status === 'PENDING' || f.status === 'PROCESSING')
+}
+
+function startPolling() {
+  if (pollingTimer) return // 已经在轮询中
+  if (!pollingEnabled.value) return
+  pollingTimer = setInterval(async () => {
+    if (!hasProcessingFiles()) {
+      stopPolling()
+      return
+    }
+    // 静默刷新（不设置 loading 状态，避免表格闪烁）
+    try {
+      const res = await datasetApi.getDocuments(datasetId, docPage.value, docPageSize.value)
+      const data = res.data.data
+      docList.value = data?.records || []
+      docTotal.value = data?.total || 0
+      // 同步刷新知识库统计数据（静默，不触发 loading）
+      const dsRes = await datasetApi.getById(datasetId)
+      dataset.value = dsRes.data.data
+    } catch {
+      // 静默忽略轮询错误
+    }
+  }, pollingInterval.value * 1000)
+}
+
+function stopPolling() {
+  if (pollingTimer) {
+    clearInterval(pollingTimer)
+    pollingTimer = null
+  }
+}
+
+function restartPolling() {
+  stopPolling()
+  if (hasProcessingFiles()) startPolling()
+}
+
+// 开关切换时：开 → 启动，关 → 停止
+watch(pollingEnabled, (on) => {
+  if (on) {
+    if (hasProcessingFiles()) startPolling()
+  } else {
+    stopPolling()
+  }
+})
+
+// 间隔变化时重新启动定时器
+watch(pollingInterval, () => {
+  if (pollingEnabled.value && pollingTimer) {
+    restartPolling()
+  }
+})
 
 // ---- 格式化 ----
 function formatSize(bytes: number): string {
@@ -100,6 +160,7 @@ async function handleUpload(options: { file: UploadRawFile }) {
     docPage.value = 1
     await loadDocuments()
     await loadDataset() // 刷新统计数据
+    startPolling()      // 启动轮询，跟踪向量化进度
   } catch { /* 拦截器统一处理 */ } finally {
     uploading.value = false
     uploadRef.value?.clearFiles()
@@ -109,16 +170,8 @@ async function handleUpload(options: { file: UploadRawFile }) {
 // ---- 删除文档 ----
 async function handleDeleteDoc(row: DatasetFile) {
   try {
-    await ElMessageBox.confirm(
-      `确定要删除 "${row.fileName}" 吗？将同时移除向量数据。`,
-      '确认删除',
-      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
-    )
-  } catch { return }
-
-  try {
     await datasetApi.deleteDocument(datasetId, row.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(`"${row.fileName}" 已删除`)
     if (docList.value.length === 1 && docPage.value > 1) docPage.value--
     await loadDocuments()
     await loadDataset()
@@ -143,26 +196,20 @@ async function handleReParse(row: DatasetFile) {
   try {
     await datasetApi.reparseDocument(datasetId, row.id)
     ElMessage.success('已触发重新解析')
-    pollUntilDone(row.id)
+    await loadDocuments()
+    startPolling()
   } catch { /* 拦截器统一处理 */ }
 }
 
-function pollUntilDone(dfId: number) {
-  const timer = setInterval(async () => {
-    await loadDocuments()
-    await loadDataset()
-    const file = docList.value.find((f) => f.id === dfId)
-    if (!file || file.status === 'COMPLETED' || file.status === 'FAILED') {
-      clearInterval(timer)
-      if (file?.status === 'COMPLETED') ElMessage.success('重新解析完成')
-      else if (file?.status === 'FAILED') ElMessage.error('重新解析失败：' + (file.errorMessage || '未知错误'))
-    }
-  }, 2000)
-}
+onMounted(async () => {
+  await loadDataset()
+  await loadDocuments()
+  // 如果自动刷新开启且有处理中的文件，启动轮询
+  if (pollingEnabled.value && hasProcessingFiles()) startPolling()
+})
 
-onMounted(() => {
-  loadDataset()
-  loadDocuments()
+onUnmounted(() => {
+  stopPolling()
 })
 </script>
 
@@ -272,10 +319,30 @@ onMounted(() => {
             <div class="glass-card ds-file-list-card">
               <div class="glass-card__header">
                 <span>文件列表（{{ docTotal }}）</span>
-                <el-button text size="small" @click="loadDocuments">
-                  <el-icon><Refresh /></el-icon>
-                  刷新
-                </el-button>
+                <div class="polling-controls">
+                  <el-switch
+                    v-model="pollingEnabled"
+                    size="small"
+                    active-text="自动刷新"
+                    inactive-text="关闭"
+                  />
+                  <template v-if="pollingEnabled">
+                    <span class="polling-label">间隔</span>
+                    <el-select
+                      v-model="pollingInterval"
+                      size="small"
+                      style="width: 80px"
+                    >
+                      <el-option :value="5" label="5s" />
+                      <el-option :value="15" label="15s" />
+                      <el-option :value="30" label="30s" />
+                    </el-select>
+                  </template>
+                  <el-button text size="small" @click="loadDocuments">
+                    <el-icon><Refresh /></el-icon>
+                    刷新
+                  </el-button>
+                </div>
               </div>
               <div class="glass-card__body">
                 <el-table
@@ -299,7 +366,7 @@ onMounted(() => {
                   <el-table-column label="上传时间" width="160" align="center">
                     <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
                   </el-table-column>
-                  <el-table-column label="处理状态" width="120" align="center">
+                  <el-table-column label="处理状态" width="200" align="center">
                     <template #default="{ row }">
                       <el-tooltip
                         v-if="row.status === 'FAILED' && row.errorMessage"
@@ -310,8 +377,22 @@ onMounted(() => {
                           {{ statusLabel(row.status) }}
                         </el-tag>
                       </el-tooltip>
+                      <template v-else-if="row.status === 'PROCESSING'">
+                        <div class="progress-cell">
+                          <el-tag type="warning" size="small" effect="light">
+                            <el-icon class="is-loading"><Loading /></el-icon>
+                            {{ statusLabel(row.status) }}
+                          </el-tag>
+                          <el-progress
+                            :percentage="row.progressPercent || 0"
+                            :stroke-width="4"
+                            :show-text="false"
+                            style="width: 100%; margin-top: 4px"
+                          />
+                          <span class="progress-step" v-if="row.currentStep">{{ row.currentStep }}</span>
+                        </div>
+                      </template>
                       <el-tag v-else :type="statusType(row.status)" size="small" effect="light">
-                        <el-icon v-if="row.status === 'PROCESSING'" class="is-loading"><Loading /></el-icon>
                         {{ statusLabel(row.status) }}
                       </el-tag>
                     </template>
@@ -330,10 +411,19 @@ onMounted(() => {
                           <el-icon><RefreshRight /></el-icon>
                           重新解析
                         </el-button>
-                        <el-button text size="small" type="danger" @click="handleDeleteDoc(row)">
-                          <el-icon><Delete /></el-icon>
-                          删除
-                        </el-button>
+                        <el-popconfirm
+                          title="确定要删除该文件吗？将同时移除向量数据。"
+                          confirm-button-text="删除"
+                          cancel-button-text="取消"
+                          @confirm="handleDeleteDoc(row)"
+                        >
+                          <template #reference>
+                            <el-button text size="small" type="danger">
+                              <el-icon><Delete /></el-icon>
+                              删除
+                            </el-button>
+                          </template>
+                        </el-popconfirm>
                       </div>
                     </template>
                   </el-table-column>
@@ -361,21 +451,33 @@ onMounted(() => {
             <div class="glass-card ds-search-card">
               <div class="glass-card__body">
                 <div class="ds-search__input-row">
-                  <el-input
-                    v-model="searchQuery"
-                    placeholder="输入问题，测试 RAG 召回效果..."
-                    clearable
-                    @keyup.enter="handleSearch"
-                    style="flex: 1"
-                  >
-                    <template #prepend>
-                      <el-select v-model="searchTopK" style="width: 90px">
-                        <el-option :value="3" label="Top 3" />
-                        <el-option :value="5" label="Top 5" />
-                        <el-option :value="10" label="Top 10" />
+                  <div class="ds-search__input-row-inner">
+                    <div class="ds-search__topk-row">
+                      <span class="ds-search__topk-label">Top K</span>
+                      <el-select v-model="searchTopK" style="width: 80px" size="small">
+                        <el-option :value="3" label="3" />
+                        <el-option :value="5" label="5" />
+                        <el-option :value="10" label="10" />
                       </el-select>
-                    </template>
-                  </el-input>
+                      <el-tooltip
+                        placement="top"
+                        effect="dark"
+                        raw-content
+                        content="<div style='max-width:220px;line-height:1.6;font-size:13px;'><b>Top K</b> 控制每次检索返回的<b>最相似文档片段数量</b>。<br/>例如 Top 5 表示返回相似度最高的 5 个切片。<br/>用于控制 RAG 召回结果的丰富程度，K 值越大上下文越多。</div>"
+                      >
+                        <span class="ds-search__help-icon">
+                          <el-icon><QuestionFilled /></el-icon>
+                        </span>
+                      </el-tooltip>
+                    </div>
+                    <el-input
+                      v-model="searchQuery"
+                      placeholder="输入问题，测试 RAG 召回效果..."
+                      clearable
+                      @keyup.enter="handleSearch"
+                      style="flex: 1"
+                    />
+                  </div>
                   <el-button type="primary" :disabled="searching" @click="handleSearch">
                     <span :class="{ 'is-loading': searching }" style="display: inline-flex">
                       <el-icon><Search /></el-icon>
@@ -560,9 +662,15 @@ onMounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+
+  :deep(.el-tabs__header) {
+    flex-shrink: 0;
+  }
 
   :deep(.el-tabs__content) {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
   }
 }
@@ -584,10 +692,26 @@ onMounted(() => {
     font-size: 14px;
     font-weight: 600;
     color: #1d1d1f;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   &__body {
     padding: 14px 18px;
+  }
+}
+
+// ---- 轮询控制栏 ----
+.polling-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+
+  .polling-label {
+    font-size: 12px;
+    color: #86868b;
+    font-weight: 400;
   }
 }
 
@@ -638,6 +762,20 @@ onMounted(() => {
   border-top: 1px solid rgba(210, 210, 215, 0.3);
 }
 
+// ---- 进度条单元格 ----
+.progress-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.progress-step {
+  font-size: 11px;
+  color: #86868b;
+  white-space: nowrap;
+}
+
 // ---- 检索测试 ----
 .ds-search-card {
   min-height: 300px;
@@ -646,6 +784,51 @@ onMounted(() => {
 .ds-search__input-row {
   display: flex;
   gap: 10px;
+  align-items: center;
+}
+
+.ds-search__input-row-inner {
+  display: flex;
+  flex: 1;
+  gap: 10px;
+  align-items: center;
+}
+
+.ds-search__topk-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 0 10px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+  height: 36px;
+}
+
+.ds-search__topk-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #86868b;
+  white-space: nowrap;
+}
+
+.ds-search__help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(0, 113, 227, 0.1);
+  color: #0071e3;
+  font-size: 11px;
+  cursor: help;
+  flex-shrink: 0;
+  transition: background 0.2s;
+
+  &:hover {
+    background: rgba(0, 113, 227, 0.2);
+  }
 }
 
 .ds-search__results {

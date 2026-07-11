@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS dataset_file (
     status           VARCHAR(20)   DEFAULT 'PENDING' COMMENT '处理状态：PENDING=排队中, PROCESSING=向量化中, COMPLETED=完成, FAILED=失败',
     error_message    VARCHAR(1000) NULL COMMENT '失败原因',
     segment_count    INT           DEFAULT 0 COMMENT '生成的切片数量',
+    progress_percent INT           DEFAULT 0 COMMENT '向量化进度百分比 0-100',
+    current_step     VARCHAR(50)   NULL COMMENT '当前处理阶段描述',
     created_at       DATETIME      DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at       DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id)
