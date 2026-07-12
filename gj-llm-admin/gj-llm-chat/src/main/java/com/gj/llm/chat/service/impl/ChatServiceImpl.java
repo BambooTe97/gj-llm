@@ -152,8 +152,8 @@ public class ChatServiceImpl implements ChatService {
 
             // 6. 流式调用 LLM（直接用 WebClient 调 Ollama，捕获 thinking 字段）
             long t6 = System.currentTimeMillis();
-            StringBuilder fullThinking = new StringBuilder();
-            StringBuilder fullAnswer = new StringBuilder();
+            StringBuffer fullThinking = new StringBuffer();
+            StringBuffer fullAnswer = new StringBuffer();
 
             // 构建 Ollama messages：system → 历史(user/assistant交替) → 当前问题
             List<Map<String, Object>> ollamaMessages = new ArrayList<>();
@@ -286,7 +286,28 @@ public class ChatServiceImpl implements ChatService {
                     Flux.fromIterable(preEvents),
                     llmEventFlux,
                     doneEvent
-            ).onErrorResume(e -> {
+            ).doOnCancel(() -> {
+                // 用户点击停止或断开连接 → 保存已生成的部分内容
+                if (fullAnswer.length() > 0 || fullThinking.length() > 0) {
+                    log.info("[chatStream] 请求被取消, 保存部分内容, thinking.len={}, answer.len={}",
+                            fullThinking.length(), fullAnswer.length());
+                    try {
+                        MessageEntity partialMsg = MessageEntity.builder()
+                                .conversationId(conversationId)
+                                .role("assistant")
+                                .content(fullAnswer.toString())
+                                .thinking(fullThinking.isEmpty() ? null : fullThinking.toString())
+                                .createdAt(LocalDateTime.now())
+                                .build();
+                        messageMapper.insert(partialMsg);
+                        int newCount = (conversation.getMessageCount() != null ? conversation.getMessageCount() : 0) + 1;
+                        conversation.setMessageCount(newCount);
+                        conversationMapper.updateById(conversation);
+                    } catch (Exception ex) {
+                        log.error("[chatStream] 保存取消时的部分内容失败", ex);
+                    }
+                }
+            }).onErrorResume(e -> {
                 log.error("LLM 流式调用异常", e);
                 return Flux.just(buildEvent("error", Map.of("message", "生成回复失败: " + e.getMessage())));
             });

@@ -12,6 +12,8 @@ export const useChatStore = defineStore('chat', () => {
   let abortController: AbortController | null = null
   /** 暂存 thinking 内容（从 done 事件中获取，用于提交消息时一并保存） */
   let streamingThinking = ''
+  /** 暂存 done 事件返回的真实消息 ID */
+  let streamingMessageId = ''
 
   function setMessages(list: ChatMessage[]) {
     messages.value = list
@@ -26,6 +28,7 @@ export const useChatStore = defineStore('chat', () => {
     currentAssistantMsg.value = ''
     thinking.value = ''
     streamingThinking = ''
+    streamingMessageId = ''
     references.value = []
   }
 
@@ -43,16 +46,17 @@ export const useChatStore = defineStore('chat', () => {
 
   function commitStreamMessage(conversationId: string) {
     const msg: ChatMessage = {
-      id: Date.now().toString(),
+      id: streamingMessageId || Date.now().toString(),
       conversationId,
       role: 'assistant',
       content: currentAssistantMsg.value,
-      thinking: streamingThinking || undefined,
+      thinking: streamingThinking || thinking.value || undefined,
       createdAt: new Date().toISOString(),
     }
     messages.value.push(msg)
     currentAssistantMsg.value = ''
     streamingThinking = ''
+    streamingMessageId = ''
     references.value = []
   }
 
@@ -82,6 +86,7 @@ export const useChatStore = defineStore('chat', () => {
     currentAssistantMsg.value = ''
     thinking.value = ''
     streamingThinking = ''
+    streamingMessageId = ''
     references.value = []
     abortController = new AbortController()
 
@@ -150,7 +155,10 @@ export const useChatStore = defineStore('chat', () => {
                   }
                   break
                 case 'done':
-                  // 流结束，记录 thinking 以在提交消息时一并保存
+                  // 流结束，记录后端返回的真实消息 ID 和 thinking
+                  if (event.messageId) {
+                    streamingMessageId = String(event.messageId)
+                  }
                   if (event.thinking) {
                     streamingThinking = event.thinking
                   }
@@ -172,10 +180,16 @@ export const useChatStore = defineStore('chat', () => {
         commitStreamMessage(conversationId)
       }
     } catch (e: unknown) {
-      if (e instanceof DOMException && e.name === 'AbortError') return
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        // 用户主动停止：提交已生成的部分内容
+        if (currentAssistantMsg.value) {
+          commitStreamMessage(conversationId)
+        }
+        return
+      }
       console.error('流式请求失败:', e)
       thinking.value = ''
-      // 保留已接收的内容作为消息
+      // 异常情况也保留已接收的内容
       if (currentAssistantMsg.value) {
         commitStreamMessage(conversationId)
       }

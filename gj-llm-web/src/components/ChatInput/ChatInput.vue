@@ -15,6 +15,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   send: [content: string, controls: ChatInputControls]
+  stop: []
   'update:selectedDatasetId': [value: string | undefined]
   'update:enableThinking': [value: boolean]
 }>()
@@ -91,10 +92,11 @@ function handleKeydown(e: Event | KeyboardEvent) {
             <span>深度思考</span>
           </button>
         </div>
-        <!-- 右侧：发送按钮 -->
+        <!-- 右侧：发送 / 停止按钮 -->
         <button
+          v-if="!disabled"
           class="chat-input__send"
-          :disabled="!inputText.trim() || disabled || sending"
+          :disabled="!inputText.trim() || sending"
           @click="handleSend"
           title="发送 (Enter)"
         >
@@ -102,6 +104,16 @@ function handleKeydown(e: Event | KeyboardEvent) {
                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13" />
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
+        </button>
+        <button
+          v-else
+          class="chat-input__stop"
+          @click="emit('stop')"
+          title="停止生成"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="4" y="4" width="16" height="16" rx="3" />
           </svg>
         </button>
       </div>
@@ -242,6 +254,32 @@ function handleKeydown(e: Event | KeyboardEvent) {
     background: #d2d2d7;
     cursor: not-allowed;
     opacity: 0.5;
+  }
+}
+
+/* ====== 停止按钮 ====== */
+.chat-input__stop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1.5px solid #d2d2d7;
+  border-radius: 50%;
+  background: #f5f5f7;
+  color: #86868b;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+  flex-shrink: 0;
+
+  &:hover {
+    background: #e5e5ea;
+    color: #515154;
+    transform: scale(1.06);
+  }
+
+  &:active {
+    transform: scale(0.96);
   }
 }
 </style>

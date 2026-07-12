@@ -33,6 +33,8 @@ onMounted(async () => {
   await conversationStore.fetchList()
 })
 
+/** 离开页面时不断开流式请求，让智能体继续在后台完成回答 */
+
 /** 路由参数变化时切换会话 & 加载历史消息 */
 watch(
   () => route.params.id,
@@ -40,12 +42,9 @@ watch(
     if (newId) {
       const convIdStr = String(newId)
       conversationStore.setCurrentId(convIdStr)
-      // 仅当消息不属于当前会话时才从后端加载历史（避免覆盖 handleSend 中已添加的用户消息）
-      const alreadyHasMessages = chatStore.messages.length > 0
-        && String(chatStore.messages[0].conversationId) === convIdStr
-      if (!alreadyHasMessages) {
-        await chatStore.loadHistory(convIdStr)
-      }
+      // 始终从 DB 加载历史，确保看到切页面期间后台完成的回答
+      await chatStore.loadHistory(convIdStr)
+      setTimeout(() => scrollToBottom(false), 50)
       // 恢复关联的知识库
       const conv = conversationStore.list.find((c) => String(c.id) === convIdStr)
       selectedDatasetId.value = conv?.datasetId != null ? String(conv.datasetId) : undefined
@@ -81,6 +80,11 @@ watch(
     if (el && isNearBottom(el)) scrollToBottom()
   },
 )
+
+/** 中止当前流式请求 */
+function handleStop() {
+  chatStore.abortStream()
+}
 
 /** 发送消息 */
 async function handleSend(content: string, controls: { datasetId?: string; enableThinking: boolean }) {
@@ -150,6 +154,7 @@ async function handleSend(content: string, controls: { datasetId?: string; enabl
     <!-- 输入区域（含知识库选择 + 思考开关 + 发送按钮） -->
     <ChatInput
       @send="handleSend"
+      @stop="handleStop"
       :disabled="chatStore.streaming"
       :datasets="datasets.map(d => ({ id: String(d.id), name: d.name }))"
       v-model:selected-dataset-id="selectedDatasetId"
