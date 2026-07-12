@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS chat_message (
     conversation_id  BIGINT       NOT NULL COMMENT '关联的会话 ID（chat_conversation.id）',
     role             VARCHAR(20)  NOT NULL COMMENT '角色：user / assistant / system',
     content          TEXT         NOT NULL COMMENT '消息内容',
+    thinking         TEXT         NULL COMMENT '模型思考内容（reasoning / thinking）',
     metadata_json    JSON         NULL COMMENT '扩展元数据（引用片段、token 数、模型信息等）',
     created_at       DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (id),

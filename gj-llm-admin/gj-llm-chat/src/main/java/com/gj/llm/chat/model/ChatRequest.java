@@ -26,4 +26,7 @@ public class ChatRequest implements Serializable {
 
     /** 知识库类型标识（可选，兼容旧的 type 逻辑） */
     private String type;
+
+    /** 是否启用深度思考模式（默认 true，仅对支持 thinking 的模型生效） */
+    private Boolean enableThinking = true;
 }

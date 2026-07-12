@@ -19,6 +19,7 @@ export interface ChatMessage {
   conversationId: string
   role: 'user' | 'assistant' | 'system'
   content: string
+  thinking?: string
   createdAt: string
 }
 
@@ -28,6 +29,7 @@ export interface SendMessageRequest {
   content: string
   datasetId?: string
   type?: string
+  enableThinking?: boolean
 }
 
 /** 会话结构 */

@@ -10,6 +10,8 @@ export const useChatStore = defineStore('chat', () => {
   const thinking = ref('')
   const references = ref<Array<{ rank: number; content: string; score: number }>>([])
   let abortController: AbortController | null = null
+  /** 暂存 thinking 内容（从 done 事件中获取，用于提交消息时一并保存） */
+  let streamingThinking = ''
 
   function setMessages(list: ChatMessage[]) {
     messages.value = list
@@ -23,6 +25,7 @@ export const useChatStore = defineStore('chat', () => {
     messages.value = []
     currentAssistantMsg.value = ''
     thinking.value = ''
+    streamingThinking = ''
     references.value = []
   }
 
@@ -44,10 +47,12 @@ export const useChatStore = defineStore('chat', () => {
       conversationId,
       role: 'assistant',
       content: currentAssistantMsg.value,
+      thinking: streamingThinking || undefined,
       createdAt: new Date().toISOString(),
     }
     messages.value.push(msg)
     currentAssistantMsg.value = ''
+    streamingThinking = ''
     references.value = []
   }
 
@@ -62,6 +67,7 @@ export const useChatStore = defineStore('chat', () => {
     conversationId: string,
     content: string,
     datasetId?: string,
+    enableThinking?: boolean,
   ) {
     // 添加用户消息
     addMessage({
@@ -74,7 +80,8 @@ export const useChatStore = defineStore('chat', () => {
 
     streaming.value = true
     currentAssistantMsg.value = ''
-    thinking.value = '正在思考...'
+    thinking.value = ''
+    streamingThinking = ''
     references.value = []
     abortController = new AbortController()
 
@@ -87,7 +94,7 @@ export const useChatStore = defineStore('chat', () => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${localStorage.getItem('ACCESS_TOKEN')}`,
           },
-          body: JSON.stringify({ conversationId, content, datasetId }),
+          body: JSON.stringify({ conversationId, content, datasetId, enableThinking }),
           signal: abortController.signal,
         },
       )
@@ -138,14 +145,15 @@ export const useChatStore = defineStore('chat', () => {
                   }
                   break
                 case 'content':
-                  // 首段内容到达时清除思考状态
-                  thinking.value = ''
                   if (event.content) {
                     currentAssistantMsg.value += event.content
                   }
                   break
                 case 'done':
-                  // 流结束，提交完整消息
+                  // 流结束，记录 thinking 以在提交消息时一并保存
+                  if (event.thinking) {
+                    streamingThinking = event.thinking
+                  }
                   break
                 case 'error':
                   console.error('SSE error:', event.message)
@@ -159,8 +167,7 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
 
-      // 流结束后提交消息
-      thinking.value = ''
+      // 流结束后提交消息（thinking 在 done 事件中已暂存到 streamingThinking）
       if (currentAssistantMsg.value) {
         commitStreamMessage(conversationId)
       }

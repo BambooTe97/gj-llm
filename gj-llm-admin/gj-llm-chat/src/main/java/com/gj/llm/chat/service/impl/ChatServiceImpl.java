@@ -11,17 +11,22 @@ import com.gj.llm.rag.entity.DatasetEntity;
 import com.gj.llm.rag.service.DatasetService;
 import com.gj.llm.rag.vector.DynamicVectorStoreManager;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
@@ -37,35 +42,49 @@ public class ChatServiceImpl implements ChatService {
 
     private final DynamicVectorStoreManager storeManager;
     private final DatasetService datasetService;
-    private final ChatClient.Builder chatClientBuilder;
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
+    private final WebClient.Builder webClientBuilder;
+
+    @Value("${spring.ai.ollama.base-url}")
+    private String ollamaBaseUrl;
+
+    @Value("${spring.ai.ollama.chat.model}")
+    private String chatModel;
+
+    /** Ollama 生成 token 上限（thinking + content），防止无限思考 */
+    private static final int NUM_PREDICT_LIMIT = 4096;
 
     public ChatServiceImpl(DynamicVectorStoreManager storeManager,
                            DatasetService datasetService,
-                           ChatClient.Builder chatClientBuilder,
                            ConversationMapper conversationMapper,
-                           MessageMapper messageMapper) {
+                           MessageMapper messageMapper,
+                           WebClient.Builder webClientBuilder) {
         this.storeManager = storeManager;
         this.datasetService = datasetService;
-        this.chatClientBuilder = chatClientBuilder;
         this.conversationMapper = conversationMapper;
         this.messageMapper = messageMapper;
+        this.webClientBuilder = webClientBuilder;
     }
 
     @Override
     public Flux<ServerSentEvent<String>> chatStream(ChatRequest request) {
         return Flux.defer(() -> {
+            long t0 = System.currentTimeMillis();
             Long conversationId = request.getConversationId();
             String userContent = request.getContent();
+            log.info("[chatStream] ========== 开始, conversationId={}, content.length()={}", conversationId, userContent.length());
 
             // 1. 验证会话存在
+            long t1 = System.currentTimeMillis();
             ConversationEntity conversation = conversationMapper.selectById(conversationId);
             if (conversation == null) {
                 return Flux.just(buildEvent("error", Map.of("message", "会话不存在: " + conversationId)));
             }
+            log.info("[chatStream] ① DB查询会话完成, 耗时: {}ms", System.currentTimeMillis() - t1);
 
             // 2. 保存用户消息
+            long t2 = System.currentTimeMillis();
             MessageEntity userMsg = MessageEntity.builder()
                     .conversationId(conversationId)
                     .role("user")
@@ -73,23 +92,37 @@ public class ChatServiceImpl implements ChatService {
                     .createdAt(LocalDateTime.now())
                     .build();
             messageMapper.insert(userMsg);
+            log.info("[chatStream] ② DB插入用户消息完成, 耗时: {}ms", System.currentTimeMillis() - t2);
 
             // 3. RAG 检索
+            long t3 = System.currentTimeMillis();
             Long datasetId = request.getDatasetId() != null ? request.getDatasetId() : conversation.getDatasetId();
             String context = "";
             List<Map<String, Object>> references = List.of();
 
             if (datasetId != null) {
                 try {
+                    long t3a = System.currentTimeMillis();
                     DatasetEntity dataset = datasetService.getById(datasetId);
+                    log.info("[chatStream] ③a DB查询数据集完成, 耗时: {}ms", System.currentTimeMillis() - t3a);
+
                     if (dataset != null) {
+                        long t3b = System.currentTimeMillis();
                         VectorStore vectorStore = storeManager.getVectorStore(dataset.getCollectionName());
+                        log.info("[chatStream] ③b 获取 VectorStore 完成 (collection={}), 耗时: {}ms",
+                                dataset.getCollectionName(), System.currentTimeMillis() - t3b);
+
+                        long t3c = System.currentTimeMillis();
+                        log.info("[chatStream] ③c 开始向量相似度检索, query.length()={} ...", userContent.length());
                         List<Document> docs = vectorStore.similaritySearch(
                                 SearchRequest.builder()
                                         .query(userContent)
                                         .topK(5)
                                         .similarityThreshold(0.7)
                                         .build());
+                        log.info("[chatStream] ③c 向量检索完成, 命中 {} 条, 耗时: {}ms",
+                                docs.size(), System.currentTimeMillis() - t3c);
+
                         context = docs.stream().map(Document::getText).collect(Collectors.joining("\n\n"));
                         references = buildReferences(docs);
                     }
@@ -97,11 +130,16 @@ public class ChatServiceImpl implements ChatService {
                     log.warn("RAG 检索失败，继续通用对话: {}", e.getMessage());
                 }
             }
+            log.info("[chatStream] ③ RAG 检索总耗时: {}ms", System.currentTimeMillis() - t3);
 
             // 4. 构建 Prompt
+            long t4 = System.currentTimeMillis();
             String systemPrompt = buildSystemPrompt(context);
             List<MessageEntity> history = getRecentHistory(conversationId, 10);
-            String prompt = buildUserPrompt(history, userContent, context);
+            // 当前用户问题（仅含 RAG 上下文，历史通过独立 message 角色传递）
+            String userPrompt = buildUserPrompt(userContent, context);
+            log.info("[chatStream] ④ Prompt 构建完成, history.size()={}, userPrompt.length()={}, 耗时: {}ms",
+                    history.size(), userPrompt.length(), System.currentTimeMillis() - t4);
 
             // 5. 构建前置事件 Flux
             List<ServerSentEvent<String>> preEvents = new ArrayList<>();
@@ -112,30 +150,113 @@ public class ChatServiceImpl implements ChatService {
                 preEvents.add(buildEvent("references", Map.of("items", references)));
             }
 
-            // 6. 流式调用 LLM
+            // 6. 流式调用 LLM（直接用 WebClient 调 Ollama，捕获 thinking 字段）
+            long t6 = System.currentTimeMillis();
+            StringBuilder fullThinking = new StringBuilder();
             StringBuilder fullAnswer = new StringBuilder();
-            Flux<String> contentFlux = chatClientBuilder
-                    .defaultSystem(systemPrompt)
+
+            // 构建 Ollama messages：system → 历史(user/assistant交替) → 当前问题
+            List<Map<String, Object>> ollamaMessages = new ArrayList<>();
+            ollamaMessages.add(Map.of("role", "system", "content", systemPrompt));
+            for (MessageEntity msg : history) {
+                String role = "assistant".equals(msg.getRole()) ? "assistant" : "user";
+                ollamaMessages.add(Map.of("role", role, "content",
+                        msg.getContent() != null ? msg.getContent() : ""));
+            }
+            ollamaMessages.add(Map.of("role", "user", "content", userPrompt));
+
+            // 构建 Ollama 请求体
+            Map<String, Object> ollamaRequest = new LinkedHashMap<>();
+            ollamaRequest.put("model", chatModel);
+            ollamaRequest.put("stream", true);
+            ollamaRequest.put("messages", ollamaMessages);
+            ollamaRequest.put("options", Map.of("num_predict", NUM_PREDICT_LIMIT));
+            // think 是 Ollama API 的顶层字段，不在 options 里！
+            boolean enableThinking = request.getEnableThinking() == null || request.getEnableThinking();
+            if (!enableThinking) {
+                ollamaRequest.put("think", false);
+            }
+
+            long[] firstThinkArr = new long[]{0};
+            long[] firstContentArr = new long[]{0};
+            int[] thinkCount = new int[]{0};
+            int[] contentCount = new int[]{0};
+
+            Flux<ServerSentEvent<String>> llmEventFlux = webClientBuilder
+                    .baseUrl(ollamaBaseUrl)
                     .build()
-                    .prompt()
-                    .user(prompt)
-                    .stream()
-                    .content()
-                    .doOnNext(fullAnswer::append);
+                    .post()
+                    .uri("/api/chat")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(ollamaRequest)
+                    .retrieve()
+                    .bodyToFlux(DataBuffer.class)
+                    // 行缓冲：跨 DataBuffer 拼接不完整的 NDJSON 行
+                    .concatMap(new LineBuffer()::feed)
+                    .filter(line -> !line.isBlank())
+                    .map(JacksonUtils::readTree)
+                    .concatMap(jsonNode -> {
+                        List<ServerSentEvent<String>> events = new ArrayList<>();
 
-            Flux<ServerSentEvent<String>> contentEvents = contentFlux
-                    .map(chunk -> buildEvent("content", Map.of("content", chunk)));
+                        // 提取 message.done 字段区分是否最后一帧
+                        boolean done = jsonNode.has("done") && jsonNode.get("done").asBoolean(false);
 
-            // 7. 完成后保存 assistant 消息、更新会话、发送 done 事件
+                        // 提取 message.thinking
+                        String thinkChunk = JacksonUtils.extractNestedString(jsonNode, "message", "thinking");
+                        if (thinkChunk != null && !thinkChunk.isEmpty()) {
+                            thinkCount[0]++;
+                            fullThinking.append(thinkChunk);
+                            long now = System.currentTimeMillis();
+                            if (firstThinkArr[0] == 0) {
+                                firstThinkArr[0] = now;
+                                log.info("[chatStream] ⑥ ★ 第一个 thinking chunk 到达! 距LLM调用开始: {}ms, chunk.len={}",
+                                        now - t6, thinkChunk.length());
+                            }
+                            // 发送累积的完整 thinking 内容（前端做替换展示）
+                            events.add(buildEvent("thinking", Map.of("content", fullThinking.toString())));
+                        }
+
+                        // 提取 message.content
+                        String contentChunk = JacksonUtils.extractNestedString(jsonNode, "message", "content");
+                        if (contentChunk != null && !contentChunk.isEmpty()) {
+                            contentCount[0]++;
+                            fullAnswer.append(contentChunk);
+                            long now = System.currentTimeMillis();
+                            if (firstContentArr[0] == 0) {
+                                firstContentArr[0] = now;
+                                log.info("[chatStream] ⑥ ★ 第一个 content chunk 到达! 距LLM调用开始: {}ms, chunk.len={}",
+                                        now - t6, contentChunk.length());
+                            }
+                            events.add(buildEvent("content", Map.of("content", contentChunk)));
+                        }
+
+                        // 流结束帧
+                        if (done) {
+                            log.info("[chatStream] ⑥ LLM 流式结束, thinkChunks={}, contentChunks={}, thinking.len={}, content.len={}, 总耗时: {}ms",
+                                    thinkCount[0], contentCount[0], fullThinking.length(), fullAnswer.length(),
+                                    System.currentTimeMillis() - t6);
+                        }
+
+                        return Flux.fromIterable(events);
+                    })
+                    .doOnError(e -> log.error("[chatStream] ⑥ LLM 流式出错, thinkChunks={}, contentChunks={}, 耗时: {}ms",
+                            thinkCount[0], contentCount[0], System.currentTimeMillis() - t6, e));
+
+            // 7. 完成后保存 assistant 消息（含 thinking）、更新会话、发送 done 事件
             Flux<ServerSentEvent<String>> doneEvent = Flux.defer(() -> {
+                long t7 = System.currentTimeMillis();
                 MessageEntity assistantMsg = MessageEntity.builder()
                         .conversationId(conversationId)
                         .role("assistant")
                         .content(fullAnswer.toString())
+                        .thinking(fullThinking.isEmpty() ? null : fullThinking.toString())
                         .createdAt(LocalDateTime.now())
                         .build();
                 messageMapper.insert(assistantMsg);
+                log.info("[chatStream] ⑦a DB保存assistant消息完成 (thinking.len={}), 耗时: {}ms",
+                        fullThinking.length(), System.currentTimeMillis() - t7);
 
+                long t7b = System.currentTimeMillis();
                 int newCount = (conversation.getMessageCount() != null ? conversation.getMessageCount() : 0) + 2;
                 conversation.setMessageCount(newCount);
                 if (newCount <= 2 && "新对话".equals(conversation.getTitle())) {
@@ -145,17 +266,25 @@ public class ChatServiceImpl implements ChatService {
                     conversation.setTitle(autoTitle);
                 }
                 conversationMapper.updateById(conversation);
+                log.info("[chatStream] ⑦b DB更新会话完成, 耗时: {}ms", System.currentTimeMillis() - t7b);
+                log.info("[chatStream] ========== 全部完成, 总耗时: {}ms, thinking.len={}, answer.len()={}",
+                        System.currentTimeMillis() - t0, fullThinking.length(), fullAnswer.length());
 
-                return Flux.just(buildEvent("done", Map.of(
-                        "messageId", assistantMsg.getId(),
-                        "conversationId", conversationId,
-                        "title", conversation.getTitle()
-                )));
+                Map<String, Object> donePayload = new LinkedHashMap<>();
+                donePayload.put("messageId", assistantMsg.getId());
+                donePayload.put("conversationId", conversationId);
+                donePayload.put("title", conversation.getTitle());
+                if (!fullThinking.isEmpty()) {
+                    donePayload.put("thinking", fullThinking.toString());
+                }
+                return Flux.just(buildEventWithMap(donePayload));
             });
+
+            log.info("[chatStream] ⑤ 前置准备全部完成, 即将拼接Flux并开始LLM调用, 准备阶段总耗时: {}ms", System.currentTimeMillis() - t0);
 
             return Flux.concat(
                     Flux.fromIterable(preEvents),
-                    contentEvents,
+                    llmEventFlux,
                     doneEvent
             ).onErrorResume(e -> {
                 log.error("LLM 流式调用异常", e);
@@ -180,21 +309,12 @@ public class ChatServiceImpl implements ChatService {
                 """;
     }
 
-    private String buildUserPrompt(List<MessageEntity> history, String currentQuestion, String context) {
-        StringBuilder sb = new StringBuilder();
+    /** 构建当前用户消息（含 RAG 上下文，历史对话通过独立 message 角色传递） */
+    private String buildUserPrompt(String currentQuestion, String context) {
         if (context != null && !context.isBlank()) {
-            sb.append("参考上下文:\n").append(context).append("\n\n");
+            return "参考上下文:\n" + context + "\n\n用户问题:\n" + currentQuestion;
         }
-        if (!history.isEmpty()) {
-            sb.append("历史对话:\n");
-            for (MessageEntity msg : history) {
-                String roleLabel = "assistant".equals(msg.getRole()) ? "AI" : "用户";
-                sb.append(roleLabel).append(": ").append(msg.getContent()).append("\n");
-            }
-            sb.append("\n");
-        }
-        sb.append("用户问题:\n").append(currentQuestion);
-        return sb.toString();
+        return currentQuestion;
     }
 
     // ==================== 辅助方法 ====================
@@ -230,4 +350,38 @@ public class ChatServiceImpl implements ChatService {
         payload.put("type", type);
         return ServerSentEvent.builder(JacksonUtils.toJson(payload)).build();
     }
+
+    /** 直接用 Map 构建 SSE 事件（适用于手动构建 payload 的场景） */
+    private ServerSentEvent<String> buildEventWithMap(Map<String, Object> payload) {
+        return ServerSentEvent.builder(JacksonUtils.toJson(payload)).build();
+    }
+
+    // ==================== NDJSON 行缓冲 ====================
+
+    /**
+     * NDJSON 行缓冲器 —— 跨 {@link DataBuffer} 边界拼接不完整的行。
+     *
+     * <p>Ollama 的流式响应是 NDJSON 格式（每行一个完整 JSON），但底层 TCP 分帧
+     * 可能导致一个 JSON 行被切分到两个 DataBuffer 中。此缓冲器将未完成的行尾部
+     * 保留到下一次 {@link #feed(DataBuffer)} 调用时继续拼接。</p>
+     */
+    private static class LineBuffer {
+        private String tail = "";
+
+        Flux<String> feed(DataBuffer dataBuffer) {
+            byte[] bytes = new byte[dataBuffer.readableByteCount()];
+            dataBuffer.read(bytes);
+            DataBufferUtils.release(dataBuffer);
+            String text = tail + new String(bytes, StandardCharsets.UTF_8);
+            String[] lines = text.split("\n", -1);
+            // 最后一段是不完整的行（或空串），留到下一次拼接
+            tail = lines[lines.length - 1];
+            if (lines.length == 1) {
+                // 没有遇到换行符，整段都是不完整的
+                return Flux.empty();
+            }
+            return Flux.fromArray(Arrays.copyOf(lines, lines.length - 1));
+        }
+    }
+
 }

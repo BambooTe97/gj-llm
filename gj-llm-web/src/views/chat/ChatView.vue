@@ -17,6 +17,8 @@ const conversationStore = useConversationStore()
 /** 知识库列表（用于选择器） */
 const datasets = ref<Dataset[]>([])
 const selectedDatasetId = ref<string | undefined>()
+/** 深度思考开关 */
+const enableThinking = ref(true)
 
 onMounted(async () => {
   // 加载知识库列表
@@ -55,22 +57,36 @@ watch(
   { immediate: true },
 )
 
-/** 自动滚动到底部（新消息 / 思考中 / 流式输出变化时触发） */
+function scrollToBottom(smooth = true) {
+  const el = document.querySelector('.chat-messages')
+  if (!el) return
+  el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' })
+}
+
+function isNearBottom(el: HTMLElement) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= 80
+}
+
+/** 新消息到达 → 始终滚到底部（发送 / 接收新消息时） */
 watch(
-  () => [chatStore.messages.length, chatStore.currentAssistantMsg, chatStore.thinking],
+  () => chatStore.messages.length,
+  () => scrollToBottom(),
+)
+
+/** 流式输出内容变化 → 仅当用户处于底部时才跟随 */
+watch(
+  () => [chatStore.currentAssistantMsg, chatStore.thinking],
   () => {
     const el = document.querySelector('.chat-messages')
-    if (el) {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-    }
+    if (el && isNearBottom(el)) scrollToBottom()
   },
 )
 
 /** 发送消息 */
-async function handleSend(content: string) {
+async function handleSend(content: string, controls: { datasetId?: string; enableThinking: boolean }) {
   // 确保有会话
   if (!conversationStore.currentId) {
-    const conv = await conversationStore.create(undefined, selectedDatasetId.value)
+    const conv = await conversationStore.create(undefined, controls.datasetId)
     if (!conv) return
     router.push(`/chat/${conv.id}`)
   }
@@ -78,40 +94,15 @@ async function handleSend(content: string) {
   const convId = conversationStore.currentId
   if (!convId) return
 
-  await chatStore.sendMessageStream(convId, content, selectedDatasetId.value)
+  await chatStore.sendMessageStream(convId, content, controls.datasetId, controls.enableThinking)
 
   // 刷新会话列表（更新标题等）
   await conversationStore.fetchList()
-}
-
-/** 切换知识库 */
-function handleDatasetChange(datasetId: string | undefined) {
-  selectedDatasetId.value = datasetId
 }
 </script>
 
 <template>
   <div class="chat-view">
-    <!-- 知识库选择器 -->
-    <div class="chat-toolbar" v-if="datasets.length > 0">
-      <span class="chat-toolbar__label">知识库：</span>
-      <el-select
-        v-model="selectedDatasetId"
-        placeholder="通用对话（不限制知识库）"
-        clearable
-        size="small"
-        style="width: 240px"
-        @change="handleDatasetChange"
-      >
-        <el-option
-          v-for="ds in datasets"
-          :key="ds.id"
-          :label="ds.name"
-          :value="ds.id"
-        />
-      </el-select>
-    </div>
-
     <!-- 消息列表 -->
     <div class="chat-messages" v-if="chatStore.messages.length > 0 || chatStore.streaming">
       <ChatMessage
@@ -119,9 +110,9 @@ function handleDatasetChange(datasetId: string | undefined) {
         :key="msg.id"
         :message="msg"
       />
-      <!-- 流式输出中的临时消息 -->
+      <!-- 流式输出中的临时消息（思考内容内嵌在组件中展示） -->
       <ChatMessage
-        v-if="chatStore.streaming && chatStore.currentAssistantMsg"
+        v-if="chatStore.streaming"
         :message="{
           id: 'streaming',
           conversationId: conversationStore.currentId || '',
@@ -130,16 +121,8 @@ function handleDatasetChange(datasetId: string | undefined) {
           createdAt: new Date().toISOString(),
         }"
         :streaming="true"
+        :streaming-thinking="chatStore.thinking"
       />
-      <!-- 思考中指示器 -->
-      <div class="chat-thinking" v-if="chatStore.streaming && !chatStore.currentAssistantMsg">
-        <div class="chat-thinking__dots">
-          <span class="chat-thinking__dot" />
-          <span class="chat-thinking__dot" />
-          <span class="chat-thinking__dot" />
-        </div>
-        <span class="chat-thinking__text">{{ chatStore.thinking || '正在思考...' }}</span>
-      </div>
       <!-- 引用来源 -->
       <div class="chat-references" v-if="chatStore.references.length > 0 && !chatStore.streaming">
         <div class="chat-references__title">📎 参考来源</div>
@@ -164,8 +147,14 @@ function handleDatasetChange(datasetId: string | undefined) {
       <p class="chat-empty__hint">选择知识库可获得更精准的回答，Enter 发送消息</p>
     </div>
 
-    <!-- 输入区域 -->
-    <ChatInput @send="handleSend" :disabled="chatStore.streaming" />
+    <!-- 输入区域（含知识库选择 + 思考开关 + 发送按钮） -->
+    <ChatInput
+      @send="handleSend"
+      :disabled="chatStore.streaming"
+      :datasets="datasets.map(d => ({ id: String(d.id), name: d.name }))"
+      v-model:selected-dataset-id="selectedDatasetId"
+      v-model:enable-thinking="enableThinking"
+    />
   </div>
 </template>
 
@@ -174,24 +163,6 @@ function handleDatasetChange(datasetId: string | undefined) {
   display: flex;
   flex-direction: column;
   height: 100%;
-}
-
-.chat-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background: rgba(255, 255, 255, 0.4);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(210, 210, 215, 0.3);
-
-  &__label {
-    font-size: 13px;
-    color: #515154;
-    font-weight: 500;
-    white-space: nowrap;
-  }
 }
 
 .chat-messages {
@@ -250,49 +221,6 @@ function handleDatasetChange(datasetId: string | undefined) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-}
-
-.chat-thinking {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 24px;
-  padding-left: 48px;
-
-  &__dots {
-    display: flex;
-    gap: 5px;
-    align-items: center;
-  }
-
-  &__dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #007aff;
-    animation: thinkingBounce 1.4s ease-in-out infinite both;
-
-    &:nth-child(1) { animation-delay: 0s; }
-    &:nth-child(2) { animation-delay: 0.2s; }
-    &:nth-child(3) { animation-delay: 0.4s; }
-  }
-
-  &__text {
-    font-size: 13px;
-    color: #86868b;
-    font-weight: 450;
-  }
-}
-
-@keyframes thinkingBounce {
-  0%, 80%, 100% {
-    transform: scale(0.6);
-    opacity: 0.4;
-  }
-  40% {
-    transform: scale(1);
-    opacity: 1;
   }
 }
 

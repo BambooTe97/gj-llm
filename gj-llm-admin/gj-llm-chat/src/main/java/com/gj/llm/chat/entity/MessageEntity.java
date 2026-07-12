@@ -35,6 +35,9 @@ public class MessageEntity {
     /** 消息内容 */
     private String content;
 
+    /** 模型思考内容（reasoning / thinking），仅 assistant 角色有值 */
+    private String thinking;
+
     /** 扩展元数据（JSON 格式：引用片段、token 数、模型信息等） */
     private String metadataJson;
 

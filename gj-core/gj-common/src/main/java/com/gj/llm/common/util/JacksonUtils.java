@@ -69,6 +69,15 @@ public abstract class JacksonUtils {
         }
     }
 
+    /** 将 JSON 字符串解析为 JsonNode 树结构 */
+    public static JsonNode readTree(String json) {
+        try {
+            return getObjectMapper().readTree(json);
+        } catch (JacksonException je) {
+            throw new UtilException(je);
+        }
+    }
+
     public static <T> List<T> listFromJson(String json, Class<T> type) {
         try {
             JavaType javaType = getObjectMapper().getTypeFactory().constructParametricType(ArrayList.class, type);
@@ -283,5 +292,26 @@ public abstract class JacksonUtils {
                 return jsonFormat;
             }
         }
+    }
+
+    /**
+     * 从 JsonNode 中沿指定路径提取嵌套字符串字段。
+     *
+     * <p>例如 {@code extractNestedString(node, "message", "content")}
+     * 等价于 {@code node.get("message").get("content").asText()}，但安全处理了空节点。</p>
+     *
+     * @param root 根节点
+     * @param path 字段路径（按层顺序）
+     * @return 叶子节点的字符串值，任意层为 null 或最终值为空串时返回 null
+     */
+    public static String extractNestedString(JsonNode root, String... path) {
+        JsonNode current = root;
+        for (String field : path) {
+            if (current == null) return null;
+            current = current.get(field);
+        }
+        if (current == null || current.isNull()) return null;
+        String text = current.asText();
+        return text.isEmpty() ? null : text;
     }
 }
