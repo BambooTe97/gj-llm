@@ -14,36 +14,28 @@
     <name>gj-es</name>
     <description>ES 公共模块 —— Elasticsearch 客户端配置、索引管理与混合检索</description>
 
+    <properties>
+        <!-- 与 spring-ai-bom 管理的 elasticsearch-java 版本保持一致 -->
+        <es.version>9.4.2</es.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.gj.llm</groupId>
             <artifactId>gj-common</artifactId>
         </dependency>
 
-        <!-- ES Java Client 8.x -->
+        <!-- ES Java Client —— elasticsearch-java 版本由 spring-ai-bom 管理 -->
         <dependency>
             <groupId>co.elastic.clients</groupId>
             <artifactId>elasticsearch-java</artifactId>
-            <version>8.15.3</version>
         </dependency>
 
-        <!-- ES RestClient（elasticsearch-java 底层依赖，显式声明确保传递性） -->
+        <!-- ES RestClient 底层传输层（需显式声明版本，不在 spring-ai-bom 管理范围内） -->
         <dependency>
             <groupId>org.elasticsearch.client</groupId>
             <artifactId>elasticsearch-rest-client</artifactId>
-            <version>8.15.3</version>
-        </dependency>
-
-        <!-- ES 客户端依赖 Apache HttpClient 4.x（Spring Boot 4.x 默认不带） -->
-        <dependency>
-            <groupId>org.apache.httpcomponents</groupId>
-            <artifactId>httpcore</artifactId>
-            <version>4.4.16</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.httpcomponents</groupId>
-            <artifactId>httpclient</artifactId>
-            <version>4.5.14</version>
+            <version>${es.version}</version>
         </dependency>
 
         <dependency>

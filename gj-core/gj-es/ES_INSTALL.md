@@ -1,12 +1,14 @@
 # Elasticsearch 安装指南（Docker）
 
+> **版本说明**：ES 客户端版本由 `spring-ai-bom` 统一管理，当前为 **9.4.2**。服务端必须与客户端版本一致，否则协议不兼容。
+
 ## 环境要求
 
 - CentOS 7+ / Ubuntu 18+
 - Docker 已安装
 - 可用内存 ≥ 4G（ES 建议 2G 堆内存）
 
-## 一键安装
+## 全新安装
 
 ```bash
 # 1. 内核参数（ES 硬性要求）
@@ -26,17 +28,31 @@ docker run -d \
   -e "xpack.security.enabled=false" \
   -e "ES_JAVA_OPTS=-Xms2g -Xmx2g" \
   -v /data/elasticsearch:/usr/share/elasticsearch/data \
-  docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+  docker.elastic.co/elasticsearch/elasticsearch:9.4.2
 
 # 4. 安装 IK 中文分词器
 docker exec -it elasticsearch ./bin/elasticsearch-plugin install \
-  https://get.infini.cloud/elasticsearch/analysis-ik/8.15.3
+  https://get.infini.cloud/elasticsearch/analysis-ik/9.4.2
 
 # 5. 重启 ES
 docker restart elasticsearch
 
 # 6. 验证（等待 10s 后执行）
 curl http://localhost:9200
+```
+
+## 从 8.x 升级
+
+```bash
+# 停旧版本
+docker stop elasticsearch && docker rm elasticsearch
+
+# 清旧数据（9.x 索引格式不兼容 8.x）
+sudo rm -rf /data/elasticsearch/*
+sudo mkdir -p /data/elasticsearch
+sudo chown -R 1000:1000 /data/elasticsearch
+
+# 然后执行上面"全新安装"的第 3~6 步
 ```
 
 ## 安装后配置
@@ -60,7 +76,7 @@ curl http://localhost:9200
 
 # 2. IK 分词器是否安装成功
 curl http://localhost:9200/_cat/plugins
-# 应返回: localhost.localdomain analysis-ik 8.15.3
+# 应返回: localhost.localdomain analysis-ik 9.4.2
 
 # 3. 测试 IK 分词效果
 curl -X POST "http://localhost:9200/_analyze" \
@@ -71,8 +87,8 @@ curl -X POST "http://localhost:9200/_analyze" \
 curl http://<虚拟机IP>:9200/_cat/plugins
 ```
 
-> **注意**：外部访问必须用虚拟机 IP（如 `192.168.40.130`），不能用 `localhost`。<br>
-> ES 返回的 `name: "localhost.localdomain"` 只是节点名，与访问地址无关，可以忽略。
+> **注意**：外部访问必须用虚拟机 IP（如 `192.168.40.130`），不能用 `localhost`。
+> ES 返回的 `name: "localhost.localdomain"` 只是节点名，与访问地址无关。
 
 ---
 
@@ -128,7 +144,7 @@ docker restart elasticsearch
 gj:
   llm:
     es:
-      host: <ES服务器IP>
+      host: 192.168.40.130    # 虚拟机实际 IP
       port: 9200
       index-prefix: rag_
       embedding-dimension: 1024
@@ -136,17 +152,11 @@ gj:
       replicas: 0
 ```
 
+> ES 客户端版本由 `spring-ai-bom` 管理，`gj-es/pom.xml` 中不指定版本号。
+
 ## 应用对接步骤
 
 ### 1. 确认配置指向虚拟机 IP
-
-```yaml
-gj:
-  llm:
-    es:
-      host: 192.168.40.130    # 替换为虚拟机实际 IP
-      port: 9200
-```
 
 ### 2. 重启 Spring Boot 应用
 
@@ -191,3 +201,5 @@ curl http://<虚拟机IP>:9200/rag_<collection_name>/_count
 | Exited (1) / node.lock | 目录权限不对 | `chown -R 1000:1000 /data/elasticsearch` |
 | max_map_count 不足 | 内核参数太低 | `sysctl -w vm.max_map_count=262144` |
 | Exited (137) | 内存不足被 OOM Killer 杀掉 | 降低 `-Xmx` 或增加宿主机内存 |
+| media_type_header_exception | ES 客户端与服务器版本不匹配 | 确保两者版本一致（9.4.2） |
+| 外部无法访问 9200 | 防火墙未开放 | `firewall-cmd --add-port=9200/tcp --permanent` |

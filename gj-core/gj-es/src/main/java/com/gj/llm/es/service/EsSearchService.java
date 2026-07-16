@@ -46,23 +46,31 @@ public class EsSearchService {
     // ==================== 索引管理 ====================
 
     public void ensureIndexExists(String collectionName) {
+        String indexName = toIndexName(collectionName);
         try {
-            String indexName = toIndexName(collectionName);
             boolean exists = client.indices().exists(ExistsRequest.of(e -> e.index(indexName))).value();
             if (exists) {
-                log.info("ES 索引已存在: {}", indexName);
                 return;
             }
+        } catch (Exception e) {
+            // exists 检查失败，直接尝试创建
+        }
 
+        try {
             String mappingJson = buildIndexMappingJson();
             try (InputStream is = new ByteArrayInputStream(mappingJson.getBytes(StandardCharsets.UTF_8))) {
                 client.indices().create(CreateIndexRequest.of(c -> c
                         .index(indexName)
                         .withJson(is)));
             }
-            log.info("ES 索引创建成功: {}, dims={}", indexName, esProperties.getEmbeddingDimension());
+            log.info("ES 索引创建成功: {}", indexName);
         } catch (Exception e) {
-            log.error("ES 索引创建失败: {}", collectionName, e);
+            // 并发场景下索引可能已由其他线程创建，忽略
+            if (e.getMessage() != null && e.getMessage().contains("already_exists")) {
+                log.info("ES 索引已存在（并发创建）: {}", indexName);
+            } else {
+                log.error("ES 索引创建失败: {}", indexName, e);
+            }
         }
     }
 
