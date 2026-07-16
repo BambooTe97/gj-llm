@@ -90,11 +90,14 @@ public class DynamicVectorStoreManager {
         milvusClientV2.createCollection(createReq);
         log.info("Milvus 集合创建成功: {}", collectionName);
 
-        // 创建 embedding 字段索引
+        // 创建 embedding 字段索引（HNSW：高召回率，适合小数据量到中等数据量）
         IndexParam indexParam = IndexParam.builder()
                 .fieldName("embedding")
-                .indexType(IndexParam.IndexType.IVF_FLAT)
+                .indexType(IndexParam.IndexType.HNSW)
                 .metricType(IndexParam.MetricType.COSINE)
+                .extraParams(Map.of(
+                        "M", "16",
+                        "efConstruction", "200"))
                 .build();
 
         milvusClientV2.createIndex(CreateIndexReq.builder()

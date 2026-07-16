@@ -13,11 +13,17 @@ spring:
 
   # ==================== 数据库配置 ====================
   datasource:
-#    url: jdbc:mysql://localhost:3306/gj_llm?useSSL=false&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
-    url: jdbc:mysql://192.168.0.105:3306/gj_llm?useSSL=false&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://localhost:3306/gj_llm?useSSL=false&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+#    url: jdbc:mysql://192.168.0.105:3306/gj_llm?useSSL=false&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
     username: root
-    password: 111111
+    password: Xx123@pwd
     driver-class-name: com.mysql.cj.jdbc.Driver
+
+logging:
+  level:
+    com.gj.llm: debug
+    org.springframework: warn
+    org.springframework.web.servlet.mvc.method.annotation: warn
 
 # ==================== 安全配置 ====================
 app:

@@ -7,13 +7,11 @@ import com.gj.llm.chat.mapper.MessageMapper;
 import com.gj.llm.chat.model.ChatRequest;
 import com.gj.llm.chat.service.ChatService;
 import com.gj.llm.common.util.JacksonUtils;
+import com.gj.llm.es.service.EsSearchService;
 import com.gj.llm.rag.entity.DatasetEntity;
 import com.gj.llm.rag.service.DatasetService;
-import com.gj.llm.rag.vector.DynamicVectorStoreManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
@@ -26,7 +24,7 @@ import reactor.core.publisher.Flux;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicReference;
+
 import java.util.stream.Collectors;
 
 /**
@@ -40,7 +38,7 @@ import java.util.stream.Collectors;
 @Service
 public class ChatServiceImpl implements ChatService {
 
-    private final DynamicVectorStoreManager storeManager;
+    private final EsSearchService esSearchService;
     private final DatasetService datasetService;
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
@@ -55,12 +53,12 @@ public class ChatServiceImpl implements ChatService {
     /** Ollama 生成 token 上限（thinking + content），防止无限思考 */
     private static final int NUM_PREDICT_LIMIT = 4096;
 
-    public ChatServiceImpl(DynamicVectorStoreManager storeManager,
+    public ChatServiceImpl(EsSearchService esSearchService,
                            DatasetService datasetService,
                            ConversationMapper conversationMapper,
                            MessageMapper messageMapper,
                            WebClient.Builder webClientBuilder) {
-        this.storeManager = storeManager;
+        this.esSearchService = esSearchService;
         this.datasetService = datasetService;
         this.conversationMapper = conversationMapper;
         this.messageMapper = messageMapper;
@@ -108,20 +106,12 @@ public class ChatServiceImpl implements ChatService {
 
                     if (dataset != null) {
                         long t3b = System.currentTimeMillis();
-                        VectorStore vectorStore = storeManager.getVectorStore(dataset.getCollectionName());
-                        log.info("[chatStream] ③b 获取 VectorStore 完成 (collection={}), 耗时: {}ms",
-                                dataset.getCollectionName(), System.currentTimeMillis() - t3b);
-
-                        long t3c = System.currentTimeMillis();
-                        log.info("[chatStream] ③c 开始向量相似度检索, query.length()={} ...", userContent.length());
-                        List<Document> docs = vectorStore.similaritySearch(
-                                SearchRequest.builder()
-                                        .query(userContent)
-                                        .topK(5)
-                                        .similarityThreshold(0.7)
-                                        .build());
-                        log.info("[chatStream] ③c 向量检索完成, 命中 {} 条, 耗时: {}ms",
-                                docs.size(), System.currentTimeMillis() - t3c);
+                        log.info("[chatStream] ③b 开始 ES 混合检索, collection={}, query.length()={}",
+                                dataset.getCollectionName(), userContent.length());
+                        List<Document> docs = esSearchService.hybridSearch(
+                                dataset.getCollectionName(), userContent, 5);
+                        log.info("[chatStream] ③b ES 混合检索完成, 命中 {} 条, 耗时: {}ms",
+                                docs.size(), System.currentTimeMillis() - t3b);
 
                         context = docs.stream().map(Document::getText).collect(Collectors.joining("\n\n"));
                         references = buildReferences(docs);

@@ -24,6 +24,7 @@
         <module>gj-security</module>
         <module>gj-mybatis</module>
         <module>gj-file</module>
+        <module>gj-es</module>
     </modules>
 
 </project>

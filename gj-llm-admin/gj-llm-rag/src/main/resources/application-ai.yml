@@ -4,9 +4,9 @@ spring:
     ollama:
       base-url: http://localhost:11434
       chat:
-        # model: deepseek-r1:latest
+         model: deepseek-r1:latest
 #        model: qwen3:8b
-        model: qwen3.5:2b
+#        model: qwen3.5:2b
       embedding:
         model: bge-m3:latest
     vectorstore:
@@ -15,10 +15,21 @@ spring:
         database-name: default
         collection-name: vector_store_first
         embedding-dimension: 1024
-        index-type: ivf_flat
+        index-type: hnsw
         metric-type: cosine
         client:
-          host: 192.168.0.105
+          host: 192.168.40.130
           port: 19530
           username: root
           password: milvus
+
+# ==================== ES 配置（主要检索引擎） ====================
+gj:
+  llm:
+    es:
+      host: 192.168.40.130
+      port: 9200
+      index-prefix: rag_
+      embedding-dimension: 1024
+      shards: 1
+      replicas: 0

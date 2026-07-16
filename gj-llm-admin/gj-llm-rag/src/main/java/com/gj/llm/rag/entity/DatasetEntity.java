@@ -43,13 +43,13 @@ public class DatasetEntity {
     /** 向量库中的集合名称 */
     private String collectionName;
 
-    /** 切片大小（字符数），默认 800 */
+    /** 切片大小（字符数），默认 500 */
     @Builder.Default
-    private Integer chunkSize = 800;
+    private Integer chunkSize = 500;
 
-    /** 切片重叠（字符数），默认 100 */
+    /** 切片重叠（字符数），默认 150 */
     @Builder.Default
-    private Integer chunkOverlap = 100;
+    private Integer chunkOverlap = 150;
 
     /** 状态：READY=就绪, INDEXING=索引中, ERROR=异常 */
     @Builder.Default

@@ -70,12 +70,42 @@
 
 // ========== Element Plus 弹窗玻璃效果 ==========
 .el-message-box {
-  background: rgba(255, 255, 255, 0.88) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
   backdrop-filter: blur(24px) !important;
   -webkit-backdrop-filter: blur(24px) !important;
   border: 1px solid rgba(210, 210, 215, 0.5) !important;
   border-radius: 16px !important;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.06) !important;
+
+  // 标题
+  .el-message-box__title {
+    color: #1d1d1f !important;
+    font-weight: 600 !important;
+    font-size: 17px !important;
+  }
+
+  // 消息文本
+  .el-message-box__message {
+    color: #515154 !important;
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+  }
+
+  // 状态图标居中对齐
+  .el-message-box__status {
+    font-size: 22px !important;
+  }
+
+  // 按钮区背景
+  .el-message-box__btns {
+    padding-top: 12px !important;
+  }
+
+  // 关闭按钮
+  .el-message-box__headerbtn {
+    top: 16px !important;
+    right: 16px !important;
+  }
 }
 
 // ========== Element Plus 输入框玻璃效果 ==========

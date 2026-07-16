@@ -22,6 +22,12 @@
 
         <dependency>
             <groupId>com.gj.llm</groupId>
+            <artifactId>gj-es</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.gj.llm</groupId>
             <artifactId>gj-llm-rag</artifactId>
             <version>${project.version}</version>
         </dependency>

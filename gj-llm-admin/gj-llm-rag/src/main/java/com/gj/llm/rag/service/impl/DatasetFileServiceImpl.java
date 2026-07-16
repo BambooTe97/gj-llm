@@ -13,16 +13,14 @@ import com.gj.llm.rag.mapper.DocumentSegmentMapper;
 import com.gj.llm.rag.model.DatasetFileVO;
 import com.gj.llm.rag.service.DatasetFileService;
 import com.gj.llm.rag.service.DatasetService;
-import com.gj.llm.rag.vector.DynamicVectorStoreManager;
+import com.gj.llm.es.service.EsSearchService;
 import com.gj.llm.rag.vector.reader.FileContentReader;
+import com.gj.llm.rag.vector.splitter.RecursiveCharacterTextSplitter;
 import com.gj.llm.common.util.JacksonUtils;
 import com.gj.llm.file.model.FileInfo;
 import com.gj.llm.file.service.FileStorageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.transformer.splitter.TokenTextSplitter;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -43,20 +41,20 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
     private final ApplicationEventPublisher eventPublisher;
     private final DatasetService datasetService;
     private final FileStorageService fileStorageService;
-    private final DynamicVectorStoreManager storeManager;
+    private final EsSearchService esSearchService;
     private final DocumentSegmentMapper segmentMapper;
     private final List<FileContentReader> readers;
 
     public DatasetFileServiceImpl(ApplicationEventPublisher eventPublisher,
                                   DatasetService datasetService,
                                   FileStorageService fileStorageService,
-                                  DynamicVectorStoreManager storeManager,
+                                  EsSearchService esSearchService,
                                   DocumentSegmentMapper segmentMapper,
                                   List<FileContentReader> readers) {
         this.eventPublisher = eventPublisher;
         this.datasetService = datasetService;
         this.fileStorageService = fileStorageService;
-        this.storeManager = storeManager;
+        this.esSearchService = esSearchService;
         this.segmentMapper = segmentMapper;
         this.readers = readers;
     }
@@ -147,16 +145,15 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
                         new LambdaQueryWrapper<DocumentSegmentEntity>()
                                 .eq(DocumentSegmentEntity::getDatasetFileId, datasetFileId));
                 if (!segments.isEmpty()) {
-                    VectorStore vectorStore = storeManager.getVectorStore(dataset.getCollectionName());
                     List<String> segmentIds = segments.stream()
                             .map(DocumentSegmentEntity::getSegmentId)
                             .collect(Collectors.toList());
-                    vectorStore.delete(segmentIds);
+                    esSearchService.deleteDocuments(dataset.getCollectionName(), segmentIds);
                     segmentMapper.delete(new LambdaQueryWrapper<DocumentSegmentEntity>()
                             .eq(DocumentSegmentEntity::getDatasetFileId, datasetFileId));
                 }
             } catch (Exception e) {
-                log.error("删除向量数据失败: dfId={}", datasetFileId, e);
+                log.error("删除ES向量数据失败: dfId={}", datasetFileId, e);
             }
         }
 
@@ -193,23 +190,22 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
             throw new RuntimeException("知识库不存在");
         }
 
-        // 删除旧向量数据
+        // 删除旧数据
         if (df.getSegmentCount() > 0) {
             try {
                 List<DocumentSegmentEntity> segments = segmentMapper.selectList(
                         new LambdaQueryWrapper<DocumentSegmentEntity>()
                                 .eq(DocumentSegmentEntity::getDatasetFileId, datasetFileId));
                 if (!segments.isEmpty()) {
-                    VectorStore vectorStore = storeManager.getVectorStore(dataset.getCollectionName());
                     List<String> segmentIds = segments.stream()
                             .map(DocumentSegmentEntity::getSegmentId)
                             .collect(Collectors.toList());
-                    vectorStore.delete(segmentIds);
+                    esSearchService.deleteDocuments(dataset.getCollectionName(), segmentIds);
                     segmentMapper.delete(new LambdaQueryWrapper<DocumentSegmentEntity>()
                             .eq(DocumentSegmentEntity::getDatasetFileId, datasetFileId));
                 }
             } catch (Exception e) {
-                log.error("删除旧向量数据失败: dfId={}", datasetFileId, e);
+                log.error("删除旧ES数据失败: dfId={}", datasetFileId, e);
             }
         }
 
@@ -238,9 +234,7 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
             throw new RuntimeException("知识库不存在: id=" + datasetId);
         }
 
-        VectorStore vectorStore = storeManager.getVectorStore(dataset.getCollectionName());
-        List<Document> results = vectorStore.similaritySearch(
-                SearchRequest.builder().query(query).topK(topK).build());
+        List<Document> results = esSearchService.hybridSearch(dataset.getCollectionName(), query, topK);
 
         List<Map<String, Object>> items = new ArrayList<>();
         for (int i = 0; i < results.size(); i++) {
@@ -271,8 +265,6 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
                 throw new RuntimeException("知识库不存在");
             }
 
-            VectorStore vectorStore = storeManager.getVectorStore(dataset.getCollectionName());
-
             // 从 file_record 加载文件
             FileInfo fileInfo = fileStorageService.getById(df.getFileId());
             Resource resource = fileStorageService.loadFileAsResource(df.getFileId());
@@ -294,22 +286,22 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
                 d.getMetadata().put("source", fileInfo.getOriginalName());
             });
 
-            TokenTextSplitter splitter = TokenTextSplitter.builder()
-                    .withChunkSize(dataset.getChunkSize())
-                    .withMinChunkLengthToEmbed(20)
-                    .build();
-            List<Document> splits = splitter.apply(documents);
-            log.info("文本切分完成: dfId={}, chunks={}", dfId, splits.size());
+            RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(
+                    dataset.getChunkSize(),
+                    dataset.getChunkOverlap(),
+                    20);
+            List<Document> splits = splitter.split(documents);
+            log.info("文本切分完成: dfId={}, chunks={}, overlap={}", dfId, splits.size(), dataset.getChunkOverlap());
 
             df.setProgressPercent(50);
-            df.setCurrentStep("向量嵌入中（最耗时）...");
+            df.setCurrentStep("向量嵌入 + ES 索引写入中（最耗时）...");
             updateById(df);
 
-            log.info("开始向量嵌入与写入 Milvus: dfId={}, chunks={}, model={}", dfId, splits.size(), dataset.getEmbeddingModel());
+            log.info("开始向量嵌入并写入 ES: dfId={}, chunks={}", dfId, splits.size());
             long embedStart = System.currentTimeMillis();
-            vectorStore.add(splits);
+            esSearchService.indexDocuments(dataset.getCollectionName(), splits);
             long embedCost = System.currentTimeMillis() - embedStart;
-            log.info("向量嵌入完成: dfId={}, cost={}ms, avg={}ms/chunk", dfId, embedCost, embedCost / Math.max(1, splits.size()));
+            log.info("ES 索引写入完成: dfId={}, cost={}ms", dfId, embedCost);
 
             df.setProgressPercent(90);
             df.setCurrentStep("保存切片元数据...");

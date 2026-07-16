@@ -103,6 +103,12 @@
                 <version>${project.version}</version>
             </dependency>
 
+            <dependency>
+                <groupId>com.gj.llm</groupId>
+                <artifactId>gj-es</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
             <!-- 解析客户端操作系统、浏览器等 -->
             <dependency>
                 <groupId>nl.basjes.parse.useragent</groupId>
