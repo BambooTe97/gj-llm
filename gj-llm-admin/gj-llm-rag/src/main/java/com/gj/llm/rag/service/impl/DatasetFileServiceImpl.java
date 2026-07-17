@@ -11,6 +11,7 @@ import com.gj.llm.rag.event.DatasetFileUploadedEvent;
 import com.gj.llm.rag.mapper.DatasetFileMapper;
 import com.gj.llm.rag.mapper.DocumentSegmentMapper;
 import com.gj.llm.rag.model.DatasetFileVO;
+import com.gj.llm.rag.model.SearchResultItem;
 import com.gj.llm.rag.service.DatasetFileService;
 import com.gj.llm.rag.service.DatasetService;
 import com.gj.llm.es.service.EsSearchService;
@@ -29,9 +30,7 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -228,7 +227,7 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
     }
 
     @Override
-    public List<Map<String, Object>> testSearch(Long datasetId, String query, int topK) {
+    public List<SearchResultItem> testSearch(Long datasetId, String query, int topK) {
         DatasetEntity dataset = datasetService.getById(datasetId);
         if (dataset == null) {
             throw new RuntimeException("知识库不存在: id=" + datasetId);
@@ -236,15 +235,13 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
 
         List<Document> results = esSearchService.hybridSearch(dataset.getCollectionName(), query, topK);
 
-        List<Map<String, Object>> items = new ArrayList<>();
+        List<SearchResultItem> items = new ArrayList<>();
         for (int i = 0; i < results.size(); i++) {
             Document doc = results.get(i);
-            Map<String, Object> item = new HashMap<>();
-            item.put("rank", i + 1);
-            item.put("content", doc.getText());
-            item.put("score", doc.getScore() != null ? doc.getScore() : 0);
-            item.put("metadata", doc.getMetadata());
-            items.add(item);
+            Object scoreObj = doc.getMetadata().get("score");
+            double score = doc.getScore() != null ? doc.getScore()
+                    : (scoreObj instanceof Number n ? n.doubleValue() : 0);
+            items.add(new SearchResultItem(i + 1, doc.getText(), score, doc.getMetadata()));
         }
         return items;
     }

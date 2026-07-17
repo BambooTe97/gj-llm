@@ -1,14 +1,14 @@
 package com.gj.llm.es.service;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.*;
 import co.elastic.clients.elasticsearch.core.bulk.BulkResponseItem;
 import co.elastic.clients.elasticsearch.indices.CreateIndexRequest;
 import co.elastic.clients.elasticsearch.indices.DeleteIndexRequest;
 import co.elastic.clients.elasticsearch.indices.ExistsRequest;
-import co.elastic.clients.json.JsonData;
+import com.gj.llm.common.util.JacksonUtils;
 import com.gj.llm.es.config.EsProperties;
+import com.gj.llm.es.model.EsDocumentSource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -197,8 +197,12 @@ public class EsSearchService {
 
     // ==================== 混合检索 ====================
 
+    private static final double RRF_K = 60.0;
+    private static final double SPARSE_WEIGHT = 0.3;
+    private static final double DENSE_WEIGHT = 0.7;
+
     /**
-     * 混合检索：BM25 倒排 + KNN 向量 + RRF 融合。
+     * 混合检索：BM25 倒排 + KNN 向量，Java 侧 RRF 融合（ES 9.x 免费版不支持内置 RRF）。
      */
     public List<Document> hybridSearch(String collectionName, String query, int topK) {
         String indexName = toIndexName(collectionName);
@@ -209,69 +213,105 @@ public class EsSearchService {
             String denseQuery = BGE_QUERY_INSTRUCTION + query;
             float[] queryVector = embeddingModel.embed(denseQuery);
 
-            // 2. 构建 hybrid retriever JSON
-            String searchJson = buildHybridSearchJson(query, queryVector, candidateK, topK);
-            try (InputStream is = new ByteArrayInputStream(searchJson.getBytes(StandardCharsets.UTF_8))) {
-                SearchRequest searchReq = SearchRequest.of(s -> s
-                        .index(indexName)
-                        .withJson(is));
-                SearchResponse<Map> response = client.search(searchReq, Map.class);
+            // 2. 分别执行 BM25 和 KNN 查询
+            List<Hit> bm25Hits = bm25Search(indexName, query, candidateK);
+            List<Hit> knnHits = knnSearch(indexName, queryVector, candidateK);
 
-                List<Document> results = new ArrayList<>();
-                for (var hit : response.hits().hits()) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> source = (Map<String, Object>) hit.source();
-                    if (source == null) continue;
+            // 3. Java 侧 RRF 融合（仅排序用）+ 收集 KNN 余弦相似度（展示用）
+            Map<String, Double> rrfScores = new LinkedHashMap<>();
+            Map<String, EsDocumentSource> sourceMap = new LinkedHashMap<>();
+            Map<String, Double> knnScoreMap = new LinkedHashMap<>();
 
-                    Document doc = new Document((String) source.getOrDefault("content", ""));
-                    doc.getMetadata().put("score", hit.score() != null ? hit.score() : 0);
-                    doc.getMetadata().put("source", source.getOrDefault("source", ""));
-                    doc.getMetadata().put("dataset_id", source.get("dataset_id"));
-                    doc.getMetadata().put("dataset_file_id", source.get("dataset_file_id"));
-                    results.add(doc);
-                }
-
-                log.info("ES 混合检索: index={}, query={}, candidates={}, results={}",
-                        indexName, query.substring(0, Math.min(query.length(), 50)),
-                        response.hits().total() != null ? response.hits().total().value() : 0, results.size());
-
-                return results;
+            for (int i = 0; i < bm25Hits.size(); i++) {
+                Hit hit = bm25Hits.get(i);
+                rrfScores.merge(hit.id(), SPARSE_WEIGHT / (RRF_K + i + 1), Double::sum);
+                sourceMap.putIfAbsent(hit.id(), hit.source());
             }
+            for (int i = 0; i < knnHits.size(); i++) {
+                Hit hit = knnHits.get(i);
+                rrfScores.merge(hit.id(), DENSE_WEIGHT / (RRF_K + i + 1), Double::sum);
+                sourceMap.putIfAbsent(hit.id(), hit.source());
+                knnScoreMap.putIfAbsent(hit.id(), hit.score());
+            }
+
+            // 4. 按 RRF 排序，展示分用 KNN 余弦相似度
+            List<Document> results = rrfScores.entrySet().stream()
+                    .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                    .limit(topK)
+                    .map(e -> {
+                        EsDocumentSource src = sourceMap.get(e.getKey());
+                        double displayScore = knnScoreMap.getOrDefault(e.getKey(), 0.0);
+                        Map<String, Object> meta = new HashMap<>();
+                        meta.put("source", src.source());
+                        meta.put("dataset_id", src.datasetId());
+                        meta.put("dataset_file_id", src.datasetFileId());
+                        return Document.builder()
+                                .text(src.content())
+                                .score(displayScore)
+                                .metadata(meta)
+                                .build();
+                    })
+                    .toList();
+
+            log.info("ES 混合检索: index={}, query={}, bm25={}, knn={}, merged={}",
+                    indexName, query.substring(0, Math.min(query.length(), 50)),
+                    bm25Hits.size(), knnHits.size(), results.size());
+
+            return results;
         } catch (Exception e) {
             log.error("ES 混合检索失败: index={}, query={}", indexName, query, e);
             return List.of();
         }
     }
 
-    private String buildHybridSearchJson(String queryText, float[] queryVector, int candidateK, int topK) {
-        // 使用 ES 8.15 retriever API: BM25 standard retriever + KNN retriever → RRF
-        return """
+    private List<Hit> bm25Search(String indexName, String query, int size) throws Exception {
+        String searchJson = """
         {
-          "retriever": {
-            "rrf": {
-              "retrievers": [
-                {
-                  "standard": {
-                    "query": { "match": { "content": "%s" } }
-                  }
-                },
-                {
-                  "knn": {
-                    "field": "embedding",
-                    "query_vector": %s,
-                    "k": %d,
-                    "num_candidates": %d
-                  }
-                }
-              ],
-              "rank_constant": 60,
-              "rank_window_size": %d
-            }
+          "query": { "match": { "content": "%s" } },
+          "size": %d
+        }
+        """.formatted(escapeJson(query), size);
+
+        try (InputStream is = new ByteArrayInputStream(searchJson.getBytes(StandardCharsets.UTF_8))) {
+            SearchRequest req = SearchRequest.of(s -> s.index(indexName).withJson(is));
+            SearchResponse<Map> resp = client.search(req, Map.class);
+            return resp.hits().hits().stream()
+                    .map(h -> new Hit(h.id(), toSource(h.source()), h.score() != null ? h.score() : 0))
+                    .toList();
+        }
+    }
+
+    private List<Hit> knnSearch(String indexName, float[] queryVector, int size) throws Exception {
+        String searchJson = """
+        {
+          "knn": {
+            "field": "embedding",
+            "query_vector": %s,
+            "k": %d,
+            "num_candidates": %d
           },
           "size": %d
         }
-        """.formatted(escapeJson(queryText), toJsonArray(queryVector), candidateK, candidateK * 2, candidateK, topK);
+        """.formatted(toJsonArray(queryVector), size, size * 2, size);
+
+        try (InputStream is = new ByteArrayInputStream(searchJson.getBytes(StandardCharsets.UTF_8))) {
+            SearchRequest req = SearchRequest.of(s -> s.index(indexName).withJson(is));
+            SearchResponse<Map> resp = client.search(req, Map.class);
+            return resp.hits().hits().stream()
+                    .map(h -> new Hit(h.id(), toSource(h.source()), h.score() != null ? h.score() : 0))
+                    .toList();
+        }
     }
+
+    @SuppressWarnings("unchecked")
+    private EsDocumentSource toSource(Object rawSource) {
+        if (rawSource instanceof Map map) {
+            return JacksonUtils.fromMap(map, EsDocumentSource.class);
+        }
+        return new EsDocumentSource("", "", null, null);
+    }
+
+    private record Hit(String id, EsDocumentSource source, double score) {}
 
     private String toJsonArray(float[] arr) {
         StringBuilder sb = new StringBuilder("[");

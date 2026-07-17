@@ -4,10 +4,10 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.gj.llm.rag.entity.DatasetFileEntity;
 import com.gj.llm.rag.model.DatasetFileVO;
+import com.gj.llm.rag.model.SearchResultItem;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
-import java.util.Map;
 
 public interface DatasetFileService extends IService<DatasetFileEntity> {
 
@@ -19,7 +19,7 @@ public interface DatasetFileService extends IService<DatasetFileEntity> {
 
     void reparse(Long datasetFileId);
 
-    List<Map<String, Object>> testSearch(Long datasetId, String query, int topK);
+    List<SearchResultItem> testSearch(Long datasetId, String query, int topK);
 
     void processDatasetFile(Long dfId);
 }

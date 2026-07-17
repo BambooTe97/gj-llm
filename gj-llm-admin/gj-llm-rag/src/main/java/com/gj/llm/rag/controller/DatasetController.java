@@ -6,6 +6,7 @@ import com.gj.llm.rag.entity.DatasetFileEntity;
 import com.gj.llm.rag.model.DatasetCreateRequest;
 import com.gj.llm.rag.model.DatasetFileVO;
 import com.gj.llm.rag.model.DatasetUpdateRequest;
+import com.gj.llm.rag.model.SearchResultItem;
 import com.gj.llm.rag.model.TestSearchRequest;
 import com.gj.llm.rag.service.DatasetFileService;
 import com.gj.llm.rag.service.DatasetService;
@@ -16,7 +17,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/datasets")
@@ -81,7 +81,7 @@ public class DatasetController {
     // ==================== 检索测试 ====================
 
     @PostMapping("/{datasetId}/test")
-    public ApiResponse<List<Map<String, Object>>> testSearch(@PathVariable Long datasetId, @Valid @RequestBody TestSearchRequest request) {
+    public ApiResponse<List<SearchResultItem>> testSearch(@PathVariable Long datasetId, @Valid @RequestBody TestSearchRequest request) {
         return ApiResponse.ok(datasetFileService.testSearch(datasetId, request.getQuery(), request.getTopK()));
     }
 }
