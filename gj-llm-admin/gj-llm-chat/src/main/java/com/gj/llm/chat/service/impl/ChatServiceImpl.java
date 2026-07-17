@@ -8,8 +8,10 @@ import com.gj.llm.chat.model.ChatRequest;
 import com.gj.llm.chat.service.ChatService;
 import com.gj.llm.common.util.JacksonUtils;
 import com.gj.llm.es.service.EsSearchService;
+import com.gj.llm.reranker.service.RerankerService;
 import com.gj.llm.rag.entity.DatasetEntity;
 import com.gj.llm.rag.service.DatasetService;
+import com.gj.llm.rag.service.QueryRewriter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,6 +41,8 @@ import java.util.stream.Collectors;
 public class ChatServiceImpl implements ChatService {
 
     private final EsSearchService esSearchService;
+    private final RerankerService rerankerService;
+    private final QueryRewriter queryRewriter;
     private final DatasetService datasetService;
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
@@ -53,12 +57,25 @@ public class ChatServiceImpl implements ChatService {
     /** Ollama 生成 token 上限（thinking + content），防止无限思考 */
     private static final int NUM_PREDICT_LIMIT = 4096;
 
+    /** RAG 检索最终返回数量 */
+    private static final int TOP_K = 5;
+
+    /** 每个查询变体的粗排返回数 */
+    private static final int VARIANT_TOP_K = 8;
+
+    /** 合并后送 re-ranker 的最大候选数 */
+    private static final int MAX_RERANK_CANDIDATES = 30;
+
     public ChatServiceImpl(EsSearchService esSearchService,
+                           RerankerService rerankerService,
+                           QueryRewriter queryRewriter,
                            DatasetService datasetService,
                            ConversationMapper conversationMapper,
                            MessageMapper messageMapper,
                            WebClient.Builder webClientBuilder) {
         this.esSearchService = esSearchService;
+        this.rerankerService = rerankerService;
+        this.queryRewriter = queryRewriter;
         this.datasetService = datasetService;
         this.conversationMapper = conversationMapper;
         this.messageMapper = messageMapper;
@@ -105,13 +122,40 @@ public class ChatServiceImpl implements ChatService {
                     log.info("[chatStream] ③a DB查询数据集完成, 耗时: {}ms", System.currentTimeMillis() - t3a);
 
                     if (dataset != null) {
+                        // ① 查询改写：生成多个检索变体（含原始查询），扩大粗排覆盖面
+                        long t3r = System.currentTimeMillis();
+                        List<String> queries = queryRewriter.rewrite(userContent);
+                        long rewriteCost = System.currentTimeMillis() - t3r;
+                        log.info("[chatStream] ③r 查询改写完成, 变体数={}, 耗时: {}ms",
+                                queries.size(), rewriteCost);
+
+                        // ② 多路粗排：每个变体分别检索，合并去重
                         long t3b = System.currentTimeMillis();
-                        log.info("[chatStream] ③b 开始 ES 混合检索, collection={}, query.length()={}",
-                                dataset.getCollectionName(), userContent.length());
-                        List<Document> docs = esSearchService.hybridSearch(
-                                dataset.getCollectionName(), userContent, 5);
-                        log.info("[chatStream] ③b ES 混合检索完成, 命中 {} 条, 耗时: {}ms",
-                                docs.size(), System.currentTimeMillis() - t3b);
+                        Map<String, Document> merged = new LinkedHashMap<>();
+                        for (String q : queries) {
+                            List<Document> hits = esSearchService.hybridSearch(
+                                    dataset.getCollectionName(), q, VARIANT_TOP_K);
+                            for (Document doc : hits) {
+                                String key = doc.getText().trim();
+                                Document existing = merged.get(key);
+                                if (existing == null || doc.getScore() > existing.getScore()) {
+                                    merged.put(key, doc);
+                                }
+                            }
+                        }
+                        List<Document> candidates = new ArrayList<>(merged.values());
+                        candidates.sort(Comparator.comparingDouble(Document::getScore).reversed());
+                        if (candidates.size() > MAX_RERANK_CANDIDATES) {
+                            candidates = candidates.subList(0, MAX_RERANK_CANDIDATES);
+                        }
+                        log.info("[chatStream] ③b 多路检索完成, 合并去重后候选 {} 条, 耗时: {}ms",
+                                candidates.size(), System.currentTimeMillis() - t3b);
+
+                        // ③ 精排：Cross-Encoder Re-Ranker 重打分
+                        long t3c = System.currentTimeMillis();
+                        List<Document> docs = rerankerService.rerank(userContent, candidates, TOP_K);
+                        log.info("[chatStream] ③c Re-Ranker 精排完成, 返回 {} 条, 耗时: {}ms",
+                                docs.size(), System.currentTimeMillis() - t3c);
 
                         context = docs.stream().map(Document::getText).collect(Collectors.joining("\n\n"));
                         references = buildReferences(docs);

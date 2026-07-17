@@ -7,6 +7,7 @@ import io.milvus.v2.common.DataType;
 import io.milvus.v2.common.IndexParam;
 import io.milvus.v2.service.collection.request.AddFieldReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
+import io.milvus.v2.service.collection.request.DropCollectionReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.collection.request.LoadCollectionReq;
 import io.milvus.v2.service.index.request.CreateIndexReq;
@@ -122,5 +123,18 @@ public class DynamicVectorStoreManager {
                 .initializeSchema(false)
                 .autoId(true)
                 .build();
+    }
+
+    /** 删除 Milvus 集合并清空缓存 */
+    public void dropCollection(String type) {
+        String collectionName = VectorStoreConstants.COLLECTION_PREFIX + type;
+        try {
+            milvusClientV2.dropCollection(
+                    DropCollectionReq.builder().collectionName(collectionName).build());
+            storeCache.remove(type);
+            log.info("Milvus 集合删除成功: {}", collectionName);
+        } catch (Exception e) {
+            log.warn("Milvus 集合删除失败（可能不存在）: {}", collectionName);
+        }
     }
 }

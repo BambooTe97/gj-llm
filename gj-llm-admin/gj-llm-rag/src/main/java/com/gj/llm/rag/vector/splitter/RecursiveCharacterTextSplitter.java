@@ -119,24 +119,33 @@ public class RecursiveCharacterTextSplitter {
         return chunks;
     }
 
+    /**
+     * 标准滑动窗口重叠：将 semantic chunks 拼接为连续文本后，以 chunkSize 为窗口、
+     * chunkOverlap 为步进偏移量生成固定大小的检索块。
+     *
+     * <p>例如 chunkSize=600, overlap=150：
+     * 块1: text[0:600], 块2: text[450:1050], 块3: text[900:1500] ...</p>
+     */
     private List<String> applyOverlap(List<String> chunks) {
         if (chunkOverlap == 0 || chunks.size() <= 1) {
             return filterShort(chunks);
         }
 
+        // 拼接为连续文本
+        StringBuilder sb = new StringBuilder();
+        for (String chunk : chunks) {
+            sb.append(chunk);
+        }
+        String text = sb.toString();
+
+        // 滑动窗口
         List<String> overlapped = new ArrayList<>();
-        for (int i = 0; i < chunks.size(); i++) {
-            String chunk = chunks.get(i);
-            // 仅前置重叠：从上一个 chunk 末尾取 overlap 内容，保持 chunk 大小 = chunkSize + overlap
-            if (i > 0) {
-                String prev = chunks.get(i - 1);
-                if (prev.length() > chunkOverlap) {
-                    chunk = prev.substring(prev.length() - chunkOverlap) + chunk;
-                } else {
-                    chunk = prev + chunk;
-                }
-            }
-            overlapped.add(chunk);
+        int pos = 0;
+        while (pos < text.length()) {
+            int end = Math.min(pos + chunkSize, text.length());
+            overlapped.add(text.substring(pos, end));
+            if (end >= text.length()) break;
+            pos = end - chunkOverlap;
         }
 
         return filterShort(overlapped);

@@ -25,6 +25,7 @@
         <module>gj-mybatis</module>
         <module>gj-file</module>
         <module>gj-es</module>
+        <module>gj-reranker</module>
     </modules>
 
 </project>

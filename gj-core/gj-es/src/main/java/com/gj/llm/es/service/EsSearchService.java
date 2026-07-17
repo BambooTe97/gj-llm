@@ -28,7 +28,6 @@ import java.util.*;
 @Service
 public class EsSearchService {
 
-    private static final String BGE_QUERY_INSTRUCTION = "为这个句子生成表示以用于检索相关文章：";
     private static final int BATCH_SIZE = 20;
 
     private final ElasticsearchClient client;
@@ -100,7 +99,12 @@ public class EsSearchService {
                 "type": "dense_vector",
                 "dims": %d,
                 "index": true,
-                "similarity": "cosine"
+                "similarity": "cosine",
+                "index_options": {
+                  "type": "hnsw",
+                  "m": 32,
+                  "ef_construction": 200
+                }
               },
               "dataset_id":    { "type": "long" },
               "dataset_file_id": { "type": "long" },
@@ -209,9 +213,8 @@ public class EsSearchService {
         int candidateK = topK * 5;
 
         try {
-            // 1. 嵌入查询向量（加 BGE 指令前缀）
-            String denseQuery = BGE_QUERY_INSTRUCTION + query;
-            float[] queryVector = embeddingModel.embed(denseQuery);
+            // 1. 嵌入查询向量
+            float[] queryVector = embeddingModel.embed(query);
 
             // 2. 分别执行 BM25 和 KNN 查询
             List<Hit> bm25Hits = bm25Search(indexName, query, candidateK);
@@ -292,7 +295,7 @@ public class EsSearchService {
           },
           "size": %d
         }
-        """.formatted(toJsonArray(queryVector), size, size * 2, size);
+        """.formatted(toJsonArray(queryVector), size, size * 10, size);
 
         try (InputStream is = new ByteArrayInputStream(searchJson.getBytes(StandardCharsets.UTF_8))) {
             SearchRequest req = SearchRequest.of(s -> s.index(indexName).withJson(is));
