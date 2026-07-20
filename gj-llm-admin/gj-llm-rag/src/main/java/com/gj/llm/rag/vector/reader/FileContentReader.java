@@ -7,7 +7,12 @@ import org.springframework.core.io.Resource;
 import java.util.List;
 
 /**
- * 文件内容读取策略接口 —— 不同文件后缀对应不同的读取实现。
+ * 文件内容读取策略接口 —— 不同文件类型对应不同的读取实现。
+ *
+ * <p>Spring 容器中所有 FileContentReader Bean 会被自动注入为 List，
+ * 调用方按 extension 逐个匹配，取首个 supports() 返回 true 的实现。</p>
+ *
+ * @author zf
  */
 public interface FileContentReader {
 

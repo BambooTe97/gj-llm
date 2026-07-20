@@ -2,7 +2,7 @@ package com.gj.llm.rag.vector;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.gj.llm.es.service.EsSearchService;
-import com.gj.llm.rag.vector.reader.FileContentReader;
+import com.gj.llm.rag.vector.reader.FileReaderDispatcher;
 import com.gj.llm.rag.vector.splitter.RecursiveCharacterTextSplitter;
 import com.gj.llm.file.model.FileInfo;
 import com.gj.llm.file.service.FileStorageService;
@@ -24,12 +24,14 @@ public class FileVectorStoreHandler {
 
     private final FileStorageService fileStorageService;
     private final EsSearchService esSearchService;
-    private final List<FileContentReader> readers;
+    private final FileReaderDispatcher dispatcher;
 
-    public FileVectorStoreHandler(FileStorageService fileStorageService, EsSearchService esSearchService, List<FileContentReader> readers) {
+    public FileVectorStoreHandler(FileStorageService fileStorageService,
+                                  EsSearchService esSearchService,
+                                  FileReaderDispatcher dispatcher) {
         this.fileStorageService = fileStorageService;
         this.esSearchService = esSearchService;
-        this.readers = readers;
+        this.dispatcher = dispatcher;
     }
 
     public int vectorizeAllFiles(String type, Integer chunkSize) {
@@ -39,7 +41,7 @@ public class FileVectorStoreHandler {
         for (FileInfo fileInfo : allFiles) {
             try {
                 Resource resource = fileStorageService.loadFileAsResource(fileInfo.getId());
-                List<Document> documents = readFile(resource, fileInfo);
+                List<Document> documents = dispatcher.read(resource, fileInfo);
                 if (!documents.isEmpty()) {
                     documents.forEach(doc -> {
                         doc.getMetadata().put("type", type);
@@ -62,7 +64,7 @@ public class FileVectorStoreHandler {
         RecursiveCharacterTextSplitter splitter = buildSplitter(chunkSize);
         FileInfo fileInfo = fileStorageService.getById(fileId);
         Resource resource = fileStorageService.loadFileAsResource(fileId);
-        List<Document> documents = readFile(resource, fileInfo);
+        List<Document> documents = dispatcher.read(resource, fileInfo);
         documents.forEach(doc -> {
             doc.getMetadata().put("type", type);
             doc.getMetadata().put("source", fileInfo.getOriginalName());
@@ -76,17 +78,6 @@ public class FileVectorStoreHandler {
     private RecursiveCharacterTextSplitter buildSplitter(Integer chunkSize) {
         int size = chunkSize != null && chunkSize > 0 ? chunkSize : DEFAULT_CHUNK_SIZE;
         return new RecursiveCharacterTextSplitter(size, DEFAULT_CHUNK_OVERLAP, DEFAULT_MIN_CHUNK_LENGTH);
-    }
-
-    private List<Document> readFile(Resource resource, FileInfo fileInfo) {
-        String extension = fileInfo.getExtension() != null ? fileInfo.getExtension().toLowerCase() : "";
-        for (FileContentReader reader : readers) {
-            if (reader.supports(extension)) {
-                return reader.read(resource, fileInfo);
-            }
-        }
-        log.info("不支持的文件类型: .{} ({})", extension, fileInfo.getOriginalName());
-        return List.of();
     }
 
     private List<FileInfo> fetchAllFiles() {

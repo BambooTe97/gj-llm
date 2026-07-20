@@ -3,6 +3,7 @@ package com.gj.llm.file.service.impl;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.gj.llm.file.config.FileStorageProperties;
+import com.gj.llm.file.constant.FileTypeEnum;
 import com.gj.llm.file.entity.FileEntity;
 import com.gj.llm.file.mapper.FileMapper;
 import com.gj.llm.file.model.FileInfo;
@@ -187,10 +188,16 @@ public class FileStorageServiceImpl implements FileStorageService {
 
     private void validateExtension(String extension) {
         if (extension.isEmpty()) return;
+        // 优先使用配置的白名单，未配置则使用 FileTypeEnum
         List<String> allowed = properties.getAllowedExtensions();
-        if (allowed != null && !allowed.isEmpty() && !allowed.contains(extension.toLowerCase())) {
+        if (allowed != null && !allowed.isEmpty()) {
+            if (!allowed.contains(extension.toLowerCase())) {
+                throw new RuntimeException("不支持的文件类型: ." + extension
+                        + "，允许的类型: " + String.join(", ", allowed));
+            }
+        } else if (FileTypeEnum.fromExtension(extension).isEmpty()) {
             throw new RuntimeException("不支持的文件类型: ." + extension
-                    + "，允许的类型: " + String.join(", ", allowed));
+                    + "，允许的类型: " + String.join(", ", FileTypeEnum.allExtensions()));
         }
     }
 

@@ -15,7 +15,7 @@ import com.gj.llm.rag.model.SearchResultItem;
 import com.gj.llm.rag.service.DatasetFileService;
 import com.gj.llm.rag.service.DatasetService;
 import com.gj.llm.es.service.EsSearchService;
-import com.gj.llm.rag.vector.reader.FileContentReader;
+import com.gj.llm.rag.vector.reader.FileReaderDispatcher;
 import com.gj.llm.rag.vector.splitter.RecursiveCharacterTextSplitter;
 import com.gj.llm.common.util.JacksonUtils;
 import com.gj.llm.file.model.FileInfo;
@@ -42,20 +42,20 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
     private final FileStorageService fileStorageService;
     private final EsSearchService esSearchService;
     private final DocumentSegmentMapper segmentMapper;
-    private final List<FileContentReader> readers;
+    private final FileReaderDispatcher dispatcher;
 
     public DatasetFileServiceImpl(ApplicationEventPublisher eventPublisher,
                                   DatasetService datasetService,
                                   FileStorageService fileStorageService,
                                   EsSearchService esSearchService,
                                   DocumentSegmentMapper segmentMapper,
-                                  List<FileContentReader> readers) {
+                                  FileReaderDispatcher dispatcher) {
         this.eventPublisher = eventPublisher;
         this.datasetService = datasetService;
         this.fileStorageService = fileStorageService;
         this.esSearchService = esSearchService;
         this.segmentMapper = segmentMapper;
-        this.readers = readers;
+        this.dispatcher = dispatcher;
     }
 
     @Override
@@ -266,11 +266,12 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
             FileInfo fileInfo = fileStorageService.getById(df.getFileId());
             Resource resource = fileStorageService.loadFileAsResource(df.getFileId());
 
-            List<Document> documents = readFile(resource, fileInfo);
+            List<Document> documents = dispatcher.read(resource, fileInfo);
             if (documents.isEmpty()) {
                 throw new RuntimeException("不支持的文件类型或文件内容为空");
             }
-            log.info("PDF 读取完成: dfId={}, pages={}", dfId, documents.size());
+            log.info("文件读取完成: dfId={}, fileName={}, documents={}",
+                    dfId, fileInfo.getOriginalName(), documents.size());
 
             df.setProgressPercent(30);
             df.setCurrentStep("文本切分中...");
@@ -335,13 +336,4 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
         }
     }
 
-    private List<Document> readFile(Resource resource, FileInfo fileInfo) {
-        String extension = fileInfo.getExtension() != null ? fileInfo.getExtension().toLowerCase() : "";
-        for (FileContentReader reader : readers) {
-            if (reader.supports(extension)) {
-                return reader.read(resource, fileInfo);
-            }
-        }
-        return List.of();
-    }
 }

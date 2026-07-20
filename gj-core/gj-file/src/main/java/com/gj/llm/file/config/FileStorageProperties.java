@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -32,12 +33,8 @@ public class FileStorageProperties implements InitializingBean {
     /** 单个文件最大大小（字节），默认 10MB */
     private long maxFileSize = 10 * 1024 * 1024L;
 
-    /** 允许的文件扩展名列表（小写，不含点号） */
-    private List<String> allowedExtensions = List.of(
-            "pdf", "doc", "docx", "txt", "md",
-            "png", "jpg", "jpeg", "gif", "csv",
-            "xls", "xlsx", "ppt", "pptx"
-    );
+    /** 允许的文件扩展名列表（小写，不含点号）。留空则使用 {@link com.gj.llm.file.constant.FileTypeEnum} 全部值 */
+    private List<String> allowedExtensions = Collections.emptyList();
 
     /**
      * 初始化时解析上传目录为绝对路径，避免依赖 JVM 工作目录导致文件写入错误位置。
