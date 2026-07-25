@@ -1,30 +1,9 @@
 <script setup lang="ts">
-import { useAppStore } from '@/stores/modules/app'
-
-const appStore = useAppStore()
 </script>
 
 <template>
   <div class="settings-view">
     <h2>系统设置</h2>
-
-    <div class="glass-card">
-      <div class="glass-card__header">
-        <span>外观</span>
-      </div>
-      <div class="glass-card__body">
-        <el-form label-width="120px">
-          <el-form-item label="侧边栏">
-            <el-switch
-              :model-value="appStore.sidebarCollapsed"
-              active-text="收起"
-              inactive-text="展开"
-              @change="appStore.toggleSidebar()"
-            />
-          </el-form-item>
-        </el-form>
-      </div>
-    </div>
 
     <div class="glass-card">
       <div class="glass-card__header">

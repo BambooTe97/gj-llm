@@ -16,9 +16,9 @@ sudo sysctl -w vm.max_map_count=262144
 echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf
 
 # 2. 数据目录（ES 容器内 UID=1000）
-sudo mkdir -p /data/elasticsearch
-sudo chown -R 1000:1000 /data/elasticsearch
-sudo chmod 750 /data/elasticsearch
+sudo mkdir -p /home/tools/es/elasticsearch
+sudo chown -R 1000:1000 /home/tools/es/elasticsearch
+sudo chmod 750 /home/tools/es/elasticsearch
 
 # 3. 启动 ES（单节点，关闭安全认证）
 docker run -d \
@@ -27,12 +27,11 @@ docker run -d \
   -e "discovery.type=single-node" \
   -e "xpack.security.enabled=false" \
   -e "ES_JAVA_OPTS=-Xms2g -Xmx2g" \
-  -v /data/elasticsearch:/usr/share/elasticsearch/data \
+  -v /home/tools/es/elasticsearch:/usr/share/elasticsearch/data \
   docker.elastic.co/elasticsearch/elasticsearch:9.4.2
 
 # 4. 安装 IK 中文分词器
-docker exec -it elasticsearch ./bin/elasticsearch-plugin install \
-  https://get.infini.cloud/elasticsearch/analysis-ik/9.4.2
+docker exec -it elasticsearch ./bin/elasticsearch-plugin install https://get.infini.cloud/elasticsearch/analysis-ik/9.4.2
 
 # 5. 重启 ES
 docker restart elasticsearch

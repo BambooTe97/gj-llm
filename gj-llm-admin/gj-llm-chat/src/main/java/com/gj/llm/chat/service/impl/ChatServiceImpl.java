@@ -133,8 +133,7 @@ public class ChatServiceImpl implements ChatService {
                         long t3b = System.currentTimeMillis();
                         Map<String, Document> merged = new LinkedHashMap<>();
                         for (String q : queries) {
-                            List<Document> hits = esSearchService.hybridSearch(
-                                    dataset.getCollectionName(), q, VARIANT_TOP_K);
+                            List<Document> hits = esSearchService.hybridSearch(dataset.getCollectionName(), q, VARIANT_TOP_K);
                             for (Document doc : hits) {
                                 String key = doc.getText().trim();
                                 Document existing = merged.get(key);

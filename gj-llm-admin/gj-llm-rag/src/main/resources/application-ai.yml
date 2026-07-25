@@ -4,9 +4,9 @@ spring:
     ollama:
       base-url: http://localhost:11434
       chat:
-         model: deepseek-r1:latest
+#         model: deepseek-r1:latest
 #        model: qwen3:8b
-#        model: qwen3.5:2b
+        model: qwen3.5:2b
       embedding:
         model: bge-m3:latest
     vectorstore:
@@ -18,7 +18,8 @@ spring:
         index-type: hnsw
         metric-type: cosine
         client:
-          host: 192.168.40.130
+#          host: 192.168.40.130
+          host: 192.168.0.109
           port: 19530
           username: root
           password: milvus
@@ -27,7 +28,8 @@ spring:
 gj:
   llm:
     es:
-      host: 192.168.40.130
+#      host: 192.168.40.130
+      host: 192.168.0.109
       port: 9200
       index-prefix: rag_
       embedding-dimension: 1024
@@ -35,6 +37,7 @@ gj:
       replicas: 0
     reranker:
       enabled: true
-      host: 192.168.40.130
+#      host: 192.168.40.130
+      host: 192.168.0.109
       port: 3000
       timeout: 30000
