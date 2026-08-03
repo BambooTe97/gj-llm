@@ -11,7 +11,6 @@ const userStore = useUserStore()
 const navItems = [
   { path: '/chat', label: '聊天', icon: ChatDotRound, match: (p: string) => p.startsWith('/chat') },
   { path: '/datasets', label: '知识库', icon: Collection, match: (p: string) => p.startsWith('/datasets') },
-  { path: '/settings', label: '设置', icon: Setting, match: (p: string) => p.startsWith('/settings') },
 ]
 
 const activeIndex = computed(() => {

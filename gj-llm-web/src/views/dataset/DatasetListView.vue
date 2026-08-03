@@ -23,9 +23,9 @@ const filteredList = computed(() => {
   return list.value.filter(d => d.name.toLowerCase().includes(kw))
 })
 
-// ---- 新建/编辑弹窗 ----
-const dialogVisible = ref(false)
-const dialogTitle = ref('新建知识库')
+// ---- 新建/编辑抽屉 ----
+const drawerVisible = ref(false)
+const drawerTitle = ref('新建知识库')
 const formRef = ref<FormInstance>()
 const saving = ref(false)
 const isEdit = ref(false)
@@ -113,19 +113,19 @@ function handleSizeChange(size: number) { pageSize.value = size; currentPage.val
 function handleCreate() {
   isEdit.value = false
   editId.value = null
-  dialogTitle.value = '新建知识库'
+  drawerTitle.value = '新建知识库'
   form.value = {
     name: '', description: '', embeddingModel: '', vectorStoreType: '',
     collectionName: '', chunkStrategy: 'general', chunkSize: 800, chunkOverlap: 100,
   }
-  dialogVisible.value = true
+  drawerVisible.value = true
 }
 
 // ---- 编辑（配置） ----
 function handleEdit(row: Dataset) {
   isEdit.value = true
   editId.value = row.id
-  dialogTitle.value = '配置知识库'
+  drawerTitle.value = '配置知识库'
   form.value = {
     name: row.name,
     description: row.description || '',
@@ -136,7 +136,7 @@ function handleEdit(row: Dataset) {
     chunkSize: row.chunkSize,
     chunkOverlap: row.chunkOverlap,
   }
-  dialogVisible.value = true
+  drawerVisible.value = true
 }
 
 // ---- 提交 ----
@@ -167,7 +167,7 @@ async function handleSubmit() {
       })
       ElMessage.success('创建成功')
     }
-    dialogVisible.value = false
+    drawerVisible.value = false
     await loadList()
   } finally {
     saving.value = false
@@ -298,11 +298,12 @@ onMounted(() => { loadList() })
       />
     </div>
 
-    <!-- 新建/编辑弹窗 -->
-    <el-dialog
-      v-model="dialogVisible"
-      :title="dialogTitle"
-      width="560px"
+    <!-- 新建/编辑抽屉 -->
+    <el-drawer
+      v-model="drawerVisible"
+      :title="drawerTitle"
+      direction="rtl"
+      size="520px"
       :close-on-click-modal="false"
       destroy-on-close
     >
@@ -374,12 +375,14 @@ onMounted(() => { loadList() })
         </template>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSubmit">
-          {{ isEdit ? '保存' : '创建' }}
-        </el-button>
+        <div class="ds-drawer__footer">
+          <el-button @click="drawerVisible = false">取消</el-button>
+          <el-button type="primary" :loading="saving" @click="handleSubmit">
+            {{ isEdit ? '保存' : '创建' }}
+          </el-button>
+        </div>
       </template>
-    </el-dialog>
+    </el-drawer>
   </div>
 </template>
 
@@ -566,5 +569,12 @@ onMounted(() => { loadList() })
   padding-top: 16px;
   border-top: 1px solid rgba(210, 210, 215, 0.3);
   flex-shrink: 0;
+}
+
+// ---- 抽屉底部按钮 ----
+.ds-drawer__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 </style>

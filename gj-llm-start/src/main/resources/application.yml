@@ -14,7 +14,7 @@ spring:
   # ==================== 数据库配置 ====================
   datasource:
 #    url: jdbc:mysql://localhost:3306/gj_llm?useSSL=false&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
-    url: jdbc:mysql://192.168.0.109:3306/gj_llm?useSSL=false&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://192.168.50.109:3306/gj_llm?useSSL=false&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
     username: root
 #    password: Xx123@pwd
     password: 111111

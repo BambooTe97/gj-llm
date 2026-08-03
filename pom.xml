@@ -34,6 +34,7 @@
         <commons.io.version>2.22.0</commons.io.version>
         <apache.commons.version>3.20.0</apache.commons.version>
         <yauaa.version>8.1.1</yauaa.version>
+        <langchain4j.version>1.18.0</langchain4j.version>
     </properties>
 
     <dependencyManagement>
@@ -120,6 +121,13 @@
                 <groupId>nl.basjes.parse.useragent</groupId>
                 <artifactId>yauaa</artifactId>
                 <version>${yauaa.version}</version>
+            </dependency>
+
+            <!-- Source: https://mvnrepository.com/artifact/dev.langchain4j/langchain4j -->
+            <dependency>
+                <groupId>dev.langchain4j</groupId>
+                <artifactId>langchain4j</artifactId>
+                <version>${langchain4j.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

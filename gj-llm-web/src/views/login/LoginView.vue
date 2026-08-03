@@ -525,15 +525,22 @@ onUnmounted(() => {
   color: rgba(220, 225, 235, 0.7); font-weight: 500;
 }
 
+// 登录页是深色玻璃卡片，输入框需用深色半透明背景 + 浅色文字；
+// 用 !important 覆盖 element-variables.scss 中针对浅色主题的全局输入框样式
 :deep(.el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.06);
-  border: 0.5px solid rgba(255, 255, 255, 0.12);
-  box-shadow: none !important; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 0.5px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: none !important;
+  border-radius: 10px !important;
   transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
 
-  &:hover { border-color: rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.1); }
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.25) !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+  }
   &.is-focus {
-    border-color: #4088e0; background: rgba(255, 255, 255, 0.12);
+    border-color: #4088e0 !important;
+    background: rgba(255, 255, 255, 0.12) !important;
     box-shadow: 0 0 0 3px rgba(64, 136, 224, 0.18) !important;
   }
 }

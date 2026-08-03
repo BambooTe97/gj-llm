@@ -108,11 +108,44 @@
   }
 }
 
+// ========== Element Plus 抽屉玻璃效果 ==========
+// el-drawer 默认背景为 var(--el-bg-color)（本项目为灰 #d5d5dc），与整体玻璃风格不符，覆盖之
+.el-drawer {
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.4) !important;
+
+  // 标题栏：去掉默认下边框，与玻璃面板融合
+  &__header {
+    margin-bottom: 0 !important;
+    padding: 20px 24px 16px !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+    color: #1d1d1f !important;
+  }
+
+  &__title {
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    color: #1d1d1f !important;
+  }
+
+  // 内容区留出舒适内边距
+  &__body {
+    padding: 20px 24px !important;
+  }
+
+  // 底部按钮区加上分隔线
+  &__footer {
+    border-top: 1px solid rgba(0, 0, 0, 0.06) !important;
+    padding: 16px 24px !important;
+  }
+}
+
 // ========== Element Plus 输入框玻璃效果 ==========
+// 不对 .el-input__wrapper 使用 backdrop-filter：它会令输入文字在 Windows HiDPI 下模糊
 .el-input__wrapper {
   background: rgba(255, 255, 255, 0.55) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
   border-radius: 10px !important;
   box-shadow: none !important;
   border: 1px solid rgba(210, 210, 215, 0.4) !important;
@@ -132,8 +165,6 @@
 
 .el-textarea__inner {
   background: rgba(255, 255, 255, 0.55) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
   border-radius: 10px !important;
   border: 1px solid rgba(210, 210, 215, 0.4) !important;
   box-shadow: none !important;

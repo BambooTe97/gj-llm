@@ -25,7 +25,7 @@ const showChatSubPanel = computed(() => route.path.startsWith('/chat'))
 
       <main class="layout-main">
         <router-view v-slot="{ Component }">
-          <Transition name="spring" mode="out-in">
+          <Transition name="spring">
             <component :is="Component" :key="route.path" />
           </Transition>
         </router-view>
@@ -69,6 +69,7 @@ const showChatSubPanel = computed(() => route.path.startsWith('/chat'))
   overflow: hidden;
   padding: 0;
   background: transparent;
+  position: relative;
 }
 
 // ========================= 滑入 =========================
@@ -86,60 +87,28 @@ const showChatSubPanel = computed(() => route.path.startsWith('/chat'))
 }
 
 // ========================= 页面切换 =========================
+// 仅用 opacity + transform（GPU 合成属性），避免 filter: blur / clip-path
+// 这类每帧重光栅化的昂贵动画导致切换时主线程被占满、数据请求发不出去。
+// 去掉 mode="out-in" 后新旧页面会短暂并存：离场页绝对定位脱离文档流，
+// 进场页占据正常位置，形成交叉淡入淡出，请求在新页 onMounted 时立即发出。
 .spring-enter-active {
-  animation: fabric-in 0.7s cubic-bezier(0.22, 0.6, 0.15, 1) both;
+  transition:
+    opacity 0.4s cubic-bezier(0.22, 0.6, 0.15, 1),
+    transform 0.4s cubic-bezier(0.22, 0.6, 0.15, 1);
 }
 .spring-leave-active {
-  animation: fabric-out 0.25s cubic-bezier(0.4, 0, 0.6, 1) both;
+  position: absolute;
+  inset: 0;
+  transition:
+    opacity 0.2s cubic-bezier(0.4, 0, 0.6, 1),
+    transform 0.2s cubic-bezier(0.4, 0, 0.6, 1);
 }
-
-@keyframes fabric-in {
-  0% {
-    clip-path: inset(0% 98% 0% 0);
-    filter: blur(24px) brightness(0.5);
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  20% {
-    filter: blur(14px) brightness(0.7);
-    opacity: 0.4;
-  }
-  40% {
-    clip-path: inset(0% 50% 0% 0);
-    filter: blur(6px) brightness(0.88);
-    opacity: 0.75;
-    transform: translateY(-2px);
-  }
-  60% {
-    clip-path: inset(0% 5% 0% 0);
-    filter: blur(1.5px) brightness(0.98);
-    opacity: 1;
-    transform: translateY(1px);
-  }
-  80% {
-    clip-path: inset(0% 0% 0% 0);
-    filter: blur(0.3px) brightness(1);
-    transform: translateY(-0.5px);
-  }
-  100% {
-    clip-path: inset(0 0 0 0);
-    filter: blur(0px) brightness(1);
-    opacity: 1;
-    transform: translateY(0);
-  }
+.spring-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
 }
-
-@keyframes fabric-out {
-  0% {
-    clip-path: inset(0 0 0 0);
-    filter: blur(0px) brightness(1);
-    opacity: 1;
-  }
-  100% {
-    clip-path: inset(0% 99% 0% 0);
-    filter: blur(20px) brightness(0.4);
-    opacity: 0;
-    transform: translateY(-6px);
-  }
+.spring-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 </style>
