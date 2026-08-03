@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gj.llm.base.mapper.MenuMapper">
+
+    <!-- ==================== 按用户查询菜单（多表关联，去重） ==================== -->
+
+    <!-- 用户可访问的菜单：sys_user_role -> sys_role_menu -> sys_menu，按 sort 升序去重 -->
+    <select id="selectMenusByUserId" resultType="com.gj.llm.base.entity.MenuEntity">
+        SELECT DISTINCT
+            m.id, m.parent_id, m.name, m.type, m.path, m.component,
+            m.perms, m.icon, m.sort, m.visible, m.status,
+            m.create_by, m.update_by, m.created_at, m.updated_at
+        FROM sys_menu m
+        INNER JOIN sys_role_menu rm ON m.id = rm.menu_id
+        INNER JOIN sys_user_role ur ON rm.role_id = ur.role_id
+        WHERE ur.user_id = #{userId}
+          AND m.status = 1
+        ORDER BY m.sort ASC
+    </select>
+
+    <!-- ==================== 按用户查询权限标识 ==================== -->
+
+    <!-- 用户权限标识：仅菜单(C)/按钮(B)类型且 perms 非空，去重 -->
+    <select id="selectPermsByUserId" resultType="java.lang.String">
+        SELECT DISTINCT m.perms
+        FROM sys_menu m
+        INNER JOIN sys_role_menu rm ON m.id = rm.menu_id
+        INNER JOIN sys_user_role ur ON rm.role_id = ur.role_id
+        WHERE ur.user_id = #{userId}
+          AND m.status = 1
+          AND m.perms IS NOT NULL
+          AND m.perms != ''
+          AND m.type IN ('C', 'B')
+    </select>
+
+</mapper>

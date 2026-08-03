@@ -106,3 +106,94 @@ export interface PageData<T> {
   current: number
   pages: number
 }
+
+// ==================== 系统管理 ====================
+
+/** 菜单类型：M=目录, C=菜单, B=按钮 */
+export type MenuType = 'M' | 'C' | 'B'
+
+/** 菜单 */
+export interface Menu {
+  id: number
+  parentId: number
+  name: string
+  type: MenuType
+  path?: string | null
+  component?: string | null
+  perms?: string | null
+  icon?: string | null
+  sort: number
+  visible: number
+  status: number
+  createBy?: string | null
+  createdAt?: string
+  updatedAt?: string
+  children?: Menu[]
+}
+
+/** 角色 */
+export interface Role {
+  id: number
+  name: string
+  code: string
+  description?: string | null
+  createdAt?: string
+}
+
+/** 系统用户（管理用，不含密码） */
+export interface SysUser {
+  id: number
+  username: string
+  nickname?: string | null
+  avatar?: string | null
+  email?: string | null
+  status: number
+  createdAt?: string
+  updatedAt?: string
+  roles?: Role[]
+}
+
+/** 创建/更新用户请求体 */
+export interface SysUserWrite {
+  username?: string
+  password?: string
+  nickname?: string
+  email?: string
+  status?: number
+  roleIds?: number[]
+}
+
+/** 创建/更新菜单请求体 */
+export interface MenuWrite {
+  parentId?: number
+  name?: string
+  type?: MenuType
+  path?: string
+  component?: string
+  perms?: string
+  icon?: string
+  sort?: number
+  visible?: number
+  status?: number
+}
+
+/** 当前登录用户信息（/api/auth/userinfo 返回） */
+export interface UserInfo {
+  id: number
+  username: string
+  nickname?: string | null
+  avatar?: string | null
+  roles: string[]
+  permissions: string[]
+  menus: Menu[]
+}
+
+/** 系统接口（sys_api，自动扫描入库） */
+export interface ApiItem {
+  id: number
+  controller: string
+  methodName: string
+  httpMethod: string
+  path: string
+  summary?: string | null
+}

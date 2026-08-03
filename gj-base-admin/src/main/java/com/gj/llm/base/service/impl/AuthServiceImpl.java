@@ -1,8 +1,11 @@
 package com.gj.llm.base.service.impl;
 
+import com.gj.llm.base.entity.MenuEntity;
 import com.gj.llm.base.model.LoginRequest;
 import com.gj.llm.base.model.LoginResponse;
+import com.gj.llm.base.model.UserInfoResponse;
 import com.gj.llm.base.service.AuthService;
+import com.gj.llm.base.service.MenuService;
 import com.gj.llm.security.model.SecurityUser;
 import com.gj.llm.security.util.JwtUtils;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +14,11 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 /**
  * 认证服务实现 —— 处理登录、Token 刷新、登出等核心认证逻辑。
@@ -32,6 +39,7 @@ public class AuthServiceImpl implements AuthService {
 
     private final AuthenticationManager authenticationManager;
     private final JwtUtils jwtUtils;
+    private final MenuService menuService;
 
     /**
      * 用户登录：校验凭据并签发双 Token。
@@ -108,5 +116,35 @@ public class AuthServiceImpl implements AuthService {
         // 无状态 JWT：服务端无需额外操作
         String username = jwtUtils.getUsername(accessToken);
         log.info("用户登出: {}", username);
+    }
+
+    /**
+     * 获取当前登录用户信息：从 SecurityContext 取认证主体，
+     * 聚合角色编码、权限标识、菜单树。
+     */
+    @Override
+    public UserInfoResponse getCurrentUserInfo() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !(auth.getPrincipal() instanceof SecurityUser su)) {
+            throw new RuntimeException("未登录或认证信息缺失");
+        }
+        // 从 authorities 中提取角色编码（ROLE_ 前缀）
+        List<String> roles = su.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .filter(a -> a.startsWith("ROLE_"))
+                .map(a -> a.substring(5))
+                .toList();
+        // 当前用户可访问的菜单树（仅目录/菜单类型）
+        List<MenuEntity> menus = menuService.getCurrentUserMenuTree();
+
+        return UserInfoResponse.builder()
+                .id(su.getUserId())
+                .username(su.getUsername())
+                .nickname(su.getNickname())
+                .avatar(su.getAvatar())
+                .roles(roles)
+                .permissions(su.getPermissions())
+                .menus(menus)
+                .build();
     }
 }

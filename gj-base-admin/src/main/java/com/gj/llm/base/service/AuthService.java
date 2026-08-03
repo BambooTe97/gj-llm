@@ -2,6 +2,7 @@ package com.gj.llm.base.service;
 
 import com.gj.llm.base.model.LoginRequest;
 import com.gj.llm.base.model.LoginResponse;
+import com.gj.llm.base.model.UserInfoResponse;
 
 /**
  * 认证服务接口 —— 处理用户登录、登出、Token 刷新。
@@ -35,4 +36,13 @@ public interface AuthService {
      * @param accessToken 请求头中的 Access Token
      */
     void logout(String accessToken);
+
+    /**
+     * 获取当前登录用户信息（含角色、权限标识、菜单树）。
+     *
+     * <p>供前端登录后及页面刷新时调用，据此动态注册路由、渲染导航、做按钮级权限控制。</p>
+     *
+     * @return 用户信息响应
+     */
+    UserInfoResponse getCurrentUserInfo();
 }

@@ -2,6 +2,7 @@ package com.gj.llm.base.controller;
 
 import com.gj.llm.base.model.LoginRequest;
 import com.gj.llm.base.model.LoginResponse;
+import com.gj.llm.base.model.UserInfoResponse;
 import com.gj.llm.base.service.AuthService;
 import com.gj.llm.common.web.ApiResponse;
 import jakarta.validation.Valid;
@@ -82,5 +83,18 @@ public class AuthController {
             authService.logout(token);
         }
         return ApiResponse.ok(null, "登出成功");
+    }
+
+    /**
+     * 获取当前登录用户信息（含角色、权限标识、菜单树）。
+     *
+     * <p>需携带 Access Token。前端登录后及页面刷新时调用，
+     * 据此动态注册路由、渲染导航、做按钮级权限控制。</p>
+     *
+     * @return 用户信息响应
+     */
+    @GetMapping("/userinfo")
+    public ApiResponse<UserInfoResponse> userinfo() {
+        return ApiResponse.ok(authService.getCurrentUserInfo());
     }
 }

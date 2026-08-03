@@ -42,3 +42,4 @@ app:
     ignore-paths:
       - /api/auth/login
       - /api/auth/refresh
+      - /open/**

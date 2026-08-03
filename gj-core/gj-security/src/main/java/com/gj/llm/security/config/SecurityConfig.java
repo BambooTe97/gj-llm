@@ -18,7 +18,6 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -52,6 +51,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final SecurityUserService securityUserService;
     private final SecurityProperties securityProperties;
+    private final PasswordEncoder passwordEncoder;
 
     /**
      * 安全过滤器链 —— Spring Security 7.x 的核心配置入口。
@@ -106,7 +106,7 @@ public class SecurityConfig {
     public AuthenticationProvider authenticationProvider() {
         // 将 SecurityUserService 适配为 Spring Security 标准的 UserDetailsService
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService());
-        provider.setPasswordEncoder(passwordEncoder());
+        provider.setPasswordEncoder(passwordEncoder);
         // 隐藏"用户不存在"异常，统一返回"用户名或密码错误"
         // 防止攻击者通过错误信息差异枚举系统用户
         provider.setHideUserNotFoundExceptions(true);
@@ -124,17 +124,6 @@ public class SecurityConfig {
         return username -> securityUserService.findByUsername(username)
                 .orElseThrow(() -> new org.springframework.security.core.userdetails.UsernameNotFoundException(
                         "用户不存在: " + username));
-    }
-
-    /**
-     * 密码编码器 —— BCrypt 不可逆哈希。
-     *
-     * <p>BCrypt 自动处理盐值（salt）：每次 encode() 结果不同，
-     * 通过 matches(rawPassword, encodedPassword) 进行比对。</p>
-     */
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
     }
 
     /**

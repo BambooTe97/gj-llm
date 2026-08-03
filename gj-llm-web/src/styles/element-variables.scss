@@ -108,18 +108,30 @@
   }
 }
 
-// ========== Element Plus 抽屉玻璃效果 ==========
-// el-drawer 默认背景为 var(--el-bg-color)（本项目为灰 #d5d5dc），与整体玻璃风格不符，覆盖之
+// ========== Element Plus 遮罩层 ==========
+// 极淡背景、不虚化底层（左侧内容保持清晰可见），立体感由抽屉/弹窗自身的边缘线条与投影体现
+.el-overlay {
+  background: rgba(20, 22, 35, 0.05) !important;
+}
+
+// ========== Element Plus 抽屉（Apple 玻璃立体风格） ==========
+// el-drawer 默认背景为 var(--el-bg-color)（本项目为灰 #d5d5dc），覆盖为高透亮白 + 强毛玻璃，
+// 左侧圆角 + 强阴影，使其从背景"浮起"，与系统玻璃主题一致
 .el-drawer {
-  background: rgba(255, 255, 255, 0.85) !important;
-  backdrop-filter: blur(24px) !important;
-  -webkit-backdrop-filter: blur(24px) !important;
-  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.4) !important;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(40px) saturate(1.6);
+  -webkit-backdrop-filter: blur(40px) saturate(1.6);
+  border-radius: 18px 0 0 18px !important;
+  border-left: 1px solid rgba(210, 210, 215, 0.5) !important;
+  box-shadow: -16px 0 48px rgba(0, 0, 0, 0.12), -1px 0 0 rgba(255, 255, 255, 0.6) inset !important;
+  overflow: hidden;
 
   // 标题栏：去掉默认下边框，与玻璃面板融合
   &__header {
     margin-bottom: 0 !important;
-    padding: 20px 24px 16px !important;
+    padding: 22px 24px 16px !important;
     border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
     color: #1d1d1f !important;
   }
@@ -130,8 +142,10 @@
     color: #1d1d1f !important;
   }
 
-  // 内容区留出舒适内边距
+  // 内容区留出舒适内边距，支持滚动
   &__body {
+    flex: 1;
+    overflow: auto;
     padding: 20px 24px !important;
   }
 
@@ -140,6 +154,16 @@
     border-top: 1px solid rgba(0, 0, 0, 0.06) !important;
     padding: 16px 24px !important;
   }
+}
+
+// ========== Element Plus 弹窗（与抽屉统一的玻璃立体风格） ==========
+.el-dialog {
+  border-radius: 18px !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(40px) saturate(1.6);
+  -webkit-backdrop-filter: blur(40px) saturate(1.6);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(255, 255, 255, 0.5) !important;
+  overflow: hidden;
 }
 
 // ========== Element Plus 输入框玻璃效果 ==========

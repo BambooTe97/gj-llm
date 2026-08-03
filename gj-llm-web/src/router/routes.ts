@@ -16,22 +16,13 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // 根布局：业务菜单（聊天/知识库/系统管理）由路由守卫动态注册到此，
+    // 详情页与个人设置保留为静态路由。
     path: '/',
     component: DefaultLayout,
+    name: 'Layout',
     redirect: '/chat',
     children: [
-      {
-        path: 'chat',
-        name: 'Chat',
-        component: () => import('@/views/chat/ChatView.vue'),
-        meta: { title: '对话' },
-      },
-      {
-        path: 'chat/:id',
-        name: 'ChatDetail',
-        component: () => import('@/views/chat/ChatView.vue'),
-        meta: { title: '对话' },
-      },
       {
         path: 'settings',
         name: 'Settings',
@@ -39,10 +30,10 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '设置' },
       },
       {
-        path: 'datasets',
-        name: 'Datasets',
-        component: () => import('@/views/dataset/DatasetListView.vue'),
-        meta: { title: '知识库' },
+        path: 'chat/:id',
+        name: 'ChatDetail',
+        component: () => import('@/views/chat/ChatView.vue'),
+        meta: { title: '对话' },
       },
       {
         path: 'datasets/:id',

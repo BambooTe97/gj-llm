@@ -25,10 +25,11 @@ public final class UserConverter {
     /**
      * 将数据库实体转为安全模块的通用用户对象。
      *
-     * @param entity 数据库用户实体
+     * @param entity      数据库用户实体（含角色集合）
+     * @param permissions 细粒度权限标识列表（由角色关联菜单得出，可为空）
      * @return 安全用户对象
      */
-    public static SecurityUser toSecurityUser(UserEntity entity) {
+    public static SecurityUser toSecurityUser(UserEntity entity, List<String> permissions) {
         Set<RoleEntity> roles = entity.getRoles();
         List<String> roleCodes = (roles != null)
                 ? roles.stream().map(RoleEntity::getCode).collect(Collectors.toList())
@@ -41,7 +42,8 @@ public final class UserConverter {
                 entity.getNickname(),
                 entity.getAvatar(),
                 entity.getStatus() == 1,      // 1=启用，其他=禁用
-                roleCodes
+                roleCodes,
+                permissions != null ? permissions : List.of()
         );
     }
 }

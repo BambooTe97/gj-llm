@@ -2,21 +2,47 @@
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/modules/user'
-import { ChatDotRound, Collection, Setting, SwitchButton } from '@element-plus/icons-vue'
+import * as Icons from '@element-plus/icons-vue'
+import type { Menu } from '@/api/types'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 
-const navItems = [
-  { path: '/chat', label: '聊天', icon: ChatDotRound, match: (p: string) => p.startsWith('/chat') },
-  { path: '/datasets', label: '知识库', icon: Collection, match: (p: string) => p.startsWith('/datasets') },
-]
+/** 顶层导航菜单（由后端菜单树驱动） */
+const navItems = computed<Menu[]>(() => userStore.menus)
 
+/** 当前激活的顶层菜单索引（含子菜单路径前缀匹配） */
 const activeIndex = computed(() => {
-  const idx = navItems.findIndex((item) => item.match(route.path))
-  return idx >= 0 ? idx : 0
+  const path = route.path
+  const idx = navItems.value.findIndex((m) => {
+    if (m.path && path === m.path) return true
+    return (m.children || []).some(
+      (c) => !!c.path && (path === c.path || path.startsWith(c.path + '/')),
+    )
+  })
+  return idx >= 0 ? idx : -1
 })
+
+/** 按图标名解析 Element Plus 图标组件，缺省回退 Menu 图标 */
+function resolveIcon(name?: string | null) {
+  if (!name) return Icons.Menu
+  return (Icons as Record<string, unknown>)[name] || Icons.Menu
+}
+
+/** 点击导航：目录跳首个子菜单，菜单跳自身路径 */
+function handleNav(menu: Menu) {
+  if (menu.type === 'M' && menu.children?.length) {
+    const first = menu.children.find((c) => c.type !== 'B' && c.path)
+    if (first?.path) {
+      router.push(first.path)
+      return
+    }
+  }
+  if (menu.path) {
+    router.push(menu.path)
+  }
+}
 
 function handleLogout() {
   userStore.logout()
@@ -42,19 +68,19 @@ function handleLogout() {
       </span>
     </div>
 
-    <!-- ===== 导航 ===== -->
+    <!-- ===== 导航（动态菜单） ===== -->
     <nav class="header-nav">
       <div
         v-for="(item, index) in navItems"
-        :key="item.path"
+        :key="item.id"
         class="header-nav__item"
         :class="{ active: index === activeIndex }"
-        @click="router.push(item.path)"
+        @click="handleNav(item)"
       >
         <span class="header-nav__icon">
-          <el-icon :size="20"><component :is="item.icon" /></el-icon>
+          <el-icon :size="20"><component :is="resolveIcon(item.icon)" /></el-icon>
         </span>
-        <span class="header-nav__label">{{ item.label }}</span>
+        <span class="header-nav__label">{{ item.name }}</span>
       </div>
     </nav>
 
@@ -71,10 +97,10 @@ function handleLogout() {
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item @click="router.push('/settings')">
-              <el-icon><Setting /></el-icon>设置
+              <el-icon><component :is="Icons.Setting" /></el-icon>设置
             </el-dropdown-item>
             <el-dropdown-item divided @click="handleLogout">
-              <el-icon><SwitchButton /></el-icon>退出登录
+              <el-icon><component :is="Icons.SwitchButton" /></el-icon>退出登录
             </el-dropdown-item>
           </el-dropdown-menu>
         </template>
