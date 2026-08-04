@@ -4,7 +4,7 @@ import com.gj.llm.base.model.LoginRequest;
 import com.gj.llm.base.model.LoginResponse;
 import com.gj.llm.base.model.UserInfoResponse;
 import com.gj.llm.base.service.AuthService;
-import com.gj.llm.common.web.ApiResponse;
+import com.gj.llm.common.web.R;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -39,9 +39,9 @@ public class AuthController {
      * @return {accessToken, refreshToken, username, nickname, avatar}
      */
     @PostMapping("/login")
-    public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+    public R<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         LoginResponse response = authService.login(request);
-        return ApiResponse.ok(response, "登录成功");
+        return R.ok(response, "登录成功");
     }
 
     /**
@@ -54,10 +54,10 @@ public class AuthController {
      * @return 新的 accessToken
      */
     @PostMapping("/refresh")
-    public ApiResponse<LoginResponse> refresh(@RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader) {
+    public R<LoginResponse> refresh(@RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader) {
         // 提取 Refresh Token
         if (authHeader == null || !authHeader.startsWith(BEARER_PREFIX)) {
-            return ApiResponse.unauthorized("缺少 Refresh Token");
+            return R.unauthorized("缺少 Refresh Token");
         }
         String refreshToken = authHeader.substring(BEARER_PREFIX.length());
 
@@ -65,7 +65,7 @@ public class AuthController {
         LoginResponse response = LoginResponse.builder()
                 .accessToken(newAccessToken)
                 .build();
-        return ApiResponse.ok(response, "Token 刷新成功");
+        return R.ok(response, "Token 刷新成功");
     }
 
     /**
@@ -77,12 +77,12 @@ public class AuthController {
      * @return 成功响应
      */
     @PostMapping("/logout")
-    public ApiResponse<Void> logout(@RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader) {
+    public R<Void> logout(@RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader) {
         if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
             String token = authHeader.substring(BEARER_PREFIX.length());
             authService.logout(token);
         }
-        return ApiResponse.ok(null, "登出成功");
+        return R.ok(null, "登出成功");
     }
 
     /**
@@ -94,7 +94,7 @@ public class AuthController {
      * @return 用户信息响应
      */
     @GetMapping("/userinfo")
-    public ApiResponse<UserInfoResponse> userinfo() {
-        return ApiResponse.ok(authService.getCurrentUserInfo());
+    public R<UserInfoResponse> userinfo() {
+        return R.ok(authService.getCurrentUserInfo());
     }
 }

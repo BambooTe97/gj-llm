@@ -2,7 +2,7 @@ package com.gj.llm.base.controller;
 
 import com.gj.llm.base.entity.ApiEntity;
 import com.gj.llm.base.service.ApiService;
-import com.gj.llm.common.web.ApiResponse;
+import com.gj.llm.common.web.R;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,7 +29,7 @@ public class ApiController {
 
     /** 获取全部有效接口（供菜单关联接口选择） */
     @GetMapping
-    public ApiResponse<List<ApiEntity>> list() {
-        return ApiResponse.ok(apiService.listActive());
+    public R<List<ApiEntity>> list() {
+        return R.ok(apiService.listActive());
     }
 }

@@ -1,7 +1,7 @@
 package com.gj.llm.file.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.gj.llm.common.web.ApiResponse;
+import com.gj.llm.common.web.R;
 import com.gj.llm.file.model.FileInfo;
 import com.gj.llm.file.service.FileStorageService;
 import lombok.RequiredArgsConstructor;
@@ -43,13 +43,13 @@ public class FileController {
      * 上传单个文件。
      */
     @PostMapping("/upload")
-    public ApiResponse<FileInfo> upload(@RequestParam("file") MultipartFile file) {
+    public R<FileInfo> upload(@RequestParam("file") MultipartFile file) {
         try {
             FileInfo fileInfo = fileStorageService.upload(file);
-            return ApiResponse.ok(fileInfo, "上传成功");
+            return R.ok(fileInfo, "上传成功");
         } catch (RuntimeException e) {
             log.warn("文件上传失败: {}", e.getMessage());
-            return ApiResponse.badRequest(e.getMessage());
+            return R.badRequest(e.getMessage());
         }
     }
 
@@ -57,7 +57,7 @@ public class FileController {
      * 分页查询文件列表。
      */
     @GetMapping
-    public ApiResponse<Map<String, Object>> list(
+    public R<Map<String, Object>> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize) {
         try {
@@ -67,10 +67,10 @@ public class FileController {
             data.put("total", result.getTotal());
             data.put("page", result.getCurrent());
             data.put("pageSize", result.getSize());
-            return ApiResponse.ok(data);
+            return R.ok(data);
         } catch (RuntimeException e) {
             log.warn("获取文件列表失败: {}", e.getMessage());
-            return ApiResponse.error(e.getMessage());
+            return R.error(e.getMessage());
         }
     }
 
@@ -101,17 +101,17 @@ public class FileController {
      * 删除文件（按记录 ID）。
      */
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable Long id) {
+    public R<Void> delete(@PathVariable Long id) {
         try {
             boolean deleted = fileStorageService.delete(id);
             if (deleted) {
-                return ApiResponse.ok(null, "删除成功");
+                return R.ok(null, "删除成功");
             } else {
-                return ApiResponse.badRequest("文件记录不存在");
+                return R.badRequest("文件记录不存在");
             }
         } catch (RuntimeException e) {
             log.warn("文件删除失败: {}", e.getMessage());
-            return ApiResponse.badRequest(e.getMessage());
+            return R.badRequest(e.getMessage());
         }
     }
 }

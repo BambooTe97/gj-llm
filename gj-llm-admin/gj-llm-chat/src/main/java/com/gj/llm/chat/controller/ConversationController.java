@@ -6,7 +6,7 @@ import com.gj.llm.chat.model.ConversationVO;
 import com.gj.llm.chat.model.MessageVO;
 import com.gj.llm.chat.model.RenameRequest;
 import com.gj.llm.chat.service.ConversationService;
-import com.gj.llm.common.web.ApiResponse;
+import com.gj.llm.common.web.R;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,32 +30,32 @@ public class ConversationController {
 
     /** 获取会话列表 */
     @GetMapping
-    public ApiResponse<List<ConversationVO>> list() {
-        return ApiResponse.ok(conversationService.listByUser());
+    public R<List<ConversationVO>> list() {
+        return R.ok(conversationService.listByUser());
     }
 
     /** 创建新会话 */
     @PostMapping
-    public ApiResponse<ConversationVO> create(@RequestBody ConversationCreateRequest request) {
-        return ApiResponse.ok(conversationService.create(request.getTitle(), request.getDatasetId()), "会话创建成功");
+    public R<ConversationVO> create(@RequestBody ConversationCreateRequest request) {
+        return R.ok(conversationService.create(request.getTitle(), request.getDatasetId()), "会话创建成功");
     }
 
     /** 重命名会话 */
     @PatchMapping("/{id}")
-    public ApiResponse<ConversationVO> rename(@PathVariable Long id, @RequestBody RenameRequest request) {
-        return ApiResponse.ok(conversationService.rename(id, request.getTitle()), "重命名成功");
+    public R<ConversationVO> rename(@PathVariable Long id, @RequestBody RenameRequest request) {
+        return R.ok(conversationService.rename(id, request.getTitle()), "重命名成功");
     }
 
     /** 删除会话（逻辑删除） */
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable Long id) {
+    public R<Void> delete(@PathVariable Long id) {
         conversationService.remove(id);
-        return ApiResponse.ok(null, "删除成功");
+        return R.ok(null, "删除成功");
     }
 
     /** 获取会话的历史消息 */
     @GetMapping("/{id}/messages")
-    public ApiResponse<List<MessageVO>> messages(@PathVariable Long id) {
+    public R<List<MessageVO>> messages(@PathVariable Long id) {
         List<MessageEntity> messages = conversationService.getMessages(id);
         List<MessageVO> vos = messages.stream().map(m -> MessageVO.builder()
                 .id(m.getId())
@@ -64,6 +64,6 @@ public class ConversationController {
                 .content(m.getContent())
                 .createdAt(m.getCreatedAt() != null ? m.getCreatedAt().format(DTF) : null)
                 .build()).collect(Collectors.toList());
-        return ApiResponse.ok(vos);
+        return R.ok(vos);
     }
 }

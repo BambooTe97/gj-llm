@@ -10,7 +10,7 @@ import com.gj.llm.rag.model.SearchResultItem;
 import com.gj.llm.rag.model.TestSearchRequest;
 import com.gj.llm.rag.service.DatasetFileService;
 import com.gj.llm.rag.service.DatasetService;
-import com.gj.llm.common.web.ApiResponse;
+import com.gj.llm.common.web.R;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -29,59 +29,59 @@ public class DatasetController {
     // ==================== 知识库 CRUD ====================
 
     @GetMapping
-    public ApiResponse<IPage<DatasetEntity>> list(@RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "10") int pageSize) {
-        return ApiResponse.ok(datasetService.page(page, pageSize));
+    public R<IPage<DatasetEntity>> list(@RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "10") int pageSize) {
+        return R.ok(datasetService.page(page, pageSize));
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<DatasetEntity> get(@PathVariable Long id) {
-        return ApiResponse.ok(datasetService.getById(id));
+    public R<DatasetEntity> get(@PathVariable Long id) {
+        return R.ok(datasetService.getById(id));
     }
 
     @PostMapping
-    public ApiResponse<DatasetEntity> create(@Valid @RequestBody DatasetCreateRequest request) {
-        return ApiResponse.ok(datasetService.create(request), "知识库创建成功");
+    public R<DatasetEntity> create(@Valid @RequestBody DatasetCreateRequest request) {
+        return R.ok(datasetService.create(request), "知识库创建成功");
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<DatasetEntity> update(@PathVariable Long id, @Valid @RequestBody DatasetUpdateRequest request) {
-        return ApiResponse.ok(datasetService.update(id, request), "知识库更新成功");
+    public R<DatasetEntity> update(@PathVariable Long id, @Valid @RequestBody DatasetUpdateRequest request) {
+        return R.ok(datasetService.update(id, request), "知识库更新成功");
     }
 
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable Long id) {
+    public R<Void> delete(@PathVariable Long id) {
         datasetService.delete(id);
-        return ApiResponse.ok(null, "知识库删除成功");
+        return R.ok(null, "知识库删除成功");
     }
 
     // ==================== 文档管理 ====================
 
     @PostMapping("/{datasetId}/documents/upload")
-    public ApiResponse<DatasetFileEntity> uploadDocument(@PathVariable Long datasetId, @RequestParam("file") MultipartFile file) {
-        return ApiResponse.ok(datasetFileService.upload(datasetId, file), "文件上传成功");
+    public R<DatasetFileEntity> uploadDocument(@PathVariable Long datasetId, @RequestParam("file") MultipartFile file) {
+        return R.ok(datasetFileService.upload(datasetId, file), "文件上传成功");
     }
 
     @GetMapping("/{datasetId}/documents")
-    public ApiResponse<IPage<DatasetFileVO>> listDocuments(@PathVariable Long datasetId, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "10") int pageSize) {
-        return ApiResponse.ok(datasetFileService.pageByDataset(datasetId, page, pageSize));
+    public R<IPage<DatasetFileVO>> listDocuments(@PathVariable Long datasetId, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "10") int pageSize) {
+        return R.ok(datasetFileService.pageByDataset(datasetId, page, pageSize));
     }
 
     @DeleteMapping("/{datasetId}/documents/{dfId}")
-    public ApiResponse<Void> deleteDocument(@PathVariable Long datasetId, @PathVariable Long dfId) {
+    public R<Void> deleteDocument(@PathVariable Long datasetId, @PathVariable Long dfId) {
         datasetFileService.delete(dfId);
-        return ApiResponse.ok(null, "文件删除成功");
+        return R.ok(null, "文件删除成功");
     }
 
     @PostMapping("/{datasetId}/documents/{dfId}/reparse")
-    public ApiResponse<Void> reparseDocument(@PathVariable Long datasetId, @PathVariable Long dfId) {
+    public R<Void> reparseDocument(@PathVariable Long datasetId, @PathVariable Long dfId) {
         datasetFileService.reparse(dfId);
-        return ApiResponse.ok(null, "已触发重新解析");
+        return R.ok(null, "已触发重新解析");
     }
 
     // ==================== 检索测试 ====================
 
     @PostMapping("/{datasetId}/test")
-    public ApiResponse<List<SearchResultItem>> testSearch(@PathVariable Long datasetId, @Valid @RequestBody TestSearchRequest request) {
-        return ApiResponse.ok(datasetFileService.testSearch(datasetId, request.getQuery(), request.getTopK()));
+    public R<List<SearchResultItem>> testSearch(@PathVariable Long datasetId, @Valid @RequestBody TestSearchRequest request) {
+        return R.ok(datasetFileService.testSearch(datasetId, request.getQuery(), request.getTopK()));
     }
 }

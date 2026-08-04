@@ -5,7 +5,7 @@ import com.gj.llm.base.model.MenuApiAssignRequest;
 import com.gj.llm.base.model.MenuCreateRequest;
 import com.gj.llm.base.model.MenuUpdateRequest;
 import com.gj.llm.base.service.MenuService;
-import com.gj.llm.common.web.ApiResponse;
+import com.gj.llm.common.web.R;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -36,41 +36,41 @@ public class MenuController {
 
     /** 获取全量菜单树（管理用，含禁用/按钮） */
     @GetMapping("/tree")
-    public ApiResponse<List<MenuEntity>> tree() {
-        return ApiResponse.ok(menuService.getMenuTree());
+    public R<List<MenuEntity>> tree() {
+        return R.ok(menuService.getMenuTree());
     }
 
     /** 创建菜单 */
     @PostMapping
-    public ApiResponse<MenuEntity> create(@Valid @RequestBody MenuCreateRequest request) {
-        return ApiResponse.ok(menuService.create(request), "菜单创建成功");
+    public R<MenuEntity> create(@Valid @RequestBody MenuCreateRequest request) {
+        return R.ok(menuService.create(request), "菜单创建成功");
     }
 
     /** 更新菜单 */
     @PutMapping("/{id}")
-    public ApiResponse<MenuEntity> update(@PathVariable Long id,
-                                          @Valid @RequestBody MenuUpdateRequest request) {
-        return ApiResponse.ok(menuService.update(id, request), "菜单更新成功");
+    public R<MenuEntity> update(@PathVariable Long id,
+                                @Valid @RequestBody MenuUpdateRequest request) {
+        return R.ok(menuService.update(id, request), "菜单更新成功");
     }
 
     /** 删除菜单 */
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable Long id) {
+    public R<Void> delete(@PathVariable Long id) {
         menuService.delete(id);
-        return ApiResponse.ok(null, "菜单删除成功");
+        return R.ok(null, "菜单删除成功");
     }
 
     /** 查询菜单按钮关联的接口 ID 列表 */
     @GetMapping("/{id}/api-ids")
-    public ApiResponse<List<Long>> menuApiIds(@PathVariable Long id) {
-        return ApiResponse.ok(menuService.getMenuApiIds(id));
+    public R<List<Long>> menuApiIds(@PathVariable Long id) {
+        return R.ok(menuService.getMenuApiIds(id));
     }
 
     /** 为菜单按钮分配接口（全量替换） */
     @PutMapping("/{id}/apis")
-    public ApiResponse<Void> assignApis(@PathVariable Long id,
-                                        @Valid @RequestBody MenuApiAssignRequest request) {
+    public R<Void> assignApis(@PathVariable Long id,
+                              @Valid @RequestBody MenuApiAssignRequest request) {
         menuService.assignApis(id, request.getApiIds());
-        return ApiResponse.ok(null, "接口分配成功");
+        return R.ok(null, "接口分配成功");
     }
 }

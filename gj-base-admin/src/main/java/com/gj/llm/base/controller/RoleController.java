@@ -5,7 +5,7 @@ import com.gj.llm.base.model.RoleCreateRequest;
 import com.gj.llm.base.model.RoleMenuAssignRequest;
 import com.gj.llm.base.model.RoleUpdateRequest;
 import com.gj.llm.base.service.RoleService;
-import com.gj.llm.common.web.ApiResponse;
+import com.gj.llm.common.web.R;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -36,41 +36,41 @@ public class RoleController {
 
     /** 获取角色列表 */
     @GetMapping
-    public ApiResponse<List<RoleEntity>> list() {
-        return ApiResponse.ok(roleService.listAll());
+    public R<List<RoleEntity>> list() {
+        return R.ok(roleService.listAll());
     }
 
     /** 创建角色 */
     @PostMapping
-    public ApiResponse<RoleEntity> create(@Valid @RequestBody RoleCreateRequest request) {
-        return ApiResponse.ok(roleService.create(request), "角色创建成功");
+    public R<RoleEntity> create(@Valid @RequestBody RoleCreateRequest request) {
+        return R.ok(roleService.create(request), "角色创建成功");
     }
 
     /** 更新角色 */
     @PutMapping("/{id}")
-    public ApiResponse<RoleEntity> update(@PathVariable Long id,
-                                          @Valid @RequestBody RoleUpdateRequest request) {
-        return ApiResponse.ok(roleService.update(id, request), "角色更新成功");
+    public R<RoleEntity> update(@PathVariable Long id,
+                                @Valid @RequestBody RoleUpdateRequest request) {
+        return R.ok(roleService.update(id, request), "角色更新成功");
     }
 
     /** 删除角色 */
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable Long id) {
+    public R<Void> delete(@PathVariable Long id) {
         roleService.delete(id);
-        return ApiResponse.ok(null, "角色删除成功");
+        return R.ok(null, "角色删除成功");
     }
 
     /** 查询角色已分配的菜单 ID 列表 */
     @GetMapping("/{id}/menu-ids")
-    public ApiResponse<List<Long>> roleMenuIds(@PathVariable Long id) {
-        return ApiResponse.ok(roleService.getRoleMenuIds(id));
+    public R<List<Long>> roleMenuIds(@PathVariable Long id) {
+        return R.ok(roleService.getRoleMenuIds(id));
     }
 
     /** 为角色分配菜单（全量替换） */
     @PutMapping("/{id}/menus")
-    public ApiResponse<Void> assignMenus(@PathVariable Long id,
-                                         @Valid @RequestBody RoleMenuAssignRequest request) {
+    public R<Void> assignMenus(@PathVariable Long id,
+                               @Valid @RequestBody RoleMenuAssignRequest request) {
         roleService.assignMenus(id, request.getMenuIds());
-        return ApiResponse.ok(null, "菜单分配成功");
+        return R.ok(null, "菜单分配成功");
     }
 }

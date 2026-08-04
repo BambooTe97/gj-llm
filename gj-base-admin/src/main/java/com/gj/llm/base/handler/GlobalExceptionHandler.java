@@ -1,6 +1,6 @@
 package com.gj.llm.base.handler;
 
-import com.gj.llm.common.web.ApiResponse;
+import com.gj.llm.common.web.R;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.util.stream.Collectors;
 
 /**
- * 全局异常处理器 —— 统一处理参数校验、安全认证、业务异常，以 {@link ApiResponse} 格式返回。
+ * 全局异常处理器 —— 统一处理参数校验、安全认证、业务异常，以 {@link R} 格式返回。
  *
  * <p>将 Security 异常与业务异常合并到同一个 {@code @RestControllerAdvice} 中，
  * 确保 Spring MVC 按异常类型精确匹配（而非跨类模糊匹配）。</p>
@@ -33,12 +33,12 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ApiResponse<Void> handleValidation(MethodArgumentNotValidException e) {
+    public R<Void> handleValidation(MethodArgumentNotValidException e) {
         String message = e.getBindingResult().getFieldErrors().stream()
                 .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
                 .collect(Collectors.joining("; "));
         log.warn("参数校验失败: {}", message);
-        return ApiResponse.badRequest(message);
+        return R.badRequest(message);
     }
 
     // ==================== 安全认证 ====================
@@ -52,9 +52,9 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(BadCredentialsException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ApiResponse<Void> handleBadCredentialsException(BadCredentialsException e) {
+    public R<Void> handleBadCredentialsException(BadCredentialsException e) {
         log.warn("凭据错误: {}", e.getMessage());
-        return ApiResponse.badRequest("用户名或密码错误");
+        return R.badRequest("用户名或密码错误");
     }
 
     /**
@@ -63,9 +63,9 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(AuthenticationException.class)
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
-    public ApiResponse<Void> handleAuthenticationException(AuthenticationException e) {
+    public R<Void> handleAuthenticationException(AuthenticationException e) {
         log.warn("认证失败: {}", e.getMessage());
-        return ApiResponse.unauthorized("认证失败，请重新登录");
+        return R.unauthorized("认证失败，请重新登录");
     }
 
     /**
@@ -73,9 +73,9 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(AccessDeniedException.class)
     @ResponseStatus(HttpStatus.FORBIDDEN)
-    public ApiResponse<Void> handleAccessDeniedException(AccessDeniedException e) {
+    public R<Void> handleAccessDeniedException(AccessDeniedException e) {
         log.warn("权限不足: {}", e.getMessage());
-        return ApiResponse.forbidden("权限不足");
+        return R.forbidden("权限不足");
     }
 
     // ==================== 业务 & 兜底 ====================
@@ -85,9 +85,9 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(RuntimeException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ApiResponse<Void> handleRuntimeException(RuntimeException e) {
+    public R<Void> handleRuntimeException(RuntimeException e) {
         log.warn("业务异常: {}", e.getMessage(), e);
-        return ApiResponse.badRequest(e.getMessage());
+        return R.badRequest(e.getMessage());
     }
 
     /**
@@ -95,8 +95,8 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public ApiResponse<Void> handleException(Exception e) {
+    public R<Void> handleException(Exception e) {
         log.error("系统异常", e);
-        return ApiResponse.error("服务器内部错误");
+        return R.error("服务器内部错误");
     }
 }

@@ -6,7 +6,7 @@ import com.gj.llm.base.model.ResetPasswordRequest;
 import com.gj.llm.base.model.UserCreateRequest;
 import com.gj.llm.base.model.UserUpdateRequest;
 import com.gj.llm.base.service.UserService;
-import com.gj.llm.common.web.ApiResponse;
+import com.gj.llm.common.web.R;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -35,44 +35,44 @@ public class UserController {
 
     /** 分页查询用户（支持用户名/昵称模糊搜索） */
     @GetMapping
-    public ApiResponse<IPage<UserEntity>> page(
+    public R<IPage<UserEntity>> page(
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size,
             @RequestParam(required = false) String keyword) {
-        return ApiResponse.ok(userService.page(page, size, keyword));
+        return R.ok(userService.page(page, size, keyword));
     }
 
     /** 获取用户详情 */
     @GetMapping("/{id}")
-    public ApiResponse<UserEntity> get(@PathVariable Long id) {
-        return ApiResponse.ok(userService.getById(id));
+    public R<UserEntity> get(@PathVariable Long id) {
+        return R.ok(userService.getById(id));
     }
 
     /** 创建用户 */
     @PostMapping
-    public ApiResponse<UserEntity> create(@Valid @RequestBody UserCreateRequest request) {
-        return ApiResponse.ok(userService.create(request), "用户创建成功");
+    public R<UserEntity> create(@Valid @RequestBody UserCreateRequest request) {
+        return R.ok(userService.create(request), "用户创建成功");
     }
 
     /** 更新用户 */
     @PutMapping("/{id}")
-    public ApiResponse<UserEntity> update(@PathVariable Long id,
-                                          @Valid @RequestBody UserUpdateRequest request) {
-        return ApiResponse.ok(userService.update(id, request), "用户更新成功");
+    public R<UserEntity> update(@PathVariable Long id,
+                                @Valid @RequestBody UserUpdateRequest request) {
+        return R.ok(userService.update(id, request), "用户更新成功");
     }
 
     /** 重置密码 */
     @PutMapping("/{id}/password")
-    public ApiResponse<Void> resetPassword(@PathVariable Long id,
-                                           @Valid @RequestBody ResetPasswordRequest request) {
+    public R<Void> resetPassword(@PathVariable Long id,
+                                 @Valid @RequestBody ResetPasswordRequest request) {
         userService.resetPassword(id, request.getNewPassword());
-        return ApiResponse.ok(null, "密码重置成功");
+        return R.ok(null, "密码重置成功");
     }
 
     /** 删除用户 */
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable Long id) {
+    public R<Void> delete(@PathVariable Long id) {
         userService.delete(id);
-        return ApiResponse.ok(null, "用户删除成功");
+        return R.ok(null, "用户删除成功");
     }
 }
