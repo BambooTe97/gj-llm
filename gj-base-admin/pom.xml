@@ -38,6 +38,13 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- gj-redis：Redis 缓存基础模块（RedisService、缓存 key 常量、pub/sub） -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-redis</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Bean Validation：DTO 参数校验 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

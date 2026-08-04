@@ -3,7 +3,7 @@ spring:
     name: gj-llm
 
   profiles:
-    active: ai, mybatis, file
+    active: ai, mybatis, file, redis
 
   # ==================== 文件上传配置 ====================
   servlet:

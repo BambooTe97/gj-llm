@@ -35,6 +35,9 @@ import java.util.stream.Collectors;
  * </ul>
  * 监听 {@link ApiPermissionChangedEvent} 自动刷新；不直接依赖任何 Mapper。</p>
  *
+ * <p>采用进程内内存缓存：接口权限为读多写少的元数据，请求匹配需在内存进行（PathPattern），
+ * 无需 Redis；权限变更通过本地事件即时刷新。</p>
+ *
  * @author gj-llm
  */
 @Slf4j

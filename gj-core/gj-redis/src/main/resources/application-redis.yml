@@ -1,0 +1,26 @@
+# ==================== Redis 配置 ====================
+# 客户端版本（Lettuce）与 Spring Data Redis 由 Spring Boot 4.1.0 父 BOM 统一管理，兼容 Redis 7.4 服务端。
+spring:
+  data:
+    redis:
+      # Redis 服务地址（按实际部署修改）
+      host: 192.168.50.109
+      port: 6379
+      password: 111111
+      # 数据库索引（默认 0）
+      database: 0
+      # 连接超时
+      timeout: 5s
+      # 连接客户端：Lettuce
+      lettuce:
+        pool:
+          # 启用连接池（需 commons-pool2）
+          enabled: true
+          # 连接池最大活跃连接数（负值表示无限制）
+          max-active: 8
+          # 连接池最大空闲连接数
+          max-idle: 8
+          # 连接池最小空闲连接数
+          min-idle: 2
+          # 连接最大等待时长（负值表示一直阻塞等待）
+          max-wait: -1ms

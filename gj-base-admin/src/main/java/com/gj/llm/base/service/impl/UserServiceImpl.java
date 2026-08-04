@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.gj.llm.base.entity.RoleEntity;
 import com.gj.llm.base.entity.UserEntity;
 import com.gj.llm.base.entity.UserRoleEntity;
+import com.gj.llm.base.event.UserChangedEvent;
 import com.gj.llm.base.mapper.UserMapper;
 import com.gj.llm.base.mapper.UserRoleMapper;
 import com.gj.llm.base.model.UserCreateRequest;
@@ -14,6 +15,7 @@ import com.gj.llm.base.model.UserUpdateRequest;
 import com.gj.llm.base.service.RoleService;
 import com.gj.llm.base.service.UserService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +28,8 @@ import java.util.Set;
  * 用户服务实现 -- 通过 {@link UserMapper}、{@link UserRoleMapper} 管理用户与用户-角色关联；
  * 查询角色实体通过 {@link RoleService}，不直接依赖 RoleMapper。
  *
+ * <p>用户变更（更新/重置密码/删除）时发布 {@link UserChangedEvent}，由安全用户服务在事务提交后失效缓存。</p>
+ *
  * @author gj-llm
  */
 @Slf4j
@@ -35,11 +39,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     private final UserRoleMapper userRoleMapper;
     private final RoleService roleService;
     private final PasswordEncoder passwordEncoder;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public UserServiceImpl(UserRoleMapper userRoleMapper, RoleService roleService, PasswordEncoder passwordEncoder) {
+    public UserServiceImpl(UserRoleMapper userRoleMapper, RoleService roleService,
+                           PasswordEncoder passwordEncoder, ApplicationEventPublisher eventPublisher) {
         this.userRoleMapper = userRoleMapper;
         this.roleService = roleService;
         this.passwordEncoder = passwordEncoder;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -144,6 +151,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
             }
         }
 
+        // 用户信息/角色变更，失效其安全用户缓存（事务提交后生效）
+        eventPublisher.publishEvent(new UserChangedEvent(user.getUsername()));
         return getById(id);
     }
 
@@ -157,6 +166,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         user.setPassword(passwordEncoder.encode(newPassword));
         updateById(user);
         log.info("重置密码成功: {}", user.getUsername());
+        // 失效该用户缓存，强制重新认证
+        eventPublisher.publishEvent(new UserChangedEvent(user.getUsername()));
     }
 
     @Override
@@ -173,6 +184,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         userRoleMapper.deleteByUserId(id);
         removeById(id);
         log.info("删除用户成功: id={}", id);
+        // 失效该用户缓存
+        eventPublisher.publishEvent(new UserChangedEvent(user.getUsername()));
     }
 
     @Override

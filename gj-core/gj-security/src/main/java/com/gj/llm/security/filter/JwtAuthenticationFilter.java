@@ -3,6 +3,7 @@ package com.gj.llm.security.filter;
 import com.gj.llm.security.config.SecurityConfig;
 import com.gj.llm.security.model.SecurityUser;
 import com.gj.llm.security.service.SecurityUserService;
+import com.gj.llm.security.service.TokenBlacklistService;
 import com.gj.llm.security.util.JwtUtils;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -51,6 +52,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtils jwtUtils;
     private final SecurityUserService securityUserService;
+    private final Optional<TokenBlacklistService> tokenBlacklistService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -66,6 +68,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 2. 校验 Access Token
         if (!jwtUtils.validateAccessToken(token)) {
             log.warn("JWT 校验失败, path={}", request.getRequestURI());
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // 2.1 校验 Token 黑名单（登出后即时失效；无黑名单实现时跳过）
+        if (tokenBlacklistService.isPresent() && tokenBlacklistService.get().isBlacklisted(token)) {
+            log.warn("Token 已被加入黑名单, path={}", request.getRequestURI());
             filterChain.doFilter(request, response);
             return;
         }

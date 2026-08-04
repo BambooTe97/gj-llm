@@ -7,6 +7,7 @@ import com.gj.llm.base.model.UserInfoResponse;
 import com.gj.llm.base.service.AuthService;
 import com.gj.llm.base.service.MenuService;
 import com.gj.llm.security.model.SecurityUser;
+import com.gj.llm.security.service.TokenBlacklistService;
 import com.gj.llm.security.util.JwtUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +41,7 @@ public class AuthServiceImpl implements AuthService {
     private final AuthenticationManager authenticationManager;
     private final JwtUtils jwtUtils;
     private final MenuService menuService;
+    private final TokenBlacklistService tokenBlacklistService;
 
     /**
      * 用户登录：校验凭据并签发双 Token。
@@ -106,14 +108,15 @@ public class AuthServiceImpl implements AuthService {
     /**
      * 用户登出。
      *
-     * <p>当前为无状态 JWT 模式，服务端无需操作（客户端清除 Token 即可）。
-     * 后续若引入 Redis Token 黑名单，在此处将当前 Token 加入黑名单。</p>
+     * <p>将当前 Access Token 加入 Redis 黑名单（剩余有效期作为 TTL），
+     * 认证过滤器后续校验到该 Token 时直接拒绝，实现登出即时失效。</p>
      *
      * @param accessToken 当前请求的 Access Token
      */
     @Override
     public void logout(String accessToken) {
-        // 无状态 JWT：服务端无需额外操作
+        // 将 Access Token 加入 Redis 黑名单（TTL 为其剩余有效期），过滤后续请求
+        tokenBlacklistService.blacklist(accessToken);
         String username = jwtUtils.getUsername(accessToken);
         log.info("用户登出: {}", username);
     }

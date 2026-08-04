@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.gj.llm</groupId>
+        <artifactId>gj-core</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>gj-redis</artifactId>
+    <name>gj-redis</name>
+    <description>
+        Redis 基础设施模块 -- 统一管理 Redis 连接、RedisTemplate/RedisService 封装、
+        JSON（Jackson 3）序列化与 pub/sub 能力。其他业务模块只需引入此模块即可获得 Redis 缓存能力。
+    </description>
+
+    <dependencies>
+        <!-- gj-common：提供 JacksonUtils、SpringUtils、Constants 等公共工具 -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-common</artifactId>
+        </dependency>
+
+        <!-- Spring Data Redis：Redis 自动配置 + Lettuce 客户端（版本由 Spring Boot 4.1.0 父 BOM 管理，支持 Redis 7.4） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- commons-pool2：Lettuce 连接池（spring.data.redis.lettuce.pool.enabled=true 时需要） -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+        </dependency>
+
+        <!-- Lombok：简化样板代码 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+</project>

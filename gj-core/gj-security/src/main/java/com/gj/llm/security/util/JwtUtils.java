@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.Date;
 import java.util.UUID;
@@ -164,6 +165,24 @@ public class JwtUtils {
      */
     public String getUsername(String token) {
         return parseClaims(token).get(CLAIM_USERNAME, String.class);
+    }
+
+    /**
+     * 获取 Token 的剩余有效时长（至 exp），用于登出黑名单 TTL。
+     *
+     * <p>Token 无效或已过期时返回 {@link Duration#ZERO}。</p>
+     *
+     * @param token JWT 令牌字符串
+     * @return 剩余有效时长
+     */
+    public Duration getRemainingDuration(String token) {
+        try {
+            Date expiration = parseClaims(token).getExpiration();
+            long remaining = expiration.getTime() - System.currentTimeMillis();
+            return remaining > 0 ? Duration.ofMillis(remaining) : Duration.ZERO;
+        } catch (JwtException | IllegalArgumentException e) {
+            return Duration.ZERO;
+        }
     }
 
     // ==================== 内部方法 ====================
