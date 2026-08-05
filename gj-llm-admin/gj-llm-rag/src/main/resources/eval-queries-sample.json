@@ -1,0 +1,17 @@
+[
+  {
+    "query": "数据库连接池最大连接数是多少",
+    "expectedSource": "配置手册",
+    "expectedSnippet": "最大连接数"
+  },
+  {
+    "query": "如何配置系统参数",
+    "expectedSource": "系统配置",
+    "expectedSnippet": "参数配置"
+  },
+  {
+    "query": "权限管理和角色的关系",
+    "expectedSource": "权限管理",
+    "expectedSnippet": "角色"
+  }
+]

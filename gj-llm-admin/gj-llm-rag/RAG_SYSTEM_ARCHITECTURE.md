@@ -38,7 +38,7 @@
 | 组件 | 选型 | 用途 |
 |------|------|------|
 | 框架 | Spring Boot 4.1 + Spring AI 2.0 | 应用框架 |
-| LLM | DeepSeek-R1 (Ollama) | 对话生成、查询改写、HyDE |
+| LLM | gemma2:2b (Ollama) | 对话生成、查询改写、HyDE |
 | Embedding | BGE-M3 (Ollama) | 文本转向量（1024维） |
 | 检索引擎 | Elasticsearch 9.x | BM25 + KNN 混合检索 |
 | 向量库 | Milvus | 向量集合管理（辅助） |
@@ -69,7 +69,7 @@
 │  │              gj-llm-rag (RAG 核心)                 │   │
 │  │  DatasetFileServiceImpl: 文件管道                  │   │
 │  │  QueryRewriter: 查询改写 + HyDE                    │   │
-│  │  RecursiveCharacterTextSplitter: 分块              │   │
+│  │  ParentChildSplitter: 父子切分              │   │
 │  │  DynamicVectorStoreManager: Milvus 管理            │   │
 │  └──────┬──────────────────────────────┬─────────────┘   │
 │         │                              │                  │
@@ -87,7 +87,7 @@
 │  └──────────┘  └──────────┘  └──────────────────────┘   │
 │  ┌──────────────────────────────────────────────────┐   │
 │  │              Ollama :11434                        │   │
-│  │  DeepSeek-R1 (对话) / BGE-M3 (嵌入)               │   │
+│  │  gemma2:2b (对话) / BGE-M3 (嵌入)               │   │
 │  └──────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -102,7 +102,7 @@
     → DatasetFileEntity: 创建数据库关联 (状态=PENDING)        │
     → @Async: 异步处理                                        │
         → PdfContentReader/TextContentReader: 内容提取        │
-        → RecursiveCharacterTextSplitter: 智能分块            │
+        → ParentChildSplitter: 父子切分 + ChunkContextEnricher: 上下文注入            │
         → EmbeddingModel(BGE-M3): 批量向量嵌入 (每批20条)     │
         → EsSearchService.indexDocuments(): ES bulk 写入     │
         → DocumentSegmentEntity: 切片元数据持久化             │
@@ -116,9 +116,9 @@
         ├─ BM25: ik_max_word 关键词匹配                      │
         ├─ KNN: HNSW 图搜索 + 余弦相似度                     │
         └─ RRF: 加权倒数排名融合                              │
-    → RerankerService.rerank(): Cross-Encoder 精排           │
-    → LLM (DeepSeek-R1): 流式生成回答                        │
-    → SSE: thinking → references → content → done            │
+    → RerankerService.rerank(): 精排 + 父子去重 + 阈值过滤           │
+    → LLM (gemma2:2b): 流式生成回答                        │
+    → SSE: thinking → no_result? → references → content → done            │
 ```
 
 ---
@@ -146,11 +146,14 @@ gj-llm/
 │   │   ├── model/                   # DTO: DatasetCreateRequest, SearchResultItem 等
 │   │   ├── service/                 # DatasetService, DatasetFileService, QueryRewriter
 │   │   ├── vector/
-│   │   │   ├── splitter/            # RecursiveCharacterTextSplitter
+│   │   │   ├── splitter/            # RecursiveCharacterTextSplitter(切分核心), ParentChildSplitter(父子切分),
+│   │   │   │                        # Chunk, ChunkSeparators(类型分发), ChunkContextEnricher(上下文注入)
 │   │   │   ├── reader/              # PdfContentReader, TextContentReader
 │   │   │   └── DynamicVectorStoreManager
+│   │   ├── eval/                    # RetrievalEvaluator (离线检索评测)
+│   │   ├── config/                  # RagProperties, MilvusConfig
 │   │   ├── listener/                # DatasetFileEventListener (异步事件)
-│   │   └── controller/              # DatasetController (REST API)
+│   │   └── controller/              # DatasetController (REST API + /eval 评测)
 │   │
 │   └── gj-llm-chat/                 # 对话模块
 │       └── service/impl/            # ChatServiceImpl (SSE流式 + RAG编排)
@@ -195,12 +198,14 @@ DatasetFileEventListener.handleUploaded()
             ├─ status → PROCESSING (5%)
             ├─ FileContentReader.read()        → 按扩展名选择读取器
             ├─ status → 文本切分中 (30%)
-            ├─ RecursiveCharacterTextSplitter  → 智能分块
+            ├─ ParentChildSplitter              → 父子两级切分（ChunkSeparators 按类型选分隔符）
+            ├─ ChunkContextEnricher            → 确定性上下文前缀注入（零 LLM）
+            ├─ ContextualRetrievalEnricher     → 可选 LLM 上下文（默认关）
             ├─ status → 向量嵌入 (50%)
             ├─ EmbeddingModel.embed(batch)     → BGE-M3 批量向量化
-            ├─ EsSearchService.indexDocuments() → ES bulk 写入
+            ├─ EsSearchService.indexDocuments() → ES bulk 写入（含 parent_content/parent_id）
             ├─ status → 保存元数据 (90%)
-            ├─ DocumentSegmentEntity 批量入库   → document_segment 表
+            ├─ DocumentSegmentEntity 批量入库   → document_segment 表（含 parent_id/chunk_index）
             └─ status → COMPLETED (100%)
 ```
 
@@ -226,52 +231,76 @@ DatasetFileEventListener.handleUploaded()
 
 ## 5. 文本分块策略
 
-### 5.1 RecursiveCharacterTextSplitter
+采用**父子两级切分 + 确定性上下文注入**，兼顾检索精度与上下文完整性。核心组件均在 `com.gj.llm.rag.vector.splitter` 包下。
 
-分块器采用**递归降级分隔符**策略，模仿 LangChain 的设计：
+### 5.1 RecursiveCharacterTextSplitter（切分核心）
 
-```
-分隔符层级（从高到低）：
-    1. "\n\n"     (段落边界)
-    2. "\n"       (行边界)
-    3. "。"       (中文句号)
-    4. "！"       (感叹号)
-    5. "？"       (问号)
-    6. "；"       (分号)
-    7. "，"       (逗号)
-    8. " "        (空格)
-    9. ""         (字符级强制切分)
-```
-
-**算法逻辑**：
-1. 从最高级分隔符（段落）开始尝试切分
-2. 如果某个片段仍然超过 `chunkSize`，降级到下一级分隔符
-3. 最终兜底：按字符强制切分
-4. 切分完成后应用**滑动窗口重叠**
-
-### 5.2 关键参数
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| chunkSize | 600 | 每个 chunk 的目标字符数 |
-| chunkOverlap | 150 | 相邻 chunk 的重叠字符数（25% 重叠率） |
-| minChunkLength | 20 | 短于 20 字符的 chunk 会被过滤 |
-
-### 5.3 滑动窗口重叠
+递归降级分隔符切分，模仿 LangChain 设计。核心方法 `splitIntoSegments` 按分隔符层级从粗到细切分，返回**边界感知、无 overlap、每段 ≤ maxSize** 的片段：
 
 ```
-原始文本: "ABCDEFGHIJKLMNOPQRSTUVWXYZ..."  (chunkSize=10, overlap=4)
-
-Chunk 1: "ABCDEFGHIJ"
-Chunk 2:       "GHIJKLMNOP"     ← 与 Chunk1 重叠 "GHIJ"
-Chunk 3:             "MNOPQRSTUV" ← 与 Chunk2 重叠 "MNOP"
-Chunk 4:                   "STUVWXYZ..."
+散文分隔符层级（从粗到细）：
+    "\n\n" -> "\n" -> "。！？；，" -> ".!?;," -> ":" -> " " -> ""(字符兜底)
 ```
 
-**为什么需要重叠？**
-- 防止关键信息被切在 chunk 边界上
-- 相邻 chunk 有交集，检索时不会遗漏跨边界的内容
-- 25% 的重叠率在中文 RAG 中属于推荐范围（15-25%）
+三项关键修正（修复旧实现的缺陷）：
+1. **句子级 overlap**：overlap 取上一段的尾部完整句子拼到下一段开头（边界感知），不再把 chunks 拼回原文做盲字符滑窗。旧实现的 `applyOverlap` 会在 overlap>0 时让递归边界切分整体失效（默认 overlap=150 即触发）。
+2. **短块合并**：长度 < minChunkLength 的块并入相邻块，不再静默丢弃（避免数据丢失）。
+3. **codepoint 安全**：字符兜底用 `offsetByCodePoints`，不切断 emoji/生僻字的 UTF-16 代理对。
+
+### 5.2 内容类型分发（ChunkSeparators）
+
+按文件扩展名选择分隔符，避免在代码/结构化数据上套用散文标点：
+
+| 类型 | 扩展名 | 分隔符层级 |
+|------|--------|-----------|
+| 散文 PROSE | pdf/md/doc/txt 等 | 中英文句末标点 |
+| 代码 CODE | java/py/js/ts/sql/sh 等 | `\n\n` -> `\n` -> `}` -> `{` -> `;` -> ` ` |
+| JSON | json | `\n\n` -> `\n` -> `}` -> `{` -> `,` -> ` ` |
+| CSV | csv | `\n` -> `\r\n`（按行，保持记录完整） |
+
+### 5.3 父子切分（ParentChildSplitter，small-to-big）
+
+两级粒度切分，是父子召回的基础：
+
+```
+reader-Document
+    └─ 父块切分（parentSize，无 overlap，靠 \n\n 段落边界对齐）
+         ├─ 父块1 ─┬─ 子块1（childSize + 句子级 overlap）
+         │         ├─ 子块2
+         │         └─ 子块3
+         └─ 父块2 ─┬─ 子块4
+                   └─ 子块5
+```
+
+- **子块**（childSize = dataset.chunkSize）：embedding + BM25 的检索单元，精确匹配
+- **父块**（parentSize = childSize × `parent-size-multiplier`，默认 3）：命中子块后返回 LLM 的完整上下文
+- 同一父块的子块共享 `parentId`，检索侧据此去重
+
+### 5.4 确定性上下文注入（ChunkContextEnricher）
+
+每个子块文本前拼接文档标识前缀（零 LLM 成本）：
+
+```
+[文档: 配置手册.pdf > 数据库连接配置]
+<原始子块文本>
+```
+
+前缀进 ES `content` 字段后，BM25 与 embedding 同时吃到标题/来源关键词，chunk 不再是无来源的孤儿片段。`title` 取自 Markdown reader 的 heading metadata；PDF/Tika/Text 无 title 时仅用 source。开关 `gj.llm.rag.context-prefix-enabled`（默认 true）。
+
+### 5.5（可选）LLM Contextual Retrieval
+
+`ContextualRetrievalEnricher` 在入库时调 gemma2:2b 给每个父块生成一句上下文说明，拼到子块前缀（在 5.4 确定性前缀之上）。**默认关闭**（`contextual-retrieval-enabled=false`），因 2b 模型质量不确定，须用 §7.7 评测器证明有正收益再开。
+
+### 5.6 关键参数
+
+| 参数 | 来源 | 默认 | 说明 |
+|------|------|------|------|
+| chunkSize | DatasetEntity | 500（create 缺省 600） | 子块目标字符数 |
+| chunkOverlap | DatasetEntity | 150 | 子块 overlap（句子级） |
+| minChunkLength | 硬编码 | 20 | 短块合并阈值 |
+| parent-size-multiplier | RagProperties | 3 | parentSize = chunkSize × 此值 |
+| context-prefix-enabled | RagProperties | true | 确定性上下文前缀开关 |
+| contextual-retrieval-enabled | RagProperties | false | LLM 上下文（可选） |
 
 ---
 
@@ -327,11 +356,16 @@ Chunk 4:                   "STUVWXYZ..."
       "dataset_file_id": { "type": "long" },
       "file_id":        { "type": "long" },
       "source":         { "type": "keyword" },
+      "parent_id":      { "type": "keyword" },
+      "parent_content": { "type": "text", "index": false },
+      "chunk_index":    { "type": "integer" },
       "metadata":       { "type": "object", "enabled": false }
     }
   }
 }
 ```
+
+> **父子召回字段**：`parent_content`（命中子块后返回 LLM 的父块文本，`index:false` 仅存储不分析）、`parent_id`（同父块子块共享，检索侧去重）、`chunk_index`（子块序号）。旧索引无这些字段时检索侧自动回退用子块 content，向后兼容。
 
 ### 6.3 Milvus 集合
 
@@ -378,8 +412,18 @@ EsSearchService.hybridSearch()
     ▼ (最多 30 条候选)
 RerankerService.rerank()
     │
-    ▼ (返回 Top-5)
-LLM 上下文 → 流式生成回答
+    ▼ (返回 Top-5 子块)
+父子召回去重 (按 parent_id 合并同父块，保留高分)
+    │
+    ▼
+质量护栏 (rerank 分数 < 阈值 过滤)
+    │
+    ├─ 有可信结果: 父块上下文构建 (受 context-budget-chars 约束)
+    │                │
+    │                ▼
+    │            LLM 上下文 → 流式生成回答
+    │
+    └─ 无可信结果: no_result 事件 + 我不知道 prompt（不编造）
 ```
 
 ### 7.2 BM25 检索
@@ -420,6 +464,22 @@ RRF_score(doc) = Σ w_i / (k + rank_i(doc))
 - 语义检索（向量）通常比关键词检索（BM25）更能理解用户意图
 - 中文的 BM25 依赖 IK 分词器，专有名词切分可能不准
 - 但 BM25 对精确关键词匹配仍然有价值，保留 30% 权重做互补
+
+### 7.5 父子召回与质量护栏
+
+精排后追加两步，让检索结果既完整又不编造：
+
+1. **父子召回去重**：rerank 返回的 Top-5 是子块。按 `parent_id` 合并同父块子块（保留最高分），避免同一父块多个子块占用上下文名额。
+2. **上下文构建**：用父块 `parent_content`（完整上下文）而非子块文本喂给 LLM；按 score 降序累加，受 `context-budget-chars`（默认 3500）约束，防止溢出 gemma2:2b 的 8k token 窗口。旧数据无 `parent_content` 时回退子块文本。
+3. **质量护栏**：rerank 分数 < `rerank-score-threshold`（默认 0.3）的弱结果被过滤。若全部低于阈值或无检索结果，走"我不知道"分支：发 `no_result` SSE 事件 + 专用 prompt，不把弱上下文塞给 LLM 编造。
+
+### 7.6 元数据过滤
+
+`hybridSearch` 提供带 `filter` 参数的重载，对 `dataset_file_id` / `source` 等已索引字段做 term 过滤（BM25 用 bool.filter、KNN 用 filter 子句），支持"文档内检索"等场景。无 filter 的旧签名保持兼容。
+
+### 7.7 离线检索评测
+
+`RetrievalEvaluator`（`POST /api/v1/datasets/{id}/eval`）量化衡量切分/检索改动效果：对每条评测查询执行 hybridSearch + rerank，判定期望是否进 Top-5，计算 **Recall@5** 与 **MRR**。配套 `eval-queries-sample.json` 示例。**所有调参（chunkSize、阈值、是否开 Contextual Retrieval）都应先跑评测对比指标再决定。**
 
 ---
 
@@ -477,6 +537,8 @@ Cross-Encoder（交叉编码器，如 BGE-Reranker）:
 | 推理速度 | 较慢 | 较快 |
 
 当前部署的是简化版（受服务器内存限制），精排分数上限约为 0.85-0.88。
+
+> **分数阈值护栏**：rerank 后过滤分数 < `gj.llm.rag.rerank-score-threshold`（默认 0.3）的结果。简化版 reranker 分数区间压缩（不相关查询约 0.5-0.6），0.3 为保守默认（基本不过滤、无回归风险），**建议用 §7.7 评测器标定后调高**。全部低于阈值时走"我不知道"分支（见 §7.5）。
 
 ---
 
@@ -556,8 +618,9 @@ HyDE 是当前 RAG 领域最有效的查询增强技术之一。假设答案虽�
 
 | 事件类型 | 触发时机 | 内容 |
 |---------|---------|------|
-| `thinking` | LLM 输出 thinking token 时 | DeepSeek-R1 的思考过程 |
-| `references` | 检索完成后 | 引用的文档片段（排名、内容摘要、分数） |
+| `thinking` | LLM 输出 thinking token 时 | gemma2:2b 的思考过程（若模型支持） |
+| `no_result` | 检索无可靠结果时 | 提示"知识库中未找到相关内容"（见 §7.5 质量护栏） |
+| `references` | 检索完成后 | 引用的文档片段（排名、内容摘要、分数、source、datasetFileId） |
 | `content` | LLM 输出内容时 | 逐 token 流式回答 |
 | `done` | 对话完成 | messageId, conversationId, title |
 
@@ -710,7 +773,22 @@ HyDE 是当前 RAG 领域最有效的查询增强技术之一。假设答案虽�
 
 ## 13. 已知局限与改进方向
 
-### 13.1 当前局限
+### 13.1 已实现的关键优化（本轮）
+
+| 优化项 | 解决的问题 | 实现位置 |
+|--------|-----------|---------|
+| 切分器句子级 overlap + 短块合并 + codepoint 安全 | overlap 破坏边界、短块丢失、emoji 断裂 | RecursiveCharacterTextSplitter |
+| 父子两级切分（small-to-big） | 检索精度与上下文完整性兼得 | ParentChildSplitter |
+| 内容类型分发分隔符 | 代码/JSON/CSV 不再套用散文标点 | ChunkSeparators |
+| 确定性上下文前缀注入 | chunk 不再是无来源孤儿，标题/来源进 embedding+BM25 | ChunkContextEnricher |
+| ES 父子字段 + 检索侧父块回填 + 去重 | 命中子块返回父块完整上下文 | EsSearchService / ChatServiceImpl |
+| rerank 分数阈值 + "我不知道"硬拦截 | 弱结果不编造，不相关查询诚实返回空 | ChatServiceImpl |
+| 上下文字符预算护栏 | 防止父块拼接溢出 gemma2:2b 8k 窗口 | ChatServiceImpl |
+| 元数据过滤重载 | 支持文档内检索 | EsSearchService |
+| 离线检索评测（Recall@5 / MRR） | 调参不盲 | RetrievalEvaluator |
+| 可选 LLM Contextual Retrieval（默认关） | 进一步提升 embedding 命中（需评测验证） | ContextualRetrievalEnricher |
+
+### 13.2 仍存在的局限
 
 #### 模型层面
 
@@ -718,45 +796,45 @@ HyDE 是当前 RAG 领域最有效的查询增强技术之一。假设答案虽�
 |------|------|---------|
 | BGE-M3 为 Ollama 量化版 | 向量质量低于 fp16 原版 | 换非量化版或更强的 Embedding 模型 |
 | Re-Ranker 为 1G 简化版 | 精排分数上限 0.85-0.88 | 换完整 2.2G 版可提升到 0.92+ |
+| gemma2:2b 能力有限 | 复杂推理/查询改写质量弱于大模型 | 资源允许时换更强模型 |
 | 无领域微调 | 专有名词、行业术语的语义理解不精准 | 收集标注数据做微调 |
 
 #### 检索层面
 
 | 局限 | 影响 | 改进方向 |
 |------|------|---------|
-| BM25 无自定义词典 | 领域专有名词被 IK 错误切分，关键词匹配失效 | 配置 IK 自定义词典 |
-| BM25 无查询扩展 | 同义词不能互相匹配（如"血压高"和"高血压"） | 同义词扩展 |
-| 无父文档召回 | 只返回命中 chunk，不包含前后文 | 检索到 chunk 后拉取相邻 chunk |
-| Top-K 固定为 5 | 简单查询和复杂查询用同样的返回数 | 动态 Top-K |
+| BM25 无自定义词典 | 领域专有名词被 IK 错误切分 | 配置 IK 自定义词典 |
+| BM25 无查询扩展 | 同义词不能互相匹配 | 同义词扩展 |
+| rerank 阈值未标定 | 0.3 默认偏保守，可能未过滤不相关 | 用 §7.7 评测器标定合适阈值 |
+| Top-K 固定为 5 | 简单/复杂查询用同样返回数 | 动态 Top-K |
 
 #### 文档处理层面
 
 | 局限 | 影响 | 改进方向 |
 |------|------|---------|
 | 不支持 DOCX/XLSX/PPT | 常见办公文档格式无法处理 | 集成 Apache POI 或 Tika |
-| PDF 表格/列表解析差 | 结构化内容丢失 | 换更强大的 PDF 解析器 |
+| PDF 表格/列表解析差 | 结构化内容丢失 | 换更强大的 PDF 解析器（MinerU/Docling） |
 | 无图片/OCR 支持 | 图片中的文字无法检索 | 集成 OCR 或多模态模型 |
-| 分块不感知文档结构 | 标题、层级信息丢失 | 保留章节标题作为 chunk 元数据 |
+| 结构化解析未做 | 标题层级路径仅 Markdown 有 title | 引入 MinerU/Docling 版面解析 |
 
 #### 工程层面
 
 | 局限 | 影响 | 改进方向 |
 |------|------|---------|
-| 无离线评估体系 | 每次改动效果只能凭感觉判断 | 构建测试集 + 自动化评估脚本 |
 | 无用户反馈闭环 | 无法知道哪些回答被用户认可 | 点赞/踩 + 日志分析 |
-| 事件驱动无持久化 | 服务重启丢事件，文件永远卡在 PENDING | 引入消息队列 |
+| 事件驱动无持久化 | 服务重启丢事件，文件卡在 PENDING | 引入消息队列 |
 | 无缓存机制 | 相似问题重复检索全链路 | 查询结果缓存 |
 
-### 13.2 改进优先级建议
+### 13.3 改进优先级建议（剩余）
 
 | 优先级 | 改进项 | 预期收益 | 实现难度 |
 |--------|-------|---------|---------|
 | P0 | IK 自定义词典 | 专有名词匹配提升 3-5% | 低（配置文件） |
-| P0 | 父文档上下文召回 | chunk 携带前后文，LLM 回答更完整 | 低 |
+| P0 | 用评测器标定 rerank 阈值 | 不相关查询正确返回空 | 低 |
 | P1 | 升级 Re-Ranker 到完整版 | 精排分数突破 0.90 | 低（替换模型文件） |
-| P1 | 动态 Top-K + 相似度阈值 | 不相关查询正确返回空 | 低 |
-| P1 | 离线评估体系 | 量化衡量每次改动效果 | 中 |
+| P1 | 动态 Top-K | 简单/复杂查询差异化返回 | 低 |
 | P2 | 支持 DOCX/XLSX 格式 | 扩大可用文档类型 | 中 |
+| P2 | MinerU/Docling 结构化解析 | 标题层级/表格保真 | 中（需新工具） |
 | P2 | 查询缓存 | 减少重复检索 | 中 |
 | P3 | Embedding 模型微调 | 领域适配，天花板整体上移 | 高（需标注数据） |
 | P3 | 图片/OCR 支持 | 多模态检索 | 高 |
@@ -773,7 +851,7 @@ spring:
     ollama:
       base-url: http://localhost:11434
       chat:
-        model: deepseek-r1:latest
+        model: gemma2:2b
       embedding:
         model: bge-m3:latest
     vectorstore:
@@ -801,4 +879,10 @@ gj:
       host: 192.168.40.130
       port: 3000
       timeout: 30000
+    rag:
+      parent-size-multiplier: 3
+      context-prefix-enabled: true
+      rerank-score-threshold: 0.3
+      context-budget-chars: 3500
+      contextual-retrieval-enabled: false
 ```

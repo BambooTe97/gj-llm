@@ -9,6 +9,7 @@ import com.gj.llm.chat.service.ChatService;
 import com.gj.llm.common.util.JacksonUtils;
 import com.gj.llm.es.service.EsSearchService;
 import com.gj.llm.reranker.service.RerankerService;
+import com.gj.llm.rag.config.RagProperties;
 import com.gj.llm.rag.entity.DatasetEntity;
 import com.gj.llm.rag.service.DatasetService;
 import com.gj.llm.rag.service.QueryRewriter;
@@ -47,6 +48,7 @@ public class ChatServiceImpl implements ChatService {
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
     private final WebClient.Builder webClientBuilder;
+    private final RagProperties ragProperties;
 
     @Value("${spring.ai.ollama.base-url}")
     private String ollamaBaseUrl;
@@ -72,7 +74,8 @@ public class ChatServiceImpl implements ChatService {
                            DatasetService datasetService,
                            ConversationMapper conversationMapper,
                            MessageMapper messageMapper,
-                           WebClient.Builder webClientBuilder) {
+                           WebClient.Builder webClientBuilder,
+                           RagProperties ragProperties) {
         this.esSearchService = esSearchService;
         this.rerankerService = rerankerService;
         this.queryRewriter = queryRewriter;
@@ -80,6 +83,7 @@ public class ChatServiceImpl implements ChatService {
         this.conversationMapper = conversationMapper;
         this.messageMapper = messageMapper;
         this.webClientBuilder = webClientBuilder;
+        this.ragProperties = ragProperties;
     }
 
     @Override
@@ -114,6 +118,7 @@ public class ChatServiceImpl implements ChatService {
             Long datasetId = request.getDatasetId() != null ? request.getDatasetId() : conversation.getDatasetId();
             String context = "";
             List<Map<String, Object>> references = List.of();
+            boolean noConfidentResult = false;
 
             if (datasetId != null) {
                 try {
@@ -156,8 +161,23 @@ public class ChatServiceImpl implements ChatService {
                         log.info("[chatStream] ③c Re-Ranker 精排完成, 返回 {} 条, 耗时: {}ms",
                                 docs.size(), System.currentTimeMillis() - t3c);
 
-                        context = docs.stream().map(Document::getText).collect(Collectors.joining("\n\n"));
-                        references = buildReferences(docs);
+                        // ④ 父子召回：按 parent_id 去重（同父块保留最高分）
+                        List<Document> deduped = dedupByParent(docs);
+                        // ⑤ 质量护栏：过滤低于 rerank 阈值的弱结果
+                        double threshold = ragProperties.getRerankScoreThreshold();
+                        List<Document> confident = deduped.stream()
+                                .filter(d -> scoreOf(d) >= threshold)
+                                .toList();
+                        if (confident.isEmpty()) {
+                            // 无可靠答案：不把弱上下文塞给 LLM 编造，走"我不知道"分支
+                            noConfidentResult = true;
+                            log.info("[chatStream] ③d 无可靠检索结果（rerank 阈值 {}），走我不知道分支", threshold);
+                        } else {
+                            context = buildParentContext(confident);
+                            references = buildReferences(confident);
+                            log.info("[chatStream] ③d 父子召回: {} -> {} 父块, 可信 {} 条, context.len={}",
+                                    docs.size(), deduped.size(), confident.size(), context.length());
+                        }
                     }
                 } catch (Exception e) {
                     log.warn("RAG 检索失败，继续通用对话: {}", e.getMessage());
@@ -167,7 +187,7 @@ public class ChatServiceImpl implements ChatService {
 
             // 4. 构建 Prompt
             long t4 = System.currentTimeMillis();
-            String systemPrompt = buildSystemPrompt(context);
+            String systemPrompt = noConfidentResult ? buildNoResultPrompt() : buildSystemPrompt(context);
             List<MessageEntity> history = getRecentHistory(conversationId, 10);
             // 当前用户问题（仅含 RAG 上下文，历史通过独立 message 角色传递）
             String userPrompt = buildUserPrompt(userContent, context);
@@ -178,6 +198,9 @@ public class ChatServiceImpl implements ChatService {
             List<ServerSentEvent<String>> preEvents = new ArrayList<>();
             if (datasetId != null) {
                 preEvents.add(buildEvent("thinking", Map.of("content", "正在检索知识库...")));
+            }
+            if (noConfidentResult) {
+                preEvents.add(buildEvent("no_result", Map.of("message", "知识库中未找到与该问题相关的内容")));
             }
             if (!references.isEmpty()) {
                 preEvents.add(buildEvent("references", Map.of("items", references)));
@@ -363,6 +386,15 @@ public class ChatServiceImpl implements ChatService {
                 """;
     }
 
+    /** 无可靠检索结果时的系统提示 -- 引导 LLM 诚实告知而非编造。 */
+    private String buildNoResultPrompt() {
+        return """
+                你是一个智能知识库助手。当前知识库中未检索到与用户问题相关的内容。
+                请告知用户：知识库中暂无相关内容，无法回答该问题。
+                可以建议用户换一种提问方式，或补充相关文档到知识库。不要编造答案。
+                """;
+    }
+
     /** 构建当前用户消息（含 RAG 上下文，历史对话通过独立 message 角色传递） */
     private String buildUserPrompt(String currentQuestion, String context) {
         if (context != null && !context.isBlank()) {
@@ -379,13 +411,59 @@ public class ChatServiceImpl implements ChatService {
             Document doc = docs.get(i);
             double score = doc.getScore() != null ? doc.getScore() : 0.0;
             String text = doc.getText();
-            refs.add(Map.of(
-                    "rank", i + 1,
-                    "content", text != null ? text.substring(0, Math.min(text.length(), 200)) : "",
-                    "score", Math.round(score * 1000.0) / 1000.0
-            ));
+            Map<String, Object> ref = new LinkedHashMap<>();
+            ref.put("rank", i + 1);
+            ref.put("content", text != null ? text.substring(0, Math.min(text.length(), 200)) : "");
+            ref.put("score", Math.round(score * 1000.0) / 1000.0);
+            ref.put("source", doc.getMetadata().get("source"));
+            ref.put("datasetFileId", doc.getMetadata().get("dataset_file_id"));
+            refs.add(ref);
         }
         return refs;
+    }
+
+    /**
+     * 父子召回去重：按 parent_id 合并同父块的子块（保留最高分）。
+     * parent_id 为 null（旧数据）时视为独立块，不合并，保持向后兼容。
+     */
+    private List<Document> dedupByParent(List<Document> docs) {
+        Map<String, Document> byParent = new LinkedHashMap<>();
+        for (Document d : docs) {
+            String pid = (String) d.getMetadata().get("parent_id");
+            String key = pid != null ? pid : "child:" + d.getId();
+            Document ex = byParent.get(key);
+            if (ex == null || scoreOf(d) > scoreOf(ex)) {
+                byParent.put(key, d);
+            }
+        }
+        List<Document> result = new ArrayList<>(byParent.values());
+        result.sort(Comparator.comparingDouble(this::scoreOf).reversed());
+        return result;
+    }
+
+    private double scoreOf(Document d) {
+        return d.getScore() != null ? d.getScore() : 0.0;
+    }
+
+    /**
+     * 用父块完整上下文构建 LLM context（parent_content 为 null 时回退子块文本）。
+     * 受 {@link RagProperties#getContextBudgetChars()} 字符预算约束，防止溢出 gemma2:2b 的 8k token 窗口。
+     */
+    private String buildParentContext(List<Document> deduped) {
+        int budget = ragProperties.getContextBudgetChars();
+        StringBuilder ctx = new StringBuilder();
+        for (Document d : deduped) {
+            String parentContent = (String) d.getMetadata().get("parent_content");
+            String seg = (parentContent != null && !parentContent.isBlank()) ? parentContent : d.getText();
+            if (ctx.length() > 0 && ctx.length() + seg.length() + 2 > budget) {
+                break; // 超预算截断，保留已累加的高分父块
+            }
+            if (ctx.length() > 0) {
+                ctx.append("\n\n");
+            }
+            ctx.append(seg);
+        }
+        return ctx.toString();
     }
 
     private List<MessageEntity> getRecentHistory(Long conversationId, int maxPairs) {

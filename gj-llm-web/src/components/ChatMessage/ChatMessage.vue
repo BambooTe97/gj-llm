@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { ChatMessage } from '@/api/types'
-import { UserFilled, Cpu } from '@element-plus/icons-vue'
 
 const props = defineProps<{
   message: ChatMessage
@@ -20,12 +19,17 @@ const thinkingText = computed(() =>
 /** 是否有正文内容 */
 const hasContent = computed(() => !!props.message.content?.trim())
 
+/** 等待阶段：流式已开始，但还没收到任何 thinking / content（展示跳动三点，避免空白） */
+const isWaitingPhase = computed(
+  () => !!props.streaming && !hasContent.value && !thinkingText.value
+)
+
 /**
  * 思考阶段：流式传输中、有思考内容、但正文还没来。
  * 此时只展示思考框（自动展开），不展示空的白色正文框。
  */
-const isThinkingPhase = computed(() =>
-  props.streaming && !!thinkingText.value && !hasContent.value
+const isThinkingPhase = computed(
+  () => !!props.streaming && !!thinkingText.value && !hasContent.value
 )
 
 /** 思考阶段自动展开；正文一到就收起 */
@@ -40,15 +44,7 @@ watch(isThinkingPhase, (val) => {
 
 <template>
   <div class="chat-message" :class="[`chat-message--${message.role}`]">
-    <div class="chat-message__avatar">
-      <el-avatar v-if="message.role === 'user'" :size="36" :icon="UserFilled" />
-      <el-avatar v-else :size="36" style="background: linear-gradient(135deg, #0071e3, #4d9ff7)" :icon="Cpu" />
-    </div>
     <div class="chat-message__body">
-      <div class="chat-message__role">
-        {{ message.role === 'user' ? '我' : 'GJ-LLM' }}
-      </div>
-
       <!-- 思考过程（有内容才显示；思考阶段自动展开，正文到了自动收起） -->
       <div
         v-if="thinkingText"
@@ -63,7 +59,13 @@ watch(isThinkingPhase, (val) => {
         <div class="chat-message__think-body">{{ thinkingText }}</div>
       </div>
 
-      <!-- 正文 —— 仅在非思考阶段且有内容时展示 -->
+      <!-- 等待阶段：流式已开始但还没收到任何 token，展示跳动三点避免空白 -->
+      <div v-if="isWaitingPhase" class="chat-message__waiting">
+        <span class="thinking-dots"><span></span><span></span><span></span></span>
+        <span class="chat-message__waiting-text">正在思考…</span>
+      </div>
+
+      <!-- 正文 -- 仅在非思考阶段且有内容时展示 -->
       <div
         v-if="!isThinkingPhase && (hasContent || !streaming)"
         class="chat-message__content"
@@ -79,10 +81,23 @@ watch(isThinkingPhase, (val) => {
 <style lang="scss" scoped>
 .chat-message {
   display: flex;
-  gap: 12px;
   margin-bottom: 24px;
 
+  &--user {
+    justify-content: flex-end;
+    .chat-message__content {
+      background: linear-gradient(135deg, #0071e3, #3395ff);
+      color: #fff;
+      border-radius: 16px 6px 16px 16px;
+      box-shadow: 0 4px 16px rgba(0, 113, 227, 0.3);
+    }
+    .chat-message__body {
+      align-items: flex-end;
+    }
+  }
+
   &--assistant {
+    justify-content: flex-start;
     .chat-message__content {
       background: rgba(255, 255, 255, 0.7);
       backdrop-filter: blur(12px);
@@ -91,30 +106,74 @@ watch(isThinkingPhase, (val) => {
       border-radius: 6px 16px 16px 16px;
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
     }
-  }
-
-  &--user {
-    flex-direction: row-reverse;
-    .chat-message__content {
-      background: linear-gradient(135deg, #0071e3, #3395ff);
-      color: #fff;
-      border-radius: 16px 6px 16px 16px;
-      box-shadow: 0 4px 16px rgba(0, 113, 227, 0.3);
-    }
-    .chat-message__role {
-      text-align: right;
+    .chat-message__body {
+      align-items: flex-start;
     }
   }
 }
 
 .chat-message__body {
   max-width: 70%;
-  min-width: 120px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ====== 等待阶段（跳动三点） ====== */
+.chat-message__waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 6px 16px 16px 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.chat-message__waiting-text {
+  font-size: 13px;
+  color: #86868b;
+}
+
+.thinking-dots {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+
+  span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #0071e3;
+    opacity: 0.4;
+    animation: dotBounce 1.2s infinite ease-in-out;
+  }
+
+  span:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  span:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+}
+
+@keyframes dotBounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 /* ====== 思考框 ====== */
 .chat-message__think {
-  margin-bottom: 6px;
   background: #f5f5f7;
   border: 1px solid #e5e5ea;
   border-radius: 10px;
@@ -171,27 +230,12 @@ watch(isThinkingPhase, (val) => {
 }
 
 /* ====== 正文 ====== */
-.chat-message__role {
-  font-size: 12px;
-  color: #86868b;
-  margin-bottom: 4px;
-  font-weight: 500;
-}
-
 .chat-message__content {
   padding: 12px 16px;
   font-size: 14px;
   line-height: 1.6;
   word-break: break-word;
-
-  &.streaming {
-    background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 6px 16px 16px 16px;
-    color: #1d1d1f;
-  }
+  color: #1d1d1f;
 }
 
 .cursor-blink {

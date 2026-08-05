@@ -3,6 +3,9 @@ package com.gj.llm.rag.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.gj.llm.rag.entity.DatasetEntity;
 import com.gj.llm.rag.entity.DatasetFileEntity;
+import com.gj.llm.rag.eval.EvalQuery;
+import com.gj.llm.rag.eval.RetrievalEvalResult;
+import com.gj.llm.rag.eval.RetrievalEvaluator;
 import com.gj.llm.rag.model.DatasetCreateRequest;
 import com.gj.llm.rag.model.DatasetFileVO;
 import com.gj.llm.rag.model.DatasetUpdateRequest;
@@ -25,6 +28,7 @@ public class DatasetController {
 
     private final DatasetService datasetService;
     private final DatasetFileService datasetFileService;
+    private final RetrievalEvaluator retrievalEvaluator;
 
     // ==================== 知识库 CRUD ====================
 
@@ -83,5 +87,16 @@ public class DatasetController {
     @PostMapping("/{datasetId}/test")
     public R<List<SearchResultItem>> testSearch(@PathVariable Long datasetId, @Valid @RequestBody TestSearchRequest request) {
         return R.ok(datasetFileService.testSearch(datasetId, request.getQuery(), request.getTopK()));
+    }
+
+    // ==================== 离线检索评测 ====================
+
+    /**
+     * 检索评测：提交一批评测查询，返回 Recall@5 / MRR 等指标，量化衡量切分与检索改动效果。
+     * 请求体为 EvalQuery 列表（见 resources/eval-queries-sample.json 示例）。
+     */
+    @PostMapping("/{datasetId}/eval")
+    public R<RetrievalEvalResult> eval(@PathVariable Long datasetId, @RequestBody List<EvalQuery> queries) {
+        return R.ok(retrievalEvaluator.evaluate(datasetId, queries), "检索评测完成");
     }
 }

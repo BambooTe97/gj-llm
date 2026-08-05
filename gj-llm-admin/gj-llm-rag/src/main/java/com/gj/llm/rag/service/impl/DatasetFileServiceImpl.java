@@ -16,7 +16,9 @@ import com.gj.llm.rag.service.DatasetFileService;
 import com.gj.llm.rag.service.DatasetService;
 import com.gj.llm.es.service.EsSearchService;
 import com.gj.llm.rag.vector.reader.FileReaderDispatcher;
-import com.gj.llm.rag.vector.splitter.RecursiveCharacterTextSplitter;
+import com.gj.llm.rag.vector.splitter.Chunk;
+import com.gj.llm.rag.vector.splitter.ChunkSeparators;
+import com.gj.llm.rag.vector.splitter.ParentChildSplitter;
 import com.gj.llm.common.util.JacksonUtils;
 import com.gj.llm.file.model.FileInfo;
 import com.gj.llm.file.service.FileStorageService;
@@ -43,19 +45,28 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
     private final EsSearchService esSearchService;
     private final DocumentSegmentMapper segmentMapper;
     private final FileReaderDispatcher dispatcher;
+    private final com.gj.llm.rag.config.RagProperties ragProperties;
+    private final com.gj.llm.rag.vector.splitter.ChunkContextEnricher chunkContextEnricher;
+    private final com.gj.llm.rag.vector.splitter.ContextualRetrievalEnricher contextualRetrievalEnricher;
 
     public DatasetFileServiceImpl(ApplicationEventPublisher eventPublisher,
                                   DatasetService datasetService,
                                   FileStorageService fileStorageService,
                                   EsSearchService esSearchService,
                                   DocumentSegmentMapper segmentMapper,
-                                  FileReaderDispatcher dispatcher) {
+                                  FileReaderDispatcher dispatcher,
+                                  com.gj.llm.rag.config.RagProperties ragProperties,
+                                  com.gj.llm.rag.vector.splitter.ChunkContextEnricher chunkContextEnricher,
+                                  com.gj.llm.rag.vector.splitter.ContextualRetrievalEnricher contextualRetrievalEnricher) {
         this.eventPublisher = eventPublisher;
         this.datasetService = datasetService;
         this.fileStorageService = fileStorageService;
         this.esSearchService = esSearchService;
         this.segmentMapper = segmentMapper;
         this.dispatcher = dispatcher;
+        this.ragProperties = ragProperties;
+        this.chunkContextEnricher = chunkContextEnricher;
+        this.contextualRetrievalEnricher = contextualRetrievalEnricher;
     }
 
     @Override
@@ -284,12 +295,18 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
                 d.getMetadata().put("source", fileInfo.getOriginalName());
             });
 
-            RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(
-                    dataset.getChunkSize(),
-                    dataset.getChunkOverlap(),
-                    20);
-            List<Document> splits = splitter.split(documents);
-            log.info("文本切分完成: dfId={}, chunks={}, overlap={}", dfId, splits.size(), dataset.getChunkOverlap());
+            // 父子切分（子块精确检索 + 父块完整上下文）+ 确定性上下文前缀注入
+            int childSize = dataset.getChunkSize();
+            int parentSize = childSize * ragProperties.getParentSizeMultiplier();
+            List<String> separators = ChunkSeparators.forExtension(fileInfo.getExtension());
+            ParentChildSplitter splitter = new ParentChildSplitter(
+                    parentSize, childSize, dataset.getChunkOverlap(), 20, separators);
+            List<Chunk> chunks = splitter.split(documents);
+            chunkContextEnricher.enrich(chunks);
+            contextualRetrievalEnricher.enrich(chunks);
+            List<Document> splits = chunks.stream().map(Chunk::toDocument).toList();
+            log.info("文本切分完成: dfId={}, chunks={}, childSize={}, parentSize={}",
+                    dfId, splits.size(), childSize, parentSize);
 
             df.setProgressPercent(50);
             df.setCurrentStep("向量嵌入 + ES 索引写入中（最耗时）...");
@@ -310,6 +327,8 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
                 DocumentSegmentEntity seg = DocumentSegmentEntity.builder()
                         .datasetFileId(dfId)
                         .segmentId(split.getId())
+                        .parentId((String) split.getMetadata().get("parent_id"))
+                        .chunkIndex((Integer) split.getMetadata().get("chunk_index"))
                         .content(split.getText())
                         .metaData(!CollectionUtils.isEmpty(split.getMetadata()) ? JacksonUtils.toJson(split.getMetadata()) : null)
                         .build();

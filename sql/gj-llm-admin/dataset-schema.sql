@@ -43,9 +43,18 @@ CREATE TABLE IF NOT EXISTS document_segment (
     id               BIGINT        COMMENT '主键（雪花算法 ID）',
     dataset_file_id  BIGINT        NOT NULL COMMENT '关联的 dataset_file ID',
     segment_id       VARCHAR(100)  NOT NULL COMMENT '对应向量数据库中的 ID',
+    parent_id        VARCHAR(100)  NULL COMMENT '所属父块 ID（父子召回用，同父块子块共享）',
+    chunk_index      INT           NULL COMMENT '子块在父块中的序号（调试用）',
     content          TEXT          NULL COMMENT '文本内容（可选，用于调试）',
     meta_data        JSON          NULL COMMENT 'JSON 格式存储额外元数据',
     created_at       DATETIME      DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (id),
     INDEX idx_dataset_file_id (dataset_file_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='切片元数据表';
+
+-- ============================================================
+-- 存量库迁移：为已存在的 document_segment 表补充父子召回字段
+-- （新建库由上面的建表语句直接包含；存量库执行下方语句）
+-- ============================================================
+-- ALTER TABLE document_segment ADD COLUMN parent_id VARCHAR(100) NULL COMMENT '所属父块 ID' AFTER segment_id;
+-- ALTER TABLE document_segment ADD COLUMN chunk_index INT NULL COMMENT '子块在父块中的序号' AFTER parent_id;

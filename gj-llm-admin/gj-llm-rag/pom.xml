@@ -98,12 +98,6 @@
             <artifactId>langchain4j</artifactId>
         </dependency>
 
-<!--        <dependency>-->
-<!--            <groupId>dev.langchain4j</groupId>-->
-<!--            <artifactId>langchain4j-community-document-splitter</artifactId>-->
-<!--            <version>1.18.0</version>-->
-<!--        </dependency>-->
-
         <!-- Test dependencies -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

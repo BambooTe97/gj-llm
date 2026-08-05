@@ -110,6 +110,9 @@ public class EsSearchService {
               "dataset_file_id": { "type": "long" },
               "file_id":       { "type": "long" },
               "source":        { "type": "keyword" },
+              "parent_id":     { "type": "keyword" },
+              "parent_content": { "type": "text", "index": false },
+              "chunk_index":   { "type": "integer" },
               "metadata":      { "type": "object", "enabled": false }
             }
           }
@@ -148,7 +151,13 @@ public class EsSearchService {
                     source.put("dataset_file_id", doc.getMetadata().get("dataset_file_id"));
                     source.put("file_id", doc.getMetadata().get("file_id"));
                     source.put("source", doc.getMetadata().get("source"));
-                    source.put("metadata", doc.getMetadata());
+                    source.put("parent_id", doc.getMetadata().get("parent_id"));
+                    source.put("parent_content", doc.getMetadata().get("parent_content"));
+                    source.put("chunk_index", doc.getMetadata().get("chunk_index"));
+                    // metadata 字段存去除大字段 parent_content 的副本，避免与 parent_content 重复存储
+                    Map<String, Object> metaCopy = new LinkedHashMap<>(doc.getMetadata());
+                    metaCopy.remove("parent_content");
+                    source.put("metadata", metaCopy);
 
                     int idx = i;
                     bulkBuilder.operations(op -> op
@@ -209,16 +218,25 @@ public class EsSearchService {
      * 混合检索：BM25 倒排 + KNN 向量，Java 侧 RRF 融合（ES 9.x 免费版不支持内置 RRF）。
      */
     public List<Document> hybridSearch(String collectionName, String query, int topK) {
+        return hybridSearch(collectionName, query, topK, null);
+    }
+
+    /**
+     * 混合检索（带元数据过滤）：filter 作用于 dataset_file_id / source 等已索引字段，
+     * 用于"文档内检索"等场景。filter 为 null/空时等价于无过滤。
+     */
+    public List<Document> hybridSearch(String collectionName, String query, int topK, Map<String, Object> filter) {
         String indexName = toIndexName(collectionName);
         int candidateK = topK * 5;
+        String filterJson = buildFilterJson(filter);
 
         try {
             // 1. 嵌入查询向量
             float[] queryVector = embeddingModel.embed(query);
 
             // 2. 分别执行 BM25 和 KNN 查询
-            List<Hit> bm25Hits = bm25Search(indexName, query, candidateK);
-            List<Hit> knnHits = knnSearch(indexName, queryVector, candidateK);
+            List<Hit> bm25Hits = bm25Search(indexName, query, candidateK, filterJson);
+            List<Hit> knnHits = knnSearch(indexName, queryVector, candidateK, filterJson);
 
             // 3. Java 侧 RRF 融合（仅排序用）+ 收集 KNN 余弦相似度（展示用）
             Map<String, Double> rrfScores = new LinkedHashMap<>();
@@ -248,6 +266,9 @@ public class EsSearchService {
                         meta.put("source", src.source());
                         meta.put("dataset_id", src.datasetId());
                         meta.put("dataset_file_id", src.datasetFileId());
+                        meta.put("file_id", src.fileId());
+                        meta.put("parent_id", src.parentId());
+                        meta.put("parent_content", src.parentContent());
                         return Document.builder()
                                 .text(src.content())
                                 .score(displayScore)
@@ -267,13 +288,11 @@ public class EsSearchService {
         }
     }
 
-    private List<Hit> bm25Search(String indexName, String query, int size) throws Exception {
-        String searchJson = """
-        {
-          "query": { "match": { "content": "%s" } },
-          "size": %d
-        }
-        """.formatted(escapeJson(query), size);
+    private List<Hit> bm25Search(String indexName, String query, int size, String filterJson) throws Exception {
+        String queryJson = (filterJson != null)
+                ? "{\"bool\":{\"must\":[{\"match\":{\"content\":\"" + escapeJson(query) + "\"}}],\"filter\":" + filterJson + "}}"
+                : "{\"match\":{\"content\":\"" + escapeJson(query) + "\"}}";
+        String searchJson = "{\"query\":" + queryJson + ",\"size\":" + size + "}";
 
         try (InputStream is = new ByteArrayInputStream(searchJson.getBytes(StandardCharsets.UTF_8))) {
             SearchRequest req = SearchRequest.of(s -> s.index(indexName).withJson(is));
@@ -284,18 +303,14 @@ public class EsSearchService {
         }
     }
 
-    private List<Hit> knnSearch(String indexName, float[] queryVector, int size) throws Exception {
-        String searchJson = """
-        {
-          "knn": {
-            "field": "embedding",
-            "query_vector": %s,
-            "k": %d,
-            "num_candidates": %d
-          },
-          "size": %d
+    private List<Hit> knnSearch(String indexName, float[] queryVector, int size, String filterJson) throws Exception {
+        String knnClause = "{\"field\":\"embedding\",\"query_vector\":" + toJsonArray(queryVector)
+                + ",\"k\":" + size + ",\"num_candidates\":" + (size * 10) + "}";
+        if (filterJson != null) {
+            knnClause = "{\"field\":\"embedding\",\"query_vector\":" + toJsonArray(queryVector)
+                    + ",\"k\":" + size + ",\"num_candidates\":" + (size * 10) + ",\"filter\":" + filterJson + "}";
         }
-        """.formatted(toJsonArray(queryVector), size, size * 10, size);
+        String searchJson = "{\"knn\":" + knnClause + ",\"size\":" + size + "}";
 
         try (InputStream is = new ByteArrayInputStream(searchJson.getBytes(StandardCharsets.UTF_8))) {
             SearchRequest req = SearchRequest.of(s -> s.index(indexName).withJson(is));
@@ -304,6 +319,29 @@ public class EsSearchService {
                     .map(h -> new Hit(h.id(), toSource(h.source()), h.score() != null ? h.score() : 0))
                     .toList();
         }
+    }
+
+    /** 构建 ES term 过滤数组 JSON，如 [{"term":{"dataset_file_id":123}}]；空则返回 null。 */
+    private String buildFilterJson(Map<String, Object> filter) {
+        if (filter == null || filter.isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (Map.Entry<String, Object> e : filter.entrySet()) {
+            if (!first) sb.append(",");
+            sb.append("{\"term\":{\"").append(e.getKey()).append("\":");
+            Object v = e.getValue();
+            if (v instanceof Number || v instanceof Boolean) {
+                sb.append(v);
+            } else {
+                sb.append("\"").append(escapeJson(String.valueOf(v))).append("\"");
+            }
+            sb.append("}}");
+            first = false;
+        }
+        sb.append("]");
+        return sb.toString();
     }
 
     @SuppressWarnings("unchecked")
@@ -311,7 +349,7 @@ public class EsSearchService {
         if (rawSource instanceof Map map) {
             return JacksonUtils.fromMap(map, EsDocumentSource.class);
         }
-        return new EsDocumentSource("", "", null, null);
+        return new EsDocumentSource("", "", null, null, null, null, null);
     }
 
     private record Hit(String id, EsDocumentSource source, double score) {}

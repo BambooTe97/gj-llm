@@ -36,6 +36,12 @@ public class DocumentSegmentEntity {
     /** 对应向量数据库中的 ID */
     private String segmentId;
 
+    /** 所属父块 ID（父子召回用，同一父块的子块共享此值） */
+    private String parentId;
+
+    /** 子块在父块中的序号（调试用） */
+    private Integer chunkIndex;
+
     /** 文本内容（可选，用于调试） */
     private String content;
 

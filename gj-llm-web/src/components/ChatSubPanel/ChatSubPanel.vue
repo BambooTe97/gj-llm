@@ -15,7 +15,8 @@ const renameTitle = ref('')
 let renameInputRef: HTMLInputElement | null = null
 
 function handleNewChat() {
-  chatStore.clearMessages()
+  // 切到新建对话的空白态；不销毁其它对话的桶，后台流式回答继续保留
+  chatStore.setActive(null)
   conversationStore.setCurrentId(null)
   router.push('/chat')
 }

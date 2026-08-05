@@ -42,14 +42,19 @@ watch(
     if (newId) {
       const convIdStr = String(newId)
       conversationStore.setCurrentId(convIdStr)
-      // 始终从 DB 加载历史，确保看到切页面期间后台完成的回答
-      await chatStore.loadHistory(convIdStr)
+      chatStore.setActive(convIdStr)
+      // 幂等加载：仅首次进入时拉历史；流式中的对话已 loaded，直接展示实时状态，
+      // 避免覆盖本地已写入的用户消息 / 流式内容（修复新对话首问消息丢失）。
+      if (!chatStore.isLoaded(convIdStr)) {
+        await chatStore.loadHistory(convIdStr)
+      }
       setTimeout(() => scrollToBottom(false), 50)
       // 恢复关联的知识库
       const conv = conversationStore.list.find((c) => String(c.id) === convIdStr)
       selectedDatasetId.value = conv?.datasetId != null ? String(conv.datasetId) : undefined
     } else {
-      chatStore.clearMessages()
+      // 新建对话空白态：仅切走激活桶，不销毁其它对话的后台流
+      chatStore.setActive(null)
       selectedDatasetId.value = undefined
     }
   },
@@ -88,17 +93,33 @@ function handleStop() {
 
 /** 发送消息 */
 async function handleSend(content: string, controls: { datasetId?: string; enableThinking: boolean }) {
-  // 确保有会话
-  if (!conversationStore.currentId) {
+  const existing = conversationStore.currentId
+  let convId: string
+  let isNew: boolean
+  if (existing) {
+    convId = existing
+    isNew = false
+  } else {
     const conv = await conversationStore.create(undefined, controls.datasetId)
     if (!conv) return
-    router.push(`/chat/${conv.id}`)
+    convId = String(conv.id)
+    isNew = true
   }
 
-  const convId = conversationStore.currentId
-  if (!convId) return
-
-  await chatStore.sendMessageStream(convId, content, controls.datasetId, controls.enableThinking)
+  // 先切到目标对话的桶并启动流式：sendMessageStream 的同步段会立即写入用户消息并置
+  // loaded=true；随后再导航，路由 watcher 触发 loadHistory 时该桶已 loaded -> 跳过，
+  // 不会覆盖本地状态。不提前 await 流式完成，保证新会话 URL 立即更新。
+  chatStore.setActive(convId)
+  const streamPromise = chatStore.sendMessageStream(
+    convId,
+    content,
+    controls.datasetId,
+    controls.enableThinking,
+  )
+  if (isNew) {
+    router.replace(`/chat/${convId}`)
+  }
+  await streamPromise
 
   // 刷新会话列表（更新标题等）
   await conversationStore.fetchList()
