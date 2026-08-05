@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import tools.jackson.databind.JsonNode;
 
@@ -54,12 +55,11 @@ public class ContextualRetrievalEnricher {
      * 对每个父块生成一次 LLM 上下文并拼到其所有子块前缀。默认关闭时直接返回。
      */
     public void enrich(List<Chunk> chunks) {
-        if (!props.isContextualRetrievalEnabled() || chunks == null || chunks.isEmpty()) {
+        if (!props.isContextualRetrievalEnabled() || CollectionUtils.isEmpty(chunks)) {
             return;
         }
         // 按 parentId 分组，每个父块只调一次 LLM
-        Map<String, List<Chunk>> byParent = chunks.stream()
-                .collect(Collectors.groupingBy(Chunk::getParentId));
+        Map<String, List<Chunk>> byParent = chunks.stream().collect(Collectors.groupingBy(Chunk::getParentId));
         for (List<Chunk> group : byParent.values()) {
             Chunk first = group.get(0);
             String source = str(first.getMetadata().get("source"));

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.gj.llm.rag.config.RagProperties;
 import com.gj.llm.rag.entity.DatasetEntity;
 import com.gj.llm.rag.entity.DatasetFileEntity;
 import com.gj.llm.rag.entity.DocumentSegmentEntity;
@@ -16,9 +17,7 @@ import com.gj.llm.rag.service.DatasetFileService;
 import com.gj.llm.rag.service.DatasetService;
 import com.gj.llm.es.service.EsSearchService;
 import com.gj.llm.rag.vector.reader.FileReaderDispatcher;
-import com.gj.llm.rag.vector.splitter.Chunk;
-import com.gj.llm.rag.vector.splitter.ChunkSeparators;
-import com.gj.llm.rag.vector.splitter.ParentChildSplitter;
+import com.gj.llm.rag.vector.splitter.*;
 import com.gj.llm.common.util.JacksonUtils;
 import com.gj.llm.file.model.FileInfo;
 import com.gj.llm.file.service.FileStorageService;
@@ -45,19 +44,15 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
     private final EsSearchService esSearchService;
     private final DocumentSegmentMapper segmentMapper;
     private final FileReaderDispatcher dispatcher;
-    private final com.gj.llm.rag.config.RagProperties ragProperties;
-    private final com.gj.llm.rag.vector.splitter.ChunkContextEnricher chunkContextEnricher;
-    private final com.gj.llm.rag.vector.splitter.ContextualRetrievalEnricher contextualRetrievalEnricher;
+    private final RagProperties ragProperties;
+    private final ChunkContextEnricher chunkContextEnricher;
+    private final ContextualRetrievalEnricher contextualRetrievalEnricher;
 
-    public DatasetFileServiceImpl(ApplicationEventPublisher eventPublisher,
-                                  DatasetService datasetService,
-                                  FileStorageService fileStorageService,
-                                  EsSearchService esSearchService,
-                                  DocumentSegmentMapper segmentMapper,
-                                  FileReaderDispatcher dispatcher,
-                                  com.gj.llm.rag.config.RagProperties ragProperties,
-                                  com.gj.llm.rag.vector.splitter.ChunkContextEnricher chunkContextEnricher,
-                                  com.gj.llm.rag.vector.splitter.ContextualRetrievalEnricher contextualRetrievalEnricher) {
+    public DatasetFileServiceImpl(ApplicationEventPublisher eventPublisher, DatasetService datasetService,
+                                  FileStorageService fileStorageService, EsSearchService esSearchService,
+                                  DocumentSegmentMapper segmentMapper, FileReaderDispatcher dispatcher,
+                                  RagProperties ragProperties, ChunkContextEnricher chunkContextEnricher,
+                                  ContextualRetrievalEnricher contextualRetrievalEnricher) {
         this.eventPublisher = eventPublisher;
         this.datasetService = datasetService;
         this.fileStorageService = fileStorageService;

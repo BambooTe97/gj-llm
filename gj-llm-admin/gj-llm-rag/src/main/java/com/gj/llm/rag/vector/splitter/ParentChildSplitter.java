@@ -1,5 +1,6 @@
 package com.gj.llm.rag.vector.splitter;
 
+import com.gj.llm.common.util.StringUtils;
 import org.springframework.ai.document.Document;
 
 import java.util.ArrayList;
@@ -52,15 +53,14 @@ public class ParentChildSplitter {
         List<Chunk> result = new ArrayList<>();
         for (Document doc : documents) {
             String fullText = doc.getText();
-            if (fullText == null || fullText.isBlank()) {
+            if (StringUtils.isBlank(fullText)) {
                 continue;
             }
             Map<String, Object> baseMeta = doc.getMetadata();
 
             // 父块：边界感知、无 overlap（靠段落分隔符自然对齐）
             List<String> parents = RecursiveCharacterTextSplitter.splitIntoSegments(fullText, parentSize, separators);
-            for (int pi = 0; pi < parents.size(); pi++) {
-                String parentText = parents.get(pi);
+            for (String parentText : parents) {
                 String parentId = UUID.randomUUID().toString();
 
                 // 子块：边界感知 + 句子级 overlap + 短块合并

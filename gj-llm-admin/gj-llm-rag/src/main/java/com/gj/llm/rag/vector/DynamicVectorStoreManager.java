@@ -49,8 +49,7 @@ public class DynamicVectorStoreManager {
     private void ensureCollectionExists(String type) {
         String collectionName = VectorStoreConstants.COLLECTION_PREFIX + type;
 
-        Boolean exists = milvusClientV2.hasCollection(
-                HasCollectionReq.builder().collectionName(collectionName).build());
+        Boolean exists = milvusClientV2.hasCollection(HasCollectionReq.builder().collectionName(collectionName).build());
 
         if (Boolean.TRUE.equals(exists)) {
             log.info("Milvus 集合已存在: {}", collectionName);

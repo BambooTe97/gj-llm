@@ -1,6 +1,7 @@
 package com.gj.llm.rag.service;
 
 import com.gj.llm.common.util.JacksonUtils;
+import com.gj.llm.common.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -56,7 +57,7 @@ public class QueryRewriter {
      * @return 检索查询变体列表，失败时返回仅含原始查询的列表
      */
     public List<String> rewrite(String query) {
-        if (query == null || query.isBlank()) {
+        if (StringUtils.isBlank(query)) {
             return List.of(query);
         }
 
