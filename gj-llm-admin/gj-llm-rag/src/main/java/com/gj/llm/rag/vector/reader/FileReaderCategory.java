@@ -1,4 +1,4 @@
-package com.gj.llm.rag.constant;
+package com.gj.llm.rag.vector.reader;
 
 import com.gj.llm.file.constant.FileTypeEnum;
 

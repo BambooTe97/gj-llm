@@ -1,7 +1,6 @@
 package com.gj.llm.rag.vector.reader;
 
 import com.gj.llm.file.model.FileInfo;
-import com.gj.llm.rag.constant.FileReaderCategory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.pdf.PagePdfDocumentReader;

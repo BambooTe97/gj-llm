@@ -48,7 +48,7 @@ public class RetrievalEvaluator {
 
             RetrievalEvalResult.Item item = new RetrievalEvalResult.Item();
             item.setQuery(q.getQuery());
-            item.setTopScore(ranked.isEmpty() ? 0.0 : scoreOf(ranked.get(0)));
+            item.setTopScore(ranked.isEmpty() ? 0.0 : scoreOf(ranked.getFirst()));
 
             int rank = 0;
             for (int i = 0; i < ranked.size(); i++) {
@@ -89,9 +89,7 @@ public class RetrievalEvaluator {
         }
         if (q.getExpectedSource() != null && !q.getExpectedSource().isBlank()) {
             Object src = d.getMetadata().get("source");
-            if (src != null && src.toString().contains(q.getExpectedSource())) {
-                return true;
-            }
+            return src != null && src.toString().contains(q.getExpectedSource());
         }
         return false;
     }

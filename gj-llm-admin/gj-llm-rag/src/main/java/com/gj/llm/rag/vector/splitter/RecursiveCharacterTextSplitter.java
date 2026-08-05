@@ -1,5 +1,6 @@
 package com.gj.llm.rag.vector.splitter;
 
+import com.gj.llm.common.util.StringUtils;
 import org.springframework.ai.document.Document;
 
 import java.util.ArrayList;
@@ -85,8 +86,8 @@ public class RecursiveCharacterTextSplitter {
      * @param separators 分隔符层级（从粗到细，末尾通常为 "" 表示字符兜底）
      * @return 边界感知的片段列表
      */
-    static List<String> splitIntoSegments(String text, int maxSize, List<String> separators) {
-        if (text == null || text.isEmpty()) {
+    public static List<String> splitIntoSegments(String text, int maxSize, List<String> separators) {
+        if (StringUtils.isBlank(text)) {
             return List.of();
         }
         if (text.length() <= maxSize) {
@@ -108,8 +109,7 @@ public class RecursiveCharacterTextSplitter {
         return splitByCharacters(text, maxSize);
     }
 
-    private static List<String> accumulate(String[] parts, String separator, int maxSize,
-                                           List<String> separators, int nextSepIndex) {
+    private static List<String> accumulate(String[] parts, String separator, int maxSize, List<String> separators, int nextSepIndex) {
         List<String> result = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         for (int i = 0; i < parts.length; i++) {
@@ -119,23 +119,22 @@ public class RecursiveCharacterTextSplitter {
             if (current.length() + withSep.length() <= maxSize) {
                 current.append(withSep);
             } else {
-                if (current.length() > 0) {
+                if (!current.isEmpty()) {
                     result.add(current.toString());
                 }
                 if (withSep.length() <= maxSize) {
                     current = new StringBuilder(withSep);
                 } else {
                     // 片段本身超长，递归用更细分隔符切分
-                    List<String> sub = splitIntoSegments(withSep, maxSize,
-                            separators.subList(nextSepIndex, separators.size()));
+                    List<String> sub = splitIntoSegments(withSep, maxSize, separators.subList(nextSepIndex, separators.size()));
                     for (int j = 0; j < sub.size() - 1; j++) {
                         result.add(sub.get(j));
                     }
-                    current = new StringBuilder(sub.isEmpty() ? "" : sub.get(sub.size() - 1));
+                    current = new StringBuilder(sub.isEmpty() ? "" : sub.getLast());
                 }
             }
         }
-        if (current.length() > 0) {
+        if (!current.isEmpty()) {
             result.add(current.toString());
         }
         return result;
@@ -197,7 +196,7 @@ public class RecursiveCharacterTextSplitter {
      * @param maxLen 最大长度（字符数）
      * @return 末尾句子串，可能为空
      */
-    static String trailingSentences(String text, int maxLen) {
+    public static String trailingSentences(String text, int maxLen) {
         if (text == null || text.isEmpty() || maxLen <= 0) {
             return "";
         }
@@ -218,7 +217,7 @@ public class RecursiveCharacterTextSplitter {
                 sb.insert(0, s);
             } else {
                 // 该句加入会超限：若 sb 仍空，取该句末尾 maxLen 字符兜底
-                if (sb.length() == 0) {
+                if (sb.isEmpty()) {
                     int cp = s.codePointCount(0, s.length());
                     int start = s.offsetByCodePoints(s.length(), -Math.min(maxLen, cp));
                     return s.substring(start);
@@ -248,7 +247,7 @@ public class RecursiveCharacterTextSplitter {
         // 首块过短则并入第二块
         if (merged.size() > 1 && merged.get(0).length() < minLen) {
             merged.set(1, merged.get(0) + merged.get(1));
-            merged.remove(0);
+            merged.removeFirst();
         }
         return merged;
     }

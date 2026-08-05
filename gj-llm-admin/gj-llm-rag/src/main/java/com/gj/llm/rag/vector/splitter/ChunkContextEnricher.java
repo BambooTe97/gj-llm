@@ -2,6 +2,7 @@ package com.gj.llm.rag.vector.splitter;
 
 import com.gj.llm.rag.config.RagProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -28,7 +29,7 @@ public class ChunkContextEnricher {
      * 原地给子块文本前拼接上下文前缀。开关关闭或无 chunk 时直接返回。
      */
     public void enrich(List<Chunk> chunks) {
-        if (!props.isContextPrefixEnabled() || chunks == null || chunks.isEmpty()) {
+        if (!props.isContextPrefixEnabled() || CollectionUtils.isEmpty(chunks)) {
             return;
         }
         for (Chunk c : chunks) {

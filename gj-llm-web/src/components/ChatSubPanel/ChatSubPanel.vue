@@ -3,7 +3,8 @@ import { ref, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useConversationStore } from '@/stores/modules/conversation'
 import { useChatStore } from '@/stores/modules/chat'
-import { Plus, ChatDotRound, Delete, ChatLineSquare } from '@element-plus/icons-vue'
+import { Plus, ChatDotRound, Delete, ChatLineSquare, MoreFilled, EditPen } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const router = useRouter()
 const conversationStore = useConversationStore()
@@ -27,11 +28,22 @@ function handleSelect(id: string) {
   router.push(`/chat/${id}`)
 }
 
-function handleDelete(id: string) {
-  conversationStore.remove(id)
+async function handleDelete(id: string) {
+  const target = conversationStore.list.find((c) => c.id === id)
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除会话 "${target?.title || '新对话'}" 吗？该操作将同时删除所有历史消息。`,
+      '确认删除',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  await conversationStore.remove(id)
+  ElMessage.success('删除成功')
 }
 
-/** 双击标题进入重命名模式 */
+/** 进入重命名模式（由「更多」菜单触发） */
 function startRename(id: string, currentTitle: string) {
   renamingId.value = id
   renameTitle.value = currentTitle || '新对话'
@@ -110,17 +122,24 @@ function handleRenameKeydown(e: KeyboardEvent) {
             <span
               v-else
               class="sub-panel-list__title"
-              @dblclick.stop="startRename(item.id, item.title || '新对话')"
-              :title="'双击重命名'"
+              :title="item.title || '新对话'"
             >{{ item.title || '新对话' }}</span>
-            <el-button
-              text
-              size="small"
-              class="sub-panel-list__delete"
-              @click.stop="handleDelete(item.id)"
-            >
-              <el-icon :size="14"><Delete /></el-icon>
-            </el-button>
+            <!-- 更多操作菜单 -->
+            <span class="sub-panel-list__more-wrap" @click.stop>
+              <el-dropdown trigger="click" placement="bottom-end" popper-class="conv-more-menu">
+                <el-icon :size="16" class="sub-panel-list__more"><MoreFilled /></el-icon>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item @click="startRename(item.id, item.title || '新对话')">
+                      <el-icon><EditPen /></el-icon>重命名
+                    </el-dropdown-item>
+                    <el-dropdown-item divided class="danger" @click="handleDelete(item.id)">
+                      <el-icon><Delete /></el-icon>删除
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </span>
           </div>
         </TransitionGroup>
 
@@ -268,7 +287,7 @@ $icon-size: 32px;
   &:hover {
     background: $hover-bg;
 
-    .sub-panel-list__delete {
+    .sub-panel-list__more {
       opacity: 1;
       transform: scale(1);
     }
@@ -294,6 +313,12 @@ $icon-size: 32px;
 
     .sub-panel-list__title {
       font-weight: 560;
+    }
+
+    // 选中项常显更多按钮
+    .sub-panel-list__more {
+      opacity: 1;
+      transform: scale(1);
     }
   }
 }
@@ -340,12 +365,19 @@ $icon-size: 32px;
   box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
 }
 
-// ========================= 删除按钮 =========================
-.sub-panel-list__delete {
-  opacity: 0;
-  color: $text-tertiary !important;
-  padding: 4px !important;
+// ========================= 更多菜单触发器 =========================
+.sub-panel-list__more-wrap {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.sub-panel-list__more {
+  cursor: pointer;
+  color: $text-tertiary;
+  padding: 4px;
   border-radius: 6px;
+  opacity: 0;
   transform: scale(0.8);
   transition:
     opacity 0.18s ease,
@@ -354,8 +386,8 @@ $icon-size: 32px;
     background 0.18s ease;
 
   &:hover {
-    color: #ff3b30 !important;
-    background: rgba(255, 59, 48, 0.08) !important;
+    color: $text-secondary;
+    background: rgba(0, 0, 0, 0.06);
     transform: scale(1.08);
   }
 

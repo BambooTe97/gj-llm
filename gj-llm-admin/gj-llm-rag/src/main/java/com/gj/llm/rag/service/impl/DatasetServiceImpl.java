@@ -61,8 +61,7 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
     @Override
     @Transactional
     public DatasetEntity create(DatasetCreateRequest request) {
-        long count = count(new LambdaQueryWrapper<DatasetEntity>()
-                .eq(DatasetEntity::getName, request.getName()));
+        long count = count(new LambdaQueryWrapper<DatasetEntity>().eq(DatasetEntity::getName, request.getName()));
         if (count > 0) {
             throw new RuntimeException("知识库名称已存在: " + request.getName());
         }
@@ -76,8 +75,7 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
         }
         final String finalTypeName = typeName;
 
-        count = count(new LambdaQueryWrapper<DatasetEntity>()
-                .eq(DatasetEntity::getCollectionName, finalTypeName));
+        count = count(new LambdaQueryWrapper<DatasetEntity>().eq(DatasetEntity::getCollectionName, finalTypeName));
         if (count > 0) {
             throw new RuntimeException("集合名称已存在: " + finalTypeName);
         }

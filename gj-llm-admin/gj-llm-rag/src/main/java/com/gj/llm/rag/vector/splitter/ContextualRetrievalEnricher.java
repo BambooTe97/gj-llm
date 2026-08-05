@@ -61,7 +61,7 @@ public class ContextualRetrievalEnricher {
         // 按 parentId 分组，每个父块只调一次 LLM
         Map<String, List<Chunk>> byParent = chunks.stream().collect(Collectors.groupingBy(Chunk::getParentId));
         for (List<Chunk> group : byParent.values()) {
-            Chunk first = group.get(0);
+            Chunk first = group.getFirst();
             String source = str(first.getMetadata().get("source"));
             String context = callLLM(CONTEXT_PROMPT.formatted(source, truncate(first.getParentText(), 800)), 96);
             if (context != null && !context.isBlank()) {

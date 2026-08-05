@@ -17,8 +17,7 @@ public final class ChunkSeparators {
     }
 
     /** 散文（PDF/Markdown/Office/TXT 等）：中文为主、兼容英文句末标点。 */
-    public static final List<String> PROSE = List.of(
-            "\n\n", "\n", "。", "！", "？", "；", "，", ".", "!", "?", ";", ",", ":", " ", "");
+    public static final List<String> PROSE = List.of("\n\n", "\n", "。", "！", "？", "；", "，", ".", "!", "?", ";", ",", ":", " ", "");
 
     /** 源码：按空行 / 行 / 语句块边界切分。 */
     public static final List<String> CODE = List.of("\n\n", "\n", "}", "{", ";", " ", "");
@@ -27,8 +26,7 @@ public final class ChunkSeparators {
     public static final List<String> JSON = List.of("\n\n", "\n", "}", "{", ",", " ", "");
 
     /** CSV：按行切分（保持单行完整，超长行才字符兜底）。 */
-    public static final List<String> CSV = List.of(
-            "\n", "\r\n", "");
+    public static final List<String> CSV = List.of("\n", "\r\n", "");
 
     /** 走代码切分策略的扩展名（含配置/日志，避免在含 {@code .} {@code :} 的 key/url 上误切）。 */
     private static final Set<String> CODE_EXTS = Set.of(

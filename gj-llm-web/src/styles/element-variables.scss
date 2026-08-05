@@ -68,6 +68,22 @@
   overflow: hidden;
 }
 
+// ========== 会话列表「更多」菜单 ==========
+.conv-more-menu {
+  .el-dropdown-menu__item .el-icon {
+    margin-right: 6px;
+  }
+
+  .el-dropdown-menu__item.danger {
+    color: #ff3b30;
+
+    &:hover {
+      background: rgba(255, 59, 48, 0.08);
+      color: #ff3b30;
+    }
+  }
+}
+
 // ========== Element Plus 弹窗玻璃效果 ==========
 .el-message-box {
   background: rgba(255, 255, 255, 0.92) !important;

@@ -276,8 +276,7 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
             if (documents.isEmpty()) {
                 throw new RuntimeException("不支持的文件类型或文件内容为空");
             }
-            log.info("文件读取完成: dfId={}, fileName={}, documents={}",
-                    dfId, fileInfo.getOriginalName(), documents.size());
+            log.info("文件读取完成: dfId={}, fileName={}, documents={}", dfId, fileInfo.getOriginalName(), documents.size());
 
             df.setProgressPercent(30);
             df.setCurrentStep("文本切分中...");
