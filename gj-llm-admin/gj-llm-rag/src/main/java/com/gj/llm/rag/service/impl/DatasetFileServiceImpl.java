@@ -12,10 +12,10 @@ import com.gj.llm.rag.event.DatasetFileUploadedEvent;
 import com.gj.llm.rag.mapper.DatasetFileMapper;
 import com.gj.llm.rag.mapper.DocumentSegmentMapper;
 import com.gj.llm.rag.model.DatasetFileVO;
-import com.gj.llm.rag.model.SearchResultItem;
 import com.gj.llm.rag.service.DatasetFileService;
 import com.gj.llm.rag.service.DatasetService;
 import com.gj.llm.es.service.EsSearchService;
+import com.gj.llm.rag.vector.DynamicVectorStoreManager;
 import com.gj.llm.rag.vector.reader.FileReaderDispatcher;
 import com.gj.llm.rag.vector.splitter.*;
 import com.gj.llm.common.util.JacksonUtils;
@@ -30,7 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -47,12 +46,14 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
     private final RagProperties ragProperties;
     private final ChunkContextEnricher chunkContextEnricher;
     private final ContextualRetrievalEnricher contextualRetrievalEnricher;
+    private final DynamicVectorStoreManager vectorStoreManager;
 
     public DatasetFileServiceImpl(ApplicationEventPublisher eventPublisher, DatasetService datasetService,
                                   FileStorageService fileStorageService, EsSearchService esSearchService,
                                   DocumentSegmentMapper segmentMapper, FileReaderDispatcher dispatcher,
                                   RagProperties ragProperties, ChunkContextEnricher chunkContextEnricher,
-                                  ContextualRetrievalEnricher contextualRetrievalEnricher) {
+                                  ContextualRetrievalEnricher contextualRetrievalEnricher,
+                                  DynamicVectorStoreManager vectorStoreManager) {
         this.eventPublisher = eventPublisher;
         this.datasetService = datasetService;
         this.fileStorageService = fileStorageService;
@@ -62,6 +63,7 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
         this.ragProperties = ragProperties;
         this.chunkContextEnricher = chunkContextEnricher;
         this.contextualRetrievalEnricher = contextualRetrievalEnricher;
+        this.vectorStoreManager = vectorStoreManager;
     }
 
     @Override
@@ -233,26 +235,6 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
     }
 
     @Override
-    public List<SearchResultItem> testSearch(Long datasetId, String query, int topK) {
-        DatasetEntity dataset = datasetService.getById(datasetId);
-        if (dataset == null) {
-            throw new RuntimeException("知识库不存在: id=" + datasetId);
-        }
-
-        List<Document> results = esSearchService.hybridSearch(dataset.getCollectionName(), query, topK);
-
-        List<SearchResultItem> items = new ArrayList<>();
-        for (int i = 0; i < results.size(); i++) {
-            Document doc = results.get(i);
-            Object scoreObj = doc.getMetadata().get("score");
-            double score = doc.getScore() != null ? doc.getScore()
-                    : (scoreObj instanceof Number n ? n.doubleValue() : 0);
-            items.add(new SearchResultItem(i + 1, doc.getText(), score, doc.getMetadata()));
-        }
-        return items;
-    }
-
-    @Override
     public void processDatasetFile(Long dfId) {
         DatasetFileEntity df = getById(dfId);
         if (df == null) return;
@@ -306,11 +288,19 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
             df.setCurrentStep("向量嵌入 + ES 索引写入中（最耗时）...");
             updateById(df);
 
-            log.info("开始向量嵌入并写入 ES: dfId={}, chunks={}", dfId, splits.size());
+            log.info("开始向量嵌入并写入: dfId={}, chunks={}, dense.provider={}", dfId, splits.size(),
+                    ragProperties.getDense().getProvider());
             long embedStart = System.currentTimeMillis();
-            esSearchService.indexDocuments(dataset.getCollectionName(), splits);
+            // ES:始终写文本做 BM25;仅 provider=es 时才写 embedding(ES 做 KNN),否则省内存
+            boolean esKnn = !ragProperties.getDense().isMilvus();
+            esSearchService.indexDocuments(dataset.getCollectionName(), splits, esKnn);
+            // Milvus:provider=milvus 时写向量(专业向量库),向量只存这一份
+            if (ragProperties.getDense().isMilvus()) {
+                vectorStoreManager.getVectorStore(dataset.getCollectionName()).add(splits);
+            }
             long embedCost = System.currentTimeMillis() - embedStart;
-            log.info("ES 索引写入完成: dfId={}, cost={}ms", dfId, embedCost);
+            log.info("向量写入完成: dfId={}, cost={}ms, esKnn={}, milvus={}", dfId, embedCost, esKnn,
+                    ragProperties.getDense().isMilvus());
 
             df.setProgressPercent(90);
             df.setCurrentStep("保存切片元数据...");

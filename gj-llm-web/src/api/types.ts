@@ -90,12 +90,21 @@ export interface DatasetFile {
   updatedAt: string
 }
 
-/** 检索测试结果项 */
-export interface SearchResultItem {
+/** 精排测试结果项:同时携带粗排分与精排分,用于对照评估排序 */
+export interface RankedTestItem {
   rank: number
   content: string
-  score: number
-  metadata: Record<string, any>
+  coarseScore: number
+  rerankScore: number
+  source: string | null
+  datasetFileId: string | number | null
+}
+
+/** 精排测试结果:含 reranker 可用状态 + 精排阈值 + 排序结果 */
+export interface TestRankedResult {
+  rerankerAvailable: boolean
+  rerankScoreThreshold: number
+  items: RankedTestItem[]
 }
 
 /** MyBatis-Plus IPage 分页响应 */

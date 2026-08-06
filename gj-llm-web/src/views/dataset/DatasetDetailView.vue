@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { UploadInstance, UploadRawFile } from 'element-plus'
 import { datasetApi } from '@/api/modules/dataset'
-import type { Dataset, DatasetFile, SearchResultItem } from '@/api/types'
+import type { Dataset, DatasetFile, RankedTestItem } from '@/api/types'
 import {
   UploadFilled, Refresh, Document, Loading, RefreshRight,
   Delete, QuestionFilled, Search,
@@ -32,7 +32,10 @@ const activeTab = ref<'files' | 'search'>('files')
 const searchQuery = ref('')
 const searchTopK = ref(3)
 const searching = ref(false)
-const searchResults = ref<SearchResultItem[]>([])
+// 检索测试:始终走 hybrid 粗排 + reranker 精排,恒定展示精排分(主)+向量相似度(Milvus 余弦,辅)
+const rankedResults = ref<RankedTestItem[]>([])
+const rerankerAvailable = ref(false)
+const rerankScoreThreshold = ref(0)
 
 // ---- 自动轮询（文件处理状态） ----
 const pollingEnabled = ref(true)
@@ -186,10 +189,13 @@ async function handleDeleteDoc(row: DatasetFile) {
 async function handleSearch() {
   if (!searchQuery.value.trim()) return
   searching.value = true
-  searchResults.value = []
+  rankedResults.value = []
   try {
     const res = await datasetApi.testSearch(datasetId, searchQuery.value, searchTopK.value)
-    searchResults.value = res.data.data || []
+    const data = res.data.data
+    rankedResults.value = data?.items || []
+    rerankerAvailable.value = data?.rerankerAvailable ?? false
+    rerankScoreThreshold.value = data?.rerankScoreThreshold ?? 0
   } finally {
     searching.value = false
   }
@@ -490,36 +496,45 @@ onUnmounted(() => {
                   </el-button>
                 </div>
 
-                <div class="ds-search__results" v-if="searchResults.length > 0">
-                  <div
-                    v-for="item in searchResults"
-                    :key="item.rank"
-                    class="ds-search__item"
-                  >
+                <!-- 检索结果:精排分为主(阈值标"会采用/低于阈值"),向量相似度(Milvus 余弦)为辅;仅 BM25 命中者相似度显示 - -->
+                <div class="ds-search__reranker-status" v-if="rankedResults.length > 0">
+                  <el-tag :type="rerankerAvailable ? 'success' : 'danger'" size="small" effect="dark" round>
+                    reranker：{{ rerankerAvailable ? '正常' : '未生效（降级粗排）' }}
+                  </el-tag>
+                  <span class="ds-search__threshold-hint">
+                    精排阈值 {{ (rerankScoreThreshold * 100).toFixed(0) }}% · 达标即在线上对话采用
+                  </span>
+                </div>
+                <div class="ds-search__results" v-if="rankedResults.length > 0">
+                  <div v-for="item in rankedResults" :key="item.rank" class="ds-search__item">
                     <div class="ds-search__item-header">
-                      <el-tag size="small" effect="dark" round>#{{ item.rank }}</el-tag>
+                      <div class="ds-search__item-left">
+                        <el-tag size="small" effect="dark" round>#{{ item.rank }}</el-tag>
+                        <el-tag
+                          size="small"
+                          effect="light"
+                          round
+                          :type="item.rerankScore >= rerankScoreThreshold ? 'success' : 'info'"
+                        >
+                          {{ item.rerankScore >= rerankScoreThreshold ? '会采用' : '低于阈值' }}
+                        </el-tag>
+                        <el-tag v-if="item.coarseScore <= 0" size="small" effect="plain" round type="warning">
+                          BM25 命中
+                        </el-tag>
+                      </div>
                       <span class="ds-search__score">
-                        相似度：{{ (item.score * 100).toFixed(1) }}%
+                        精排 {{ (item.rerankScore * 100).toFixed(1) }}% ｜ 向量相似度 {{ item.coarseScore > 0 ? (item.coarseScore * 100).toFixed(1) + '%' : '-' }}
                       </span>
                     </div>
                     <div class="ds-search__content">{{ item.content }}</div>
-                    <div class="ds-search__meta" v-if="item.metadata && Object.keys(item.metadata).length">
-                      <span
-                        v-for="(val, key) in item.metadata"
-                        :key="key"
-                        class="ds-search__meta-tag"
-                      >
-                        {{ key }}: {{ val }}
-                      </span>
+                    <div class="ds-search__meta" v-if="item.source">
+                      <span class="ds-search__meta-tag">source: {{ item.source }}</span>
                     </div>
                   </div>
                 </div>
+                <div class="ds-search__empty" v-else-if="!searching && searchQuery">暂无结果</div>
 
-                <div class="ds-search__empty" v-else-if="!searching && searchQuery">
-                  暂无结果
-                </div>
-
-                <div class="ds-search__hint" v-if="!searchQuery && searchResults.length === 0">
+                <div class="ds-search__hint" v-if="!searchQuery && rankedResults.length === 0">
                   <el-icon :size="36"><Search /></el-icon>
                   <span>输入查询内容测试知识库的检索效果</span>
                   <span class="ds-search__hint-sub">不需启动对话即可验证 RAG 召回质量</span>
@@ -860,6 +875,24 @@ onUnmounted(() => {
   font-size: 12px;
   color: #0071e3;
   font-weight: 500;
+}
+
+.ds-search__reranker-status {
+  margin: 10px 0 4px;
+  display: flex;
+  align-items: center;
+}
+
+.ds-search__threshold-hint {
+  margin-left: 10px;
+  font-size: 12px;
+  color: #86868b;
+}
+
+.ds-search__item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .ds-search__content {

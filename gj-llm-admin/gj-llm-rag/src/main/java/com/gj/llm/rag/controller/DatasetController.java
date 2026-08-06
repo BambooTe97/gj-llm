@@ -9,10 +9,11 @@ import com.gj.llm.rag.eval.RetrievalEvaluator;
 import com.gj.llm.rag.model.DatasetCreateRequest;
 import com.gj.llm.rag.model.DatasetFileVO;
 import com.gj.llm.rag.model.DatasetUpdateRequest;
-import com.gj.llm.rag.model.SearchResultItem;
+import com.gj.llm.rag.model.TestRankedResult;
 import com.gj.llm.rag.model.TestSearchRequest;
 import com.gj.llm.rag.service.DatasetFileService;
 import com.gj.llm.rag.service.DatasetService;
+import com.gj.llm.rag.service.RetrievalService;
 import com.gj.llm.common.web.R;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ public class DatasetController {
     private final DatasetService datasetService;
     private final DatasetFileService datasetFileService;
     private final RetrievalEvaluator retrievalEvaluator;
+    private final RetrievalService retrievalService;
 
     // ==================== 知识库 CRUD ====================
 
@@ -84,9 +86,13 @@ public class DatasetController {
 
     // ==================== 检索测试 ====================
 
+    /**
+     * 检索测试 -- 走 hybrid 粗排 + reranker 精排,返回精排分(主)/粗排分(辅) + reranker 可用状态 +
+     * 精排阈值,供页面预判"该片段在线上对话是否会被采用"(精排分 ≥ 阈值即采用)。reranker 不可用时降级为粗排。
+     */
     @PostMapping("/{datasetId}/test")
-    public R<List<SearchResultItem>> testSearch(@PathVariable Long datasetId, @Valid @RequestBody TestSearchRequest request) {
-        return R.ok(datasetFileService.testSearch(datasetId, request.getQuery(), request.getTopK()));
+    public R<TestRankedResult> testSearch(@PathVariable Long datasetId, @Valid @RequestBody TestSearchRequest request) {
+        return R.ok(retrievalService.retrieveRanked(request.getQuery(), datasetId, request.getTopK()));
     }
 
     // ==================== 离线检索评测 ====================

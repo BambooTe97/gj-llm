@@ -5,7 +5,10 @@ import com.gj.llm.reranker.config.RerankerProperties;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
+import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -33,6 +36,11 @@ public class RerankerService {
     public RerankerService(RerankerProperties properties) {
         this.properties = properties;
         this.restClient = buildRestClient(properties.getHost(), properties.getPort(), properties.getTimeout());
+    }
+
+    /** reranker 是否可用(启动连通性检查结果);为 false 时 {@link #rerank} 会降级为粗排 */
+    public boolean isAvailable() {
+        return available;
     }
 
     @PostConstruct
@@ -71,6 +79,17 @@ public class RerankerService {
         return RestClient.builder()
                 .baseUrl("http://" + host + ":" + port)
                 .requestFactory(factory)
+                // TEI /rerank 返回 Content-Type: application/octet-stream,Spring 7 的
+                // StringHttpMessageConverter 默认不再将其读为 String(报 "extracting response
+                // for type [String] and content type [application/octet-stream]")。放宽 String
+                // 转换器支持任意 content-type,使 .body(String.class) 能读到响应体。
+                .messageConverters(converters -> {
+                    for (HttpMessageConverter<?> c : converters) {
+                        if (c instanceof StringHttpMessageConverter sc) {
+                            sc.setSupportedMediaTypes(List.of(MediaType.ALL));
+                        }
+                    }
+                })
                 .build();
     }
 

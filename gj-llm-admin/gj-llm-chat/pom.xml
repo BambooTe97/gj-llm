@@ -20,12 +20,7 @@
             <artifactId>gj-common</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>com.gj.llm</groupId>
-            <artifactId>gj-es</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
+        <!-- 检索能力通过 rag 的 RetrievalService 门面获取,chat 不直接依赖 gj-es / gj-reranker -->
         <dependency>
             <groupId>com.gj.llm</groupId>
             <artifactId>gj-llm-rag</artifactId>

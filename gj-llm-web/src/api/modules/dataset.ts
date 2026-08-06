@@ -1,5 +1,5 @@
 import http from '@/api'
-import type { Dataset, DatasetFile, PageData, SearchResultItem } from '@/api/types'
+import type { Dataset, DatasetFile, PageData, TestRankedResult } from '@/api/types'
 
 export const datasetApi = {
   /** 分页获取知识库列表 */
@@ -65,8 +65,8 @@ export const datasetApi = {
     return http.post(`/v1/datasets/${datasetId}/documents/${dfId}/reparse`)
   },
 
-  /** 检索测试 */
-  testSearch(datasetId: string, query: string, topK = 3): Promise<ApiResponse<SearchResultItem[]>> {
+  /** 检索测试(粗排 + reranker 精排,返回精排分/粗排分 + 阈值,预判线上是否采用) */
+  testSearch(datasetId: string, query: string, topK = 3): Promise<ApiResponse<TestRankedResult>> {
     return http.post(`/v1/datasets/${datasetId}/test`, { query, topK })
   },
 }

@@ -122,8 +122,18 @@ public class EsSearchService {
 
     // ==================== 文档 CRUD ====================
 
-    /** 批量 embed 并写入索引 */
+    /** 批量 embed 并写入索引(默认写 embedding,ES 做 KNN) */
     public void indexDocuments(String collectionName, List<Document> docs) {
+        indexDocuments(collectionName, docs, true);
+    }
+
+    /**
+     * 批量写入 ES 索引。
+     *
+     * @param writeEmbedding true=嵌入并写 embedding 字段(ES 做 KNN);
+     *                       false=只写文本+元数据,不写向量(向量交 Milvus,ES 瘦身省内存)
+     */
+    public void indexDocuments(String collectionName, List<Document> docs, boolean writeEmbedding) {
         if (docs.isEmpty()) return;
         String indexName = toIndexName(collectionName);
         ensureIndexExists(collectionName);
@@ -134,19 +144,21 @@ public class EsSearchService {
                 int end = Math.min(start + BATCH_SIZE, docs.size());
                 List<Document> batch = docs.subList(start, end);
 
-                // 批量嵌入
-                List<String> texts = batch.stream().map(Document::getText).toList();
-                List<float[]> embeddings = embeddingModel.embed(texts);
+                // 批量嵌入(仅当需要写 embedding 时;否则不调 embed,省时省内存)
+                List<float[]> embeddings = writeEmbedding
+                        ? embeddingModel.embed(batch.stream().map(Document::getText).toList())
+                        : null;
 
                 // 构建 bulk 请求
                 BulkRequest.Builder bulkBuilder = new BulkRequest.Builder().index(indexName);
                 for (int i = 0; i < batch.size(); i++) {
                     Document doc = batch.get(i);
-                    float[] embedding = embeddings.get(i);
 
                     Map<String, Object> source = new LinkedHashMap<>();
                     source.put("content", doc.getText());
-                    source.put("embedding", embedding);
+                    if (writeEmbedding) {
+                        source.put("embedding", embeddings.get(i));
+                    }
                     source.put("dataset_id", doc.getMetadata().get("dataset_id"));
                     source.put("dataset_file_id", doc.getMetadata().get("dataset_file_id"));
                     source.put("file_id", doc.getMetadata().get("file_id"));
@@ -208,85 +220,9 @@ public class EsSearchService {
         }
     }
 
-    // ==================== 混合检索 ====================
-
-    private static final double RRF_K = 60.0;
-    private static final double SPARSE_WEIGHT = 0.3;
-    private static final double DENSE_WEIGHT = 0.7;
-
-    /**
-     * 混合检索：BM25 倒排 + KNN 向量，Java 侧 RRF 融合（ES 9.x 免费版不支持内置 RRF）。
-     */
-    public List<Document> hybridSearch(String collectionName, String query, int topK) {
-        return hybridSearch(collectionName, query, topK, null);
-    }
-
-    /**
-     * 混合检索（带元数据过滤）：filter 作用于 dataset_file_id / source 等已索引字段，
-     * 用于"文档内检索"等场景。filter 为 null/空时等价于无过滤。
-     */
-    public List<Document> hybridSearch(String collectionName, String query, int topK, Map<String, Object> filter) {
-        String indexName = toIndexName(collectionName);
-        int candidateK = topK * 5;
-        String filterJson = buildFilterJson(filter);
-
-        try {
-            // 1. 嵌入查询向量
-            float[] queryVector = embeddingModel.embed(query);
-
-            // 2. 分别执行 BM25 和 KNN 查询
-            List<Hit> bm25Hits = bm25Search(indexName, query, candidateK, filterJson);
-            List<Hit> knnHits = knnSearch(indexName, queryVector, candidateK, filterJson);
-
-            // 3. Java 侧 RRF 融合（仅排序用）+ 收集 KNN 余弦相似度（展示用）
-            Map<String, Double> rrfScores = new LinkedHashMap<>();
-            Map<String, EsDocumentSource> sourceMap = new LinkedHashMap<>();
-            Map<String, Double> knnScoreMap = new LinkedHashMap<>();
-
-            for (int i = 0; i < bm25Hits.size(); i++) {
-                Hit hit = bm25Hits.get(i);
-                rrfScores.merge(hit.id(), SPARSE_WEIGHT / (RRF_K + i + 1), Double::sum);
-                sourceMap.putIfAbsent(hit.id(), hit.source());
-            }
-            for (int i = 0; i < knnHits.size(); i++) {
-                Hit hit = knnHits.get(i);
-                rrfScores.merge(hit.id(), DENSE_WEIGHT / (RRF_K + i + 1), Double::sum);
-                sourceMap.putIfAbsent(hit.id(), hit.source());
-                knnScoreMap.putIfAbsent(hit.id(), hit.score());
-            }
-
-            // 4. 按 RRF 排序，展示分用 KNN 余弦相似度
-            List<Document> results = rrfScores.entrySet().stream()
-                    .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-                    .limit(topK)
-                    .map(e -> {
-                        EsDocumentSource src = sourceMap.get(e.getKey());
-                        double displayScore = knnScoreMap.getOrDefault(e.getKey(), 0.0);
-                        Map<String, Object> meta = new HashMap<>();
-                        meta.put("source", src.source());
-                        meta.put("dataset_id", src.datasetId());
-                        meta.put("dataset_file_id", src.datasetFileId());
-                        meta.put("file_id", src.fileId());
-                        meta.put("parent_id", src.parentId());
-                        meta.put("parent_content", src.parentContent());
-                        return Document.builder()
-                                .text(src.content())
-                                .score(displayScore)
-                                .metadata(meta)
-                                .build();
-                    })
-                    .toList();
-
-            log.info("ES 混合检索: index={}, query={}, bm25={}, knn={}, merged={}",
-                    indexName, query.substring(0, Math.min(query.length(), 50)),
-                    bm25Hits.size(), knnHits.size(), results.size());
-
-            return results;
-        } catch (Exception e) {
-            log.error("ES 混合检索失败: index={}, query={}", indexName, query, e);
-            return List.of();
-        }
-    }
+    // 混合检索(BM25 + dense + RRF 融合)已挪到 rag 的 HybridSearcher,统一走 DenseRetriever 策略,
+    // 此处不再保留 ES-only 旁路,避免与 Milvus/ES 双路径不一致。ES 只暴露原子能力:
+    // bm25SearchDocs(稀疏)/ knnSearchDocs(稠密),供 HybridSearcher 组合。
 
     private List<Hit> bm25Search(String indexName, String query, int size, String filterJson) throws Exception {
         String queryJson = (filterJson != null)
@@ -321,27 +257,42 @@ public class EsSearchService {
         }
     }
 
-    /** 构建 ES term 过滤数组 JSON，如 [{"term":{"dataset_file_id":123}}]；空则返回 null。 */
-    private String buildFilterJson(Map<String, Object> filter) {
-        if (filter == null || filter.isEmpty()) {
-            return null;
+    // ==================== 公开检索(BM25 / KNN,供 rag 做 hybrid 融合) ====================
+
+    /** BM25 检索,返回 Document(带 source 元数据),供 rag 取稀疏路召回 */
+    public List<Document> bm25SearchDocs(String collectionName, String query, int topK) {
+        String indexName = toIndexName(collectionName);
+        try {
+            return bm25Search(indexName, query, topK, null).stream().map(this::toDocument).toList();
+        } catch (Exception e) {
+            log.error("ES BM25 检索失败: index={}, query={}", indexName, query, e);
+            return List.of();
         }
-        StringBuilder sb = new StringBuilder("[");
-        boolean first = true;
-        for (Map.Entry<String, Object> e : filter.entrySet()) {
-            if (!first) sb.append(",");
-            sb.append("{\"term\":{\"").append(e.getKey()).append("\":");
-            Object v = e.getValue();
-            if (v instanceof Number || v instanceof Boolean) {
-                sb.append(v);
-            } else {
-                sb.append("\"").append(escapeJson(String.valueOf(v))).append("\"");
-            }
-            sb.append("}}");
-            first = false;
+    }
+
+    /** ES KNN 检索,返回 Document(score 为余弦相似度),供 EsKnnDenseRetriever 调用 */
+    public List<Document> knnSearchDocs(String collectionName, String query, int topK) {
+        String indexName = toIndexName(collectionName);
+        try {
+            float[] queryVector = embeddingModel.embed(query);
+            return knnSearch(indexName, queryVector, topK, null).stream().map(this::toDocument).toList();
+        } catch (Exception e) {
+            log.error("ES KNN 检索失败: index={}, query={}", indexName, query, e);
+            return List.of();
         }
-        sb.append("]");
-        return sb.toString();
+    }
+
+    /** Hit -> Document(携带 source 元数据) */
+    private Document toDocument(Hit hit) {
+        EsDocumentSource src = hit.source();
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("source", src.source());
+        meta.put("dataset_id", src.datasetId());
+        meta.put("dataset_file_id", src.datasetFileId());
+        meta.put("file_id", src.fileId());
+        meta.put("parent_id", src.parentId());
+        meta.put("parent_content", src.parentContent());
+        return Document.builder().text(src.content()).score(hit.score()).metadata(meta).build();
     }
 
     @SuppressWarnings("unchecked")

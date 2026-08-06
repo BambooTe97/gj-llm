@@ -41,3 +41,23 @@ gj:
       host: 192.168.50.109
       port: 3000
       timeout: 30000
+    # rag 自配的查询改写模型(独立于 chat 对话模型);为空则用默认 ChatModel
+    rag:
+      rewrite-model: gemma2:2b
+      # 稠密检索(dense)来源:milvus(向量走 Milvus,ES 只做 BM25,省内存)| es(ES 做 KNN)
+      # 切换需重建向量库。两条代码路径(DenseRetriever)都保留,按此配置激活其一。
+      dense:
+        provider: milvus
+    # chat 智能体编排平台:声明智能体 + 路由规则
+    # 加内部智能体=加 bean;加外部/市面智能体=在此声明 type:remote + endpoint
+    chat:
+      agents:
+        rag-qa:   { type: internal, model: gemma2:2b, thinking: true, num-predict: 4096 }
+        chitchat: { type: internal, model: gemma2:2b, thinking: true, num-predict: 4096 }
+        # 外部智能体示例(默认注释,启用即接入):
+        # dify-cs: { type: remote, endpoint: http://dify.local/v1/chat-messages, auth-header: "Bearer ${DIFY_KEY}" }
+      routing:
+        default-agent: chitchat
+        rules:
+          - agent: rag-qa
+            has-dataset: true

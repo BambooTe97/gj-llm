@@ -40,8 +40,8 @@
 | 框架 | Spring Boot 4.1 + Spring AI 2.0 | 应用框架 |
 | LLM | gemma2:2b (Ollama) | 对话生成、查询改写、HyDE |
 | Embedding | BGE-M3 (Ollama) | 文本转向量（1024维） |
-| 检索引擎 | Elasticsearch 9.x | BM25 + KNN 混合检索 |
-| 向量库 | Milvus | 向量集合管理（辅助） |
+| 检索引擎 | Elasticsearch 9.x | BM25 全文检索（dense 走 Milvus 时 ES 不存向量，省内存） |
+| 向量库 | Milvus | 稠密向量检索（默认 dense 源，专业向量库；可配切换为 ES KNN） |
 | Re-Ranker | BGE-Reranker (TEI) | Cross-Encoder 精排 |
 | 分词器 | IK Analyzer | 中文分词 |
 | 数据库 | MySQL + MyBatis-Plus | 元数据持久化 |
@@ -61,21 +61,26 @@
 ┌──────────────────────▼──────────────────────────────────┐
 │              gj-llm-start (Spring Boot)                  │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │              gj-llm-chat (对话模块)                │   │
-│  │  ChatServiceImpl: SSE流式 / RAG编排 / Prompt构建   │   │
+│  │              gj-llm-chat (对话编排模块)            │   │
+│  │  Agent/AgentRouter/AgentRegistry: 智能体策略编排   │   │
+│  │  ChatServiceImpl: 瘦编排(校验/路由/持久化)         │   │
 │  └──────────────────────┬───────────────────────────┘   │
-│                         │                                │
+│                         │ RetrievalService 门面          │
 │  ┌──────────────────────▼───────────────────────────┐   │
 │  │              gj-llm-rag (RAG 核心)                 │   │
-│  │  DatasetFileServiceImpl: 文件管道                  │   │
-│  │  QueryRewriter: 查询改写 + HyDE                    │   │
+│  │  RetrievalService: 检索门面(改写/粗排/精排/护栏)   │   │
+│  │  HybridSearcher: BM25+dense+RRF 融合              │   │
+│  │  DenseRetriever: dense 策略(Milvus/EsKnn 二选一)   │   │
+│  │  DatasetFileServiceImpl: 文件管道(写 ES+Milvus)    │   │
+│  │  QueryRewriter: 查询改写 + HyDE(ChatModel)         │   │
 │  │  ParentChildSplitter: 父子切分              │   │
 │  │  DynamicVectorStoreManager: Milvus 管理            │   │
 │  └──────┬──────────────────────────────┬─────────────┘   │
 │         │                              │                  │
 │  ┌──────▼──────┐  ┌──────────────┐  ┌──▼─────────────┐  │
 │  │  gj-es      │  │ gj-reranker  │  │  gj-file       │  │
-│  │  ES混合检索  │  │ 精排重打分   │  │  文件存储管理   │  │
+│  │  ES 原子检索 │  │ 精排重打分   │  │  文件存储管理   │  │
+│  │ bm25/knnDocs│  │              │  │                │  │
 │  └──────┬──────┘  └──────┬───────┘  └────────────────┘  │
 └─────────┼────────────────┼──────────────────────────────┘
           │                │
@@ -104,7 +109,7 @@
         → PdfContentReader/TextContentReader: 内容提取        │
         → ParentChildSplitter: 父子切分 + ChunkContextEnricher: 上下文注入            │
         → EmbeddingModel(BGE-M3): 批量向量嵌入 (每批20条)     │
-        → EsSearchService.indexDocuments(): ES bulk 写入     │
+        → EsSearchService.indexDocuments 写 ES(文本始终;embedding 仅 provider=es) + [provider=milvus] VectorStore.add 写 Milvus 向量     │
         → DocumentSegmentEntity: 切片元数据持久化             │
     → 状态更新: COMPLETED                                     │
                                                              │
@@ -112,9 +117,9 @@
                                                              │
   用户口语化提问                                              │
     → QueryRewriter.rewrite(): 书面语改写 + HyDE 假设答案     │
-    → EsSearchService.hybridSearch(): 多路混合检索            │
+    → HybridSearcher.search(): 多路混合检索            │
         ├─ BM25: ik_max_word 关键词匹配                      │
-        ├─ KNN: HNSW 图搜索 + 余弦相似度                     │
+        ├─ Dense(Milvus/ES): HNSW 图搜索 + 余弦相似度                     │
         └─ RRF: 加权倒数排名融合                              │
     → RerankerService.rerank(): 精排 + 父子去重 + 阈值过滤           │
     → LLM (gemma2:2b): 流式生成回答                        │
@@ -143,8 +148,8 @@ gj-llm/
 ├── gj-llm-admin/                    # 业务模块层
 │   ├── gj-llm-rag/                  # RAG 核心模块
 │   │   ├── entity/                  # DatasetEntity, DatasetFileEntity, DocumentSegmentEntity
-│   │   ├── model/                   # DTO: DatasetCreateRequest, SearchResultItem 等
-│   │   ├── service/                 # DatasetService, DatasetFileService, QueryRewriter
+│   │   ├── model/                   # DTO: DatasetCreateRequest, TestRankedResult 等
+│   │   ├── service/                 # DatasetService, DatasetFileService, QueryRewriter, RetrievalService(门面), HybridSearcher(融合), DenseRetriever(Milvus/EsKnn 策略)
 │   │   ├── vector/
 │   │   │   ├── splitter/            # RecursiveCharacterTextSplitter(切分核心), ParentChildSplitter(父子切分),
 │   │   │   │                        # Chunk, ChunkSeparators(类型分发), ChunkContextEnricher(上下文注入)
@@ -156,7 +161,8 @@ gj-llm/
 │   │   └── controller/              # DatasetController (REST API + /eval 评测)
 │   │
 │   └── gj-llm-chat/                 # 对话模块
-│       └── service/impl/            # ChatServiceImpl (SSE流式 + RAG编排)
+│       ├── agent/                  # ChatAgent 策略 + AgentRouter + AgentRegistry + RagQaAgent/ChitchatAgent/RemoteHttpAgent
+│       └── service/impl/            # ChatServiceImpl 瘦编排(校验/路由/持久化)
 │
 └── gj-llm-start/                    # 启动模块 (Spring Boot 入口)
 ```
@@ -166,9 +172,9 @@ gj-llm/
 | 层次 | 模块 | 职责 |
 |------|------|------|
 | 启动层 | gj-llm-start | Spring Boot 入口，聚合所有模块 |
-| 业务层 | gj-llm-chat | 对话编排、SSE 流控、Prompt 构建 |
-| 业务层 | gj-llm-rag | 知识库管理、文档管道、查询改写、分块 |
-| 基础设施层 | gj-es | ES 索引管理、BM25+KNN 混合检索、RRF 融合 |
+| 业务层 | gj-llm-chat | 智能体编排(Agent/Router/Registry)、SSE 流控、持久化 |
+| 业务层 | gj-llm-rag | 知识库管理、文档管道、查询改写、分块、检索编排(HybridSearcher)、dense 策略 |
+| 基础设施层 | gj-es | ES 索引管理、BM25/KNN 原子检索(融合在 rag 的 HybridSearcher) |
 | 基础设施层 | gj-reranker | Cross-Encoder 精排、TEI API 调用 |
 | 基础设施层 | gj-file | 文件上传/下载/删除 |
 | 基础设施层 | gj-common | JacksonUtils、日期工具等通用能力 |
@@ -203,7 +209,7 @@ DatasetFileEventListener.handleUploaded()
             ├─ ContextualRetrievalEnricher     → 可选 LLM 上下文（默认关）
             ├─ status → 向量嵌入 (50%)
             ├─ EmbeddingModel.embed(batch)     → BGE-M3 批量向量化
-            ├─ EsSearchService.indexDocuments() → ES bulk 写入（含 parent_content/parent_id）
+            ├─ EsSearchService.indexDocuments() → ES 写入(文本始终;embedding 仅 provider=es); [provider=milvus] VectorStore.add 写 Milvus 向量+content+metadata
             ├─ status → 保存元数据 (90%)
             ├─ DocumentSegmentEntity 批量入库   → document_segment 表（含 parent_id/chunk_index）
             └─ status → COMPLETED (100%)
@@ -366,10 +372,12 @@ reader-Document
 ```
 
 > **父子召回字段**：`parent_content`（命中子块后返回 LLM 的父块文本，`index:false` 仅存储不分析）、`parent_id`（同父块子块共享，检索侧去重）、`chunk_index`（子块序号）。旧索引无这些字段时检索侧自动回退用子块 content，向后兼容。
+>
+> **embedding 字段条件化**：`provider=milvus`（默认）时入库不写 `embedding`，ES 只存文本做 BM25（省内存，向量交 Milvus）；`provider=es` 时才写 `embedding` 做 ES KNN。mapping 始终声明该字段，不写则空（无 HNSW 图、不占内存）。
 
 ### 6.3 Milvus 集合
 
-每个知识库在 Milvus 中也有一个对应集合（命名：`collection_{type}`），使用 HNSW 索引（M=16, efConstruction=200）、COSINE 度量。Milvus 主要用于**集合创建时的一致性保障**，实际检索走 ES。
+每个知识库在 Milvus 中也有一个对应集合（命名：`collection_{type}`），使用 HNSW 索引（M=16, efConstruction=200）、COSINE 度量。默认配置下（provider=milvus）Milvus 是 dense 检索源——向量只存 Milvus，ES 只做 BM25（省 ES 内存）；可配 provider=es 切回 ES KNN（向量需存 ES）。
 
 ---
 
@@ -388,7 +396,7 @@ QueryRewriter.rewrite()
     └─ 查询变体0: 原始查询 (保底)
     │
     ▼ (每个变体独立检索)
-EsSearchService.hybridSearch()
+HybridSearcher.search()
     │
     ├─ BM25 搜索 ──────────────────────┐
     │   match query on "content" 字段   │
@@ -475,11 +483,11 @@ RRF_score(doc) = Σ w_i / (k + rank_i(doc))
 
 ### 7.6 元数据过滤
 
-`hybridSearch` 提供带 `filter` 参数的重载，对 `dataset_file_id` / `source` 等已索引字段做 term 过滤（BM25 用 bool.filter、KNN 用 filter 子句），支持"文档内检索"等场景。无 filter 的旧签名保持兼容。
+`hybridSearch` 及其 filter 重载已随融合逻辑上移到 rag 的 `HybridSearcher` 而移除（ES 只保留 `bm25SearchDocs`/`knnSearchDocs` 原子检索）。元数据过滤暂未接入 HybridSearcher；如需"文档内检索"等场景，可在 HybridSearcher 增参支持。
 
 ### 7.7 离线检索评测
 
-`RetrievalEvaluator`（`POST /api/v1/datasets/{id}/eval`）量化衡量切分/检索改动效果：对每条评测查询执行 hybridSearch + rerank，判定期望是否进 Top-5，计算 **Recall@5** 与 **MRR**。配套 `eval-queries-sample.json` 示例。**所有调参（chunkSize、阈值、是否开 Contextual Retrieval）都应先跑评测对比指标再决定。**
+`RetrievalEvaluator`（`POST /api/v1/datasets/{id}/eval`）量化衡量切分/检索改动效果：对每条评测查询执行 HybridSearcher 检索 + rerank，判定期望是否进 Top-5，计算 **Recall@5** 与 **MRR**。配套 `eval-queries-sample.json` 示例。**所有调参（chunkSize、阈值、是否开 Contextual Retrieval）都应先跑评测对比指标再决定。**
 
 ---
 
@@ -590,6 +598,8 @@ HyDE 是当前 RAG 领域最有效的查询增强技术之一。假设答案虽�
 ---
 
 ## 10. LLM 对话集成
+
+chat 模块采用**智能体编排架构**：`ChatServiceImpl` 是瘦编排器（校验会话 → 存用户消息 → `AgentRouter` 路由 → Agent 执行 → 存助手消息）；`Agent` 策略接口由 `RagQaAgent`（走 `RetrievalService` 检索 + RAG prompt）、`ChitchatAgent`（无检索）等实现，差异化用策略隔离；`AgentRegistry` 支持配置接入外部/市面智能体（`RemoteHttpAgent`）。检索不归 chat，由 rag 的 `RetrievalService` 门面提供。下面 Prompt/SSE 描述对应 `RagQaAgent` 的行为。
 
 ### 10.1 系统 Prompt
 
@@ -781,10 +791,9 @@ HyDE 是当前 RAG 领域最有效的查询增强技术之一。假设答案虽�
 | 父子两级切分（small-to-big） | 检索精度与上下文完整性兼得 | ParentChildSplitter |
 | 内容类型分发分隔符 | 代码/JSON/CSV 不再套用散文标点 | ChunkSeparators |
 | 确定性上下文前缀注入 | chunk 不再是无来源孤儿，标题/来源进 embedding+BM25 | ChunkContextEnricher |
-| ES 父子字段 + 检索侧父块回填 + 去重 | 命中子块返回父块完整上下文 | EsSearchService / ChatServiceImpl |
-| rerank 分数阈值 + "我不知道"硬拦截 | 弱结果不编造，不相关查询诚实返回空 | ChatServiceImpl |
-| 上下文字符预算护栏 | 防止父块拼接溢出 gemma2:2b 8k 窗口 | ChatServiceImpl |
-| 元数据过滤重载 | 支持文档内检索 | EsSearchService |
+| ES 父子字段 + 检索侧父块回填 + 去重 | 命中子块返回父块完整上下文 | RetrievalServiceImpl |
+| rerank 分数阈值 + "我不知道"硬拦截 | 弱结果不编造，不相关查询诚实返回空 | RetrievalServiceImpl / RagQaAgent |
+| 上下文字符预算护栏 | 防止父块拼接溢出 gemma2:2b 8k 窗口 | RetrievalServiceImpl |
 | 离线检索评测（Recall@5 / MRR） | 调参不盲 | RetrievalEvaluator |
 | 可选 LLM Contextual Retrieval（默认关） | 进一步提升 embedding 命中（需评测验证） | ContextualRetrievalEnricher |
 
@@ -885,4 +894,7 @@ gj:
       rerank-score-threshold: 0.3
       context-budget-chars: 3500
       contextual-retrieval-enabled: false
+      rewrite-model: gemma2:2b        # rag 自配的查询改写模型
+      dense:
+        provider: milvus              # milvus(向量走 Milvus,ES 只做 BM25,省内存) | es(ES 做 KNN)
 ```

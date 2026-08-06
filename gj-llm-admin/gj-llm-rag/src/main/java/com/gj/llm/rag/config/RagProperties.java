@@ -28,4 +28,31 @@ public class RagProperties {
 
     /** 可选：LLM Contextual Retrieval（入库时调 LLM 生成上下文），默认关，需评测验证有正收益再开。 */
     private boolean contextualRetrievalEnabled = false;
+
+    /** 查询改写使用的模型名（rag 自配，独立于 chat 对话模型）；为空时用默认 ChatModel。 */
+    private String rewriteModel;
+
+    /** 稠密检索(dense)来源配置 */
+    private Dense dense = new Dense();
+
+    @Data
+    public static class Dense {
+        /**
+         * dense 检索提供者：
+         * <ul>
+         *   <li>milvus - 向量走 Milvus(专业向量库,省 ES 内存),ES 只做 BM25</li>
+         *   <li>es - 向量走 ES KNN(ES 同时做 BM25 + KNN)</li>
+         * </ul>
+         * 切换时需重建向量库。默认 milvus。
+         */
+        private String provider = "milvus";
+
+        public boolean isMilvus() {
+            return "milvus".equalsIgnoreCase(provider);
+        }
+
+        public boolean isEs() {
+            return "es".equalsIgnoreCase(provider);
+        }
+    }
 }

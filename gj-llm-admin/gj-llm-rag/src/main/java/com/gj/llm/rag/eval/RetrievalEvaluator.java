@@ -1,8 +1,8 @@
 package com.gj.llm.rag.eval;
 
-import com.gj.llm.es.service.EsSearchService;
 import com.gj.llm.rag.entity.DatasetEntity;
 import com.gj.llm.rag.service.DatasetService;
+import com.gj.llm.rag.service.HybridSearcher;
 import com.gj.llm.reranker.service.RerankerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +15,7 @@ import java.util.List;
 /**
  * 离线检索评测器 -- 量化衡量切分/检索改动效果，让调参不盲。
  *
- * <p>对每条评测查询执行 hybridSearch + rerank（复现线上检索链路，但不走查询改写），
+ * <p>对每条评测查询执行 HybridSearcher 混合检索 + rerank（复现线上检索链路，但不走查询改写），
  * 判定期望是否进 top-K，计算 Recall@K 与 MRR。</p>
  *
  * @author zf
@@ -28,7 +28,7 @@ public class RetrievalEvaluator {
     private static final int EVAL_TOP_K = 5;
     private static final int EVAL_CANDIDATE_K = 8;
 
-    private final EsSearchService esSearchService;
+    private final HybridSearcher hybridSearcher;
     private final RerankerService rerankerService;
     private final DatasetService datasetService;
 
@@ -43,7 +43,7 @@ public class RetrievalEvaluator {
         int hits = 0;
         double mrrSum = 0;
         for (EvalQuery q : queries) {
-            List<Document> candidates = esSearchService.hybridSearch(collection, q.getQuery(), EVAL_CANDIDATE_K);
+            List<Document> candidates = hybridSearcher.search(collection, q.getQuery(), EVAL_CANDIDATE_K);
             List<Document> ranked = rerankerService.rerank(q.getQuery(), candidates, EVAL_TOP_K);
 
             RetrievalEvalResult.Item item = new RetrievalEvalResult.Item();
