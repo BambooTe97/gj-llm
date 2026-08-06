@@ -147,18 +147,18 @@ gj-llm/
 │
 ├── gj-llm-admin/                    # 业务模块层
 │   ├── gj-llm-rag/                  # RAG 核心模块
-│   │   ├── entity/                  # DatasetEntity, DatasetFileEntity, DocumentSegmentEntity
+│   │   ├── entity/                  # DatasetEntity, DatasetFileEntity, DocumentSegmentEntity, EvalQueryEntity
 │   │   ├── model/                   # DTO: DatasetCreateRequest, TestRankedResult 等
-│   │   ├── service/                 # DatasetService, DatasetFileService, QueryRewriter, RetrievalService(门面), HybridSearcher(融合), DenseRetriever(Milvus/EsKnn 策略)
+│   │   ├── service/                 # DatasetService, DatasetFileService, QueryRewriter, RetrievalService(门面), HybridSearcher(融合), DenseRetriever(Milvus/EsKnn 策略), RetrievalEvalService(评测集CRUD+跑评测)
 │   │   ├── vector/
 │   │   │   ├── splitter/            # RecursiveCharacterTextSplitter(切分核心), ParentChildSplitter(父子切分),
 │   │   │   │                        # Chunk, ChunkSeparators(类型分发), ChunkContextEnricher(上下文注入)
 │   │   │   ├── reader/              # PdfContentReader, TextContentReader
 │   │   │   └── DynamicVectorStoreManager
-│   │   ├── eval/                    # RetrievalEvaluator (离线检索评测)
+│   │   ├── eval/                    # RetrievalEvaluator(评测跑分逻辑), EvalQuery, RetrievalEvalResult
 │   │   ├── config/                  # RagProperties, MilvusConfig
 │   │   ├── listener/                # DatasetFileEventListener (异步事件)
-│   │   └── controller/              # DatasetController (REST API + /eval 评测)
+│   │   └── controller/              # DatasetController(知识库/文档/检索测试) + RetrievalEvalController(评测集CRUD+跑评测)
 │   │
 │   └── gj-llm-chat/                 # 对话模块
 │       ├── agent/                  # ChatAgent 策略 + AgentRouter + AgentRegistry + RagQaAgent/ChitchatAgent/RemoteHttpAgent
@@ -173,7 +173,7 @@ gj-llm/
 |------|------|------|
 | 启动层 | gj-llm-start | Spring Boot 入口，聚合所有模块 |
 | 业务层 | gj-llm-chat | 智能体编排(Agent/Router/Registry)、SSE 流控、持久化 |
-| 业务层 | gj-llm-rag | 知识库管理、文档管道、查询改写、分块、检索编排(HybridSearcher)、dense 策略 |
+| 业务层 | gj-llm-rag | 知识库管理、文档管道、查询改写、分块、检索编排(HybridSearcher)、dense 策略、离线检索评测 |
 | 基础设施层 | gj-es | ES 索引管理、BM25/KNN 原子检索(融合在 rag 的 HybridSearcher) |
 | 基础设施层 | gj-reranker | Cross-Encoder 精排、TEI API 调用 |
 | 基础设施层 | gj-file | 文件上传/下载/删除 |
@@ -487,7 +487,20 @@ RRF_score(doc) = Σ w_i / (k + rank_i(doc))
 
 ### 7.7 离线检索评测
 
-`RetrievalEvaluator`（`POST /api/v1/datasets/{id}/eval`）量化衡量切分/检索改动效果：对每条评测查询执行 HybridSearcher 检索 + rerank，判定期望是否进 Top-5，计算 **Recall@5** 与 **MRR**。配套 `eval-queries-sample.json` 示例。**所有调参（chunkSize、阈值、是否开 Contextual Retrieval）都应先跑评测对比指标再决定。**
+量化衡量切分/检索改动效果，是检索测试页（定性单条）的"量化半壁"。评测用例按知识库持久化（`dataset_retrieval_eval_query` 表），由 `RetrievalEvalController` 统一管理，`RetrievalEvaluator` 负责跑分逻辑（职责分离）。
+
+**接口**（`/api/v1/datasets/{datasetId}/...`）：
+- `GET/POST /eval-queries`、`PUT/DELETE /eval-queries/{id}`：评测用例 CRUD
+- `POST /eval-queries/import`：批量导入（外部 AI 生成的集）
+- `POST /eval`：跑评测（跑**已保存用例集**，无请求体）
+
+**跑分机制**：对每条评测查询执行 HybridSearcher 检索 + rerank（复现线上检索链路，但**不走查询改写**，是 chat 的悲观下界），判定期望是否进 Top-5，计算 **Recall@5** 与 **MRR**。每条明细额外携带 `expectedScore`（期望文档的精排分）与当前配置的 `rerankScoreThreshold`。
+
+**判定依据**（`EvalQuery`）：`expectedSnippet`（对子块/父块原文做**逐字子串**匹配）+ `expectedSource`（文件名包含匹配）。`expectedSnippet` 必须从原文摘录、不可改写，否则子串匹配假阴性、指标全错。
+
+**阈值扫描**：前端用每条 `expectedScore` 客户端算 effective recall(T) = 命中且期望文档分 ≥ T 的占比，画曲线并标当前阈值，找"recall 开始塌"的拐点定 `rerank-score-threshold`。多知识库（公司/故事/法律）各跑各的、分别标定。
+
+**评测集来源**：用外部强 AI（GPT/Claude/GLM）按提示词模板生成后走「导入」灌入（模板强制：逐字摘录 expectedSnippet、混合口语/正式 query、JSON 格式）；或在检索测试页点「标为期望答案」从召回结果一键沉淀。**所有调参（chunkSize、阈值、是否开 Contextual Retrieval）都应先跑评测对比指标再决定。**
 
 ---
 
@@ -794,7 +807,7 @@ chat 模块采用**智能体编排架构**：`ChatServiceImpl` 是瘦编排器�
 | ES 父子字段 + 检索侧父块回填 + 去重 | 命中子块返回父块完整上下文 | RetrievalServiceImpl |
 | rerank 分数阈值 + "我不知道"硬拦截 | 弱结果不编造，不相关查询诚实返回空 | RetrievalServiceImpl / RagQaAgent |
 | 上下文字符预算护栏 | 防止父块拼接溢出 gemma2:2b 8k 窗口 | RetrievalServiceImpl |
-| 离线检索评测（Recall@5 / MRR） | 调参不盲 | RetrievalEvaluator |
+| 离线检索评测（评测集持久化 + Recall@5/MRR + 阈值扫描） | 调参不盲，阈值标定有数据 | RetrievalEvalService / RetrievalEvaluator / RetrievalEvalController |
 | 可选 LLM Contextual Retrieval（默认关） | 进一步提升 embedding 命中（需评测验证） | ContextualRetrievalEnricher |
 
 ### 13.2 仍存在的局限

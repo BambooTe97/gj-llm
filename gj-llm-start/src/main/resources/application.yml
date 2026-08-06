@@ -22,7 +22,7 @@ spring:
 
 logging:
   level:
-    com.gj.llm: debug
+    com.gj.llm: info
     org.springframework: warn
     org.springframework.web.servlet.mvc.method.annotation: warn
 

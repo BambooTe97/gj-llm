@@ -21,6 +21,9 @@ public class RetrievalEvalResult {
     /** MRR：平均倒数排名（1/rank 的均值，未命中记 0） */
     private double mrr;
 
+    /** 当前配置的精排采纳阈值（rerank-score-threshold），供前端阈值扫描标记"当前"位置 */
+    private double rerankScoreThreshold;
+
     /** 每条查询的明细 */
     private List<Item> items;
 
@@ -33,5 +36,7 @@ public class RetrievalEvalResult {
         private int rank;
         /** top-1 的 rerank 分数 */
         private double topScore;
+        /** 期望文档的精排分（未命中记 0）；用于前端客户端阈值扫描：effective recall(T) = 命中且 expectedScore ≥ T 的占比 */
+        private double expectedScore;
     }
 }

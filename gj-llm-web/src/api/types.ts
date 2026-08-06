@@ -107,6 +107,48 @@ export interface TestRankedResult {
   items: RankedTestItem[]
 }
 
+/** 检索评测用例(id/datasetId 新建时缺省) */
+export interface EvalQuery {
+  id?: string | number
+  datasetId?: string | number
+  query: string
+  expectedSource: string | null
+  expectedSnippet: string | null
+}
+
+/** 评测结果明细项 */
+export interface EvalResultItem {
+  query: string
+  found: boolean
+  rank: number
+  topScore: number
+  /** 期望文档的精排分(未命中记 0);前端据此做阈值扫描 */
+  expectedScore: number
+}
+
+/** 检索评测结果:聚合指标 + 每条明细 */
+export interface RetrievalEvalResult {
+  total: number
+  recallAtK: number
+  mrr: number
+  /** 当前配置的精排采纳阈值,供阈值扫描标记"当前"位置 */
+  rerankScoreThreshold: number
+  items: EvalResultItem[]
+}
+
+/** 检索评测异步任务状态(供前端轮询) */
+export interface RetrievalEvalTask {
+  taskId: string
+  datasetId: string | number
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+  total: number
+  done: number
+  currentStep: string | null
+  errorMessage: string | null
+  result: RetrievalEvalResult | null
+  createdAt: number
+}
+
 /** MyBatis-Plus IPage 分页响应 */
 export interface PageData<T> {
   records: T[]

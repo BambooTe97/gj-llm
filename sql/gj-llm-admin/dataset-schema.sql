@@ -58,3 +58,18 @@ CREATE TABLE IF NOT EXISTS document_segment (
 -- ============================================================
 -- ALTER TABLE document_segment ADD COLUMN parent_id VARCHAR(100) NULL COMMENT '所属父块 ID' AFTER segment_id;
 -- ALTER TABLE document_segment ADD COLUMN chunk_index INT NULL COMMENT '子块在父块中的序号' AFTER parent_id;
+
+-- 检索评测用例表（按知识库持久化 评测 query + 期望命中依据，供离线评测 Recall@K / MRR）
+CREATE TABLE IF NOT EXISTS dataset_retrieval_eval_query (
+    id               BIGINT        COMMENT '主键（雪花算法 ID）',
+    dataset_id       BIGINT        NOT NULL COMMENT '关联的知识库 ID',
+    query            VARCHAR(500)  NOT NULL COMMENT '评测查询（原始，不走改写，直接测索引+reranker 质量）',
+    expected_source  VARCHAR(200)  NULL COMMENT '期望命中来源文件名（与 source 元数据做包含匹配，可只填部分）',
+    expected_snippet VARCHAR(1000) NULL COMMENT '期望命中文本片段（对子块/父块原文做逐字子串匹配，须原文摘录不可改写）',
+    create_by        VARCHAR(50)   DEFAULT NULL COMMENT '创建者',
+    update_by        VARCHAR(50)   DEFAULT NULL COMMENT '更新者',
+    created_at       DATETIME      COMMENT '创建时间',
+    updated_at       DATETIME      COMMENT '更新时间',
+    PRIMARY KEY (id),
+    INDEX idx_dataset_id (dataset_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='知识库检索评测用例表';
