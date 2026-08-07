@@ -3,6 +3,7 @@ package com.gj.llm.rag.controller;
 import com.gj.llm.common.web.R;
 import com.gj.llm.rag.entity.EvalQueryEntity;
 import com.gj.llm.rag.eval.EvalQuery;
+import com.gj.llm.rag.eval.EvalRunRequest;
 import com.gj.llm.rag.eval.RetrievalEvalResult;
 import com.gj.llm.rag.eval.RetrievalEvalTask;
 import com.gj.llm.rag.service.RetrievalEvalService;
@@ -10,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * 检索评测控制器 -- 评测用例 CRUD + 导入 + 跑评测。
@@ -62,28 +62,27 @@ public class RetrievalEvalController {
     // ==================== 跑评测(异步任务化) ====================
 
     /**
-     * 提交异步评测任务,立即返回 taskId。
+     * 提交异步测评任务,立即返回(后台串行执行)。
      *
-     * <p>后台串行执行该库评测用例集(hybrid 检索 + rerank),逐条上报进度。
-     * 前端用 {@code GET /eval/tasks/{taskId}} 轮询进度与最终结果(Recall@5 / MRR + 明细)。</p>
+     * <p>后台串行执行该库评测用例集(hybrid 检索 + rerank),逐条上报进度,任务按 datasetId 存 Redis。
+     * 前端用 {@code GET /eval/task} 轮询进度与最终结果(Recall@5 / MRR + 明细),重进页面亦用它恢复上次结果。</p>
      */
     @PostMapping("/eval")
-    public R<Map<String, String>> eval(@PathVariable Long datasetId) {
-        String taskId = retrievalEvalService.submit(datasetId);
-        return R.ok(Map.of("taskId", taskId), "评测任务已提交");
+    public R<Void> eval(@PathVariable Long datasetId,
+                        @RequestBody(required = false) EvalRunRequest request) {
+        List<Long> queryIds = request == null ? null : request.queryIds();
+        retrievalEvalService.submit(datasetId, queryIds);
+        return R.ok(null, "测评任务已提交");
     }
 
     /**
-     * 查询评测任务状态/结果(供前端轮询)。
+     * 查询该库最近一次测评任务状态/结果(供前端轮询与重进恢复)。
      *
-     * @return 任务状态:进行中含 done/total 进度,完成含完整 {@link RetrievalEvalResult},失败含 errorMessage
+     * @return 任务状态:进行中含 done/total 进度,完成含完整 {@link RetrievalEvalResult},失败含 errorMessage;
+     *         无最近任务返回 null(前端据此显示"尚未测评")
      */
-    @GetMapping("/eval/tasks/{taskId}")
-    public R<RetrievalEvalTask> getEvalTask(@PathVariable Long datasetId, @PathVariable String taskId) {
-        RetrievalEvalTask task = retrievalEvalService.getTask(taskId);
-        if (task == null) {
-            throw new RuntimeException("评测任务不存在或已过期: " + taskId);
-        }
-        return R.ok(task);
+    @GetMapping("/eval/task")
+    public R<RetrievalEvalTask> getEvalTask(@PathVariable Long datasetId) {
+        return R.ok(retrievalEvalService.getTaskByDataset(datasetId));
     }
 }

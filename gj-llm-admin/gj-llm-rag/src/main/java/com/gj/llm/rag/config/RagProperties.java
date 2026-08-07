@@ -20,9 +20,6 @@ public class RagProperties {
     /** 确定性上下文前缀（[文档: source > title]）开关，默认开。 */
     private boolean contextPrefixEnabled = true;
 
-    /** rerank 分数阈值，低于此值视为无可靠答案（Phase 3 护栏）。 */
-    private double rerankScoreThreshold = 0.3;
-
     /** LLM 上下文总字符预算，防止父块拼接后溢出 gemma2:2b 的 8k token 窗口。 */
     private int contextBudgetChars = 3500;
 

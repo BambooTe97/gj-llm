@@ -5,7 +5,7 @@ import { ElMessage } from 'element-plus'
 import type { UploadInstance, UploadRawFile } from 'element-plus'
 import { datasetApi } from '@/api/modules/dataset'
 import { evalApi } from '@/api/modules/eval'
-import type { Dataset, DatasetFile, RankedTestItem, EvalQuery, RetrievalEvalResult } from '@/api/types'
+import type { Dataset, DatasetFile, RankedTestItem, EvalQuery, EvalResultItem, RetrievalEvalResult } from '@/api/types'
 import {
   UploadFilled, Refresh, Document, Loading, RefreshRight,
   Delete, QuestionFilled, Search,
@@ -36,7 +36,7 @@ const searching = ref(false)
 // 检索测试:始终走 hybrid 粗排 + reranker 精排,恒定展示精排分(主)+向量相似度(Milvus 余弦,辅)
 const rankedResults = ref<RankedTestItem[]>([])
 const rerankerAvailable = ref(false)
-const rerankScoreThreshold = ref(0)
+const rerankScoreThreshold = computed(() => dataset.value?.rerankScoreThreshold ?? 0)
 
 // ---- 检索评测 ----
 const evalQueries = ref<EvalQuery[]>([])
@@ -50,8 +50,10 @@ const evalForm = ref<EvalQuery>({ query: '', expectedSource: '', expectedSnippet
 const importDialogVisible = ref(false)
 const importText = ref('')
 const showPrompt = ref(false)
-// 异步评测任务:taskId + 进度(done/total) + 轮询定时器
-const evalTaskId = ref<string | null>(null)
+// 选择性测评:勾选的用例 id(空=全量) + 进度 + 轮询定时器
+const selectedIds = ref<(string | number)[]>([])
+/** 受控展开的用例行(配合 expand-row-keys,支持全部展开/折叠) */
+const expandedEvalRows = ref<(string | number)[]>([])
 const evalProgress = ref({ done: 0, total: 0 })
 let evalPollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -76,8 +78,30 @@ const thresholdScan = computed(() => {
     recall: evalResult.value!.items.filter((it) => it.found && it.expectedScore >= t).length / total,
   }))
 })
-/** 当前配置的精排阈值(取自后端结果,默认 0.3 兜底) */
-const currentThreshold = computed(() => evalResult.value?.rerankScoreThreshold ?? 0.3)
+/** 当前配置的精排阈值(取自知识库配置,采纳后实时更新;默认 0.3 兜底) */
+const currentThreshold = computed(() => dataset.value?.rerankScoreThreshold ?? 0.3)
+/** 系统计算的推荐阈值(有效召回率≥95%·Recall@5 的最高阈值) */
+const recommendedThreshold = computed(() => evalResult.value?.recommendedThreshold ?? 0)
+/** 手动调整阈值的本地输入(跟随当前阈值,可被"采纳"填入推荐值) */
+const manualThreshold = ref(0.3)
+watch(currentThreshold, (v) => { manualThreshold.value = v }, { immediate: true })
+/** 阈值保存中(采纳/手动保存共用 loading) */
+const adopting = ref(false)
+/** 评测结果按用例 ID 索引,供用例行合入结果 */
+const evalResultMap = computed(() => {
+  const map = new Map<string | number, EvalResultItem>()
+  evalResult.value?.items.forEach((it) => map.set(it.queryId, it))
+  return map
+})
+/** 本次测评命中数 */
+const evalHitCount = computed(() => evalResult.value?.items.filter((it) => it.found).length ?? 0)
+/** 有结果可展开的用例行(只展开跑过的,未参与的不展开) */
+const evalResultRows = computed(() => evalQueries.value.filter((r) => r.id != null && evalResultMap.value.get(r.id)))
+/** 是否已全部展开 */
+const allExpanded = computed(() =>
+  evalResultRows.value.length > 0 &&
+  evalResultRows.value.every((r) => expandedEvalRows.value.some((id) => id === r.id)),
+)
 /** 评测进度百分比(done/total) */
 const evalProgressPct = computed(() => {
   const { done, total } = evalProgress.value
@@ -242,7 +266,6 @@ async function handleSearch() {
     const data = res.data.data
     rankedResults.value = data?.items || []
     rerankerAvailable.value = data?.rerankerAvailable ?? false
-    rerankScoreThreshold.value = data?.rerankScoreThreshold ?? 0
   } finally {
     searching.value = false
   }
@@ -347,24 +370,42 @@ async function runEval() {
   }
   evalRunning.value = true
   evalResult.value = null
-  evalProgress.value = { done: 0, total: evalQueries.value.length }
+  expandedEvalRows.value = []
+  const total = selectedIds.value.length || evalQueries.value.length
+  evalProgress.value = { done: 0, total }
   try {
-    const res = await evalApi.runEval(datasetId)
-    evalTaskId.value = res.data.data.taskId
+    await evalApi.runEval(datasetId, selectedIds.value)
     startEvalPolling()
   } catch {
     evalRunning.value = false
   }
 }
 
+/** 用例表多选变更:维护选中 id(空=跑全部) */
+function handleEvalSelectionChange(rows: EvalQuery[]) {
+  selectedIds.value = rows.map((r) => r.id).filter((v): v is string | number => v != null)
+}
+
+/** 行展开受控同步:用户单行点箭头时同步 expandedEvalRows */
+function handleEvalExpandChange(_row: EvalQuery, expandedRows: EvalQuery[]) {
+  expandedEvalRows.value = expandedRows.map((r) => r.id).filter((v): v is string | number => v != null)
+}
+
+/** 全部展开/折叠(只操作有结果的行) */
+function toggleExpandAll() {
+  expandedEvalRows.value = allExpanded.value
+    ? []
+    : evalResultRows.value.map((r) => r.id).filter((v): v is string | number => v != null)
+}
+
 /** 轮询评测任务状态:完成取 result,失败提示,异常静默下一轮重试 */
 function startEvalPolling() {
   if (evalPollTimer) return
   evalPollTimer = setInterval(async () => {
-    if (!evalTaskId.value) return
     try {
-      const res = await evalApi.getEvalTaskStatus(datasetId, evalTaskId.value)
+      const res = await evalApi.getEvalTask(datasetId)
       const task = res.data.data
+      if (!task) { stopEvalPolling(); evalRunning.value = false; return }
       evalProgress.value = { done: task.done, total: task.total }
       if (task.status === 'COMPLETED') {
         evalResult.value = task.result
@@ -386,6 +427,47 @@ function stopEvalPolling() {
   }
 }
 
+/** 重进页面:按 datasetId 从 Redis 恢复上次测评结果(2h 内有效),无需前端记 taskId */
+async function restoreLastEval() {
+  try {
+    const res = await evalApi.getEvalTask(datasetId)
+    const task = res.data.data
+    if (!task) return
+    if (task.status === 'COMPLETED' && task.result) {
+      evalResult.value = task.result
+      evalProgress.value = { done: task.done, total: task.total }
+    } else if (task.status === 'RUNNING' || task.status === 'PENDING') {
+      evalRunning.value = true
+      evalProgress.value = { done: task.done, total: task.total }
+      startEvalPolling()
+    }
+  } catch { /* 无最近任务,静默 */ }
+}
+
+/** 采纳推荐阈值:写入知识库配置,刷新 dataset 使标线即时移动 */
+async function adoptRecommended() {
+  adopting.value = true
+  try {
+    await datasetApi.update(datasetId, { rerankScoreThreshold: recommendedThreshold.value })
+    ElMessage.success(`已采纳推荐阈值 ${(recommendedThreshold.value * 100).toFixed(0)}%`)
+    await loadDataset()
+  } catch { /* 拦截器统一处理 */ } finally {
+    adopting.value = false
+  }
+}
+
+/** 手动保存阈值:写入知识库配置 */
+async function saveManualThreshold() {
+  adopting.value = true
+  try {
+    await datasetApi.update(datasetId, { rerankScoreThreshold: manualThreshold.value })
+    ElMessage.success('阈值已更新')
+    await loadDataset()
+  } catch { /* 拦截器统一处理 */ } finally {
+    adopting.value = false
+  }
+}
+
 onUnmounted(() => stopEvalPolling())
 
 function copyPrompt() {
@@ -398,6 +480,7 @@ watch(activeTab, (tab) => {
   if (tab === 'eval' && !evalLoaded.value) {
     evalLoaded.value = true
     loadEvalQueries()
+    restoreLastEval()
   }
 })
 
@@ -467,6 +550,14 @@ onUnmounted(() => {
             <div class="ds-sidebar__row">
               <span class="ds-sidebar__label">Overlap</span>
               <span class="ds-sidebar__value">{{ dataset.chunkOverlap }}</span>
+            </div>
+          </div>
+
+          <div class="ds-sidebar__section">
+            <div class="ds-sidebar__section-title">检索参数</div>
+            <div class="ds-sidebar__row">
+              <span class="ds-sidebar__label">精排阈值</span>
+              <span class="ds-sidebar__value">{{ (dataset.rerankScoreThreshold * 100).toFixed(0) }}%</span>
             </div>
           </div>
 
@@ -738,20 +829,21 @@ onUnmounted(() => {
           <el-tab-pane label="检索评测" name="eval">
             <div class="glass-card ds-eval-card">
               <div class="glass-card__header">
-                <span>评测用例（{{ evalQueries.length }}）</span>
+                <span>测评用例（{{ evalQueries.length }}）</span>
                 <div class="ds-eval__actions">
                   <el-button size="small" type="primary" :disabled="evalRunning" @click="runEval">
-                    {{ evalRunning ? `评测中 ${evalProgress.done}/${evalProgress.total}` : '跑评测' }}
+                    {{ evalRunning ? `测评中 ${evalProgress.done}/${evalProgress.total}` : '测评' }}
                   </el-button>
                   <el-button size="small" :disabled="evalRunning" @click="openImportDialog">导入</el-button>
                   <el-button size="small" :disabled="evalRunning" @click="openCreateDialog">新增</el-button>
                   <el-button size="small" text @click="showPrompt = !showPrompt">AI 生成指引</el-button>
+                  <span v-if="selectedIds.length" class="ds-eval__selected">已选 {{ selectedIds.length }}</span>
                 </div>
               </div>
               <div class="glass-card__body">
-                <!-- 评测进度 -->
+                <!-- 测评进度 -->
                 <div class="ds-eval__progress" v-if="evalRunning">
-                  <span class="ds-eval__progress-text">评测中 {{ evalProgress.done }}/{{ evalProgress.total }}</span>
+                  <span class="ds-eval__progress-text">测评中 {{ evalProgress.done }}/{{ evalProgress.total }}</span>
                   <el-progress :percentage="evalProgressPct" :stroke-width="6" :show-text="false" status="success" />
                 </div>
                 <!-- 外部 AI 生成指引 -->
@@ -763,16 +855,113 @@ onUnmounted(() => {
                   <pre class="ds-eval__prompt-text">{{ promptTemplate }}</pre>
                 </div>
 
-                <!-- 评测用例表 -->
-                <el-table :data="evalQueries" v-loading="evalLoading" stripe size="small" empty-text="暂无评测用例，可新增/导入，或在检索测试页点「标为期望答案」">
-                  <el-table-column label="查询" min-width="220">
+                <!-- 聚合指标 + 阈值扫描(跑完显示,贴表格上方) -->
+                <div class="ds-eval__summary" v-if="evalResult">
+                  <div class="ds-eval__summary-head">
+                    <div class="ds-eval__metrics">
+                      <div class="ds-eval__metric">
+                        <span class="ds-eval__metric-num">{{ (evalResult.recallAtK * 100).toFixed(1) }}%</span>
+                        <span class="ds-eval__metric-label">Recall@5</span>
+                      </div>
+                      <div class="ds-eval__metric">
+                        <span class="ds-eval__metric-num">{{ evalResult.mrr.toFixed(3) }}</span>
+                        <span class="ds-eval__metric-label">MRR</span>
+                      </div>
+                      <div class="ds-eval__metric">
+                        <span class="ds-eval__metric-num">{{ evalHitCount }}/{{ evalResult.total }}</span>
+                        <span class="ds-eval__metric-label">命中</span>
+                      </div>
+                    </div>
+                    <el-button text size="small" class="ds-eval__expand-toggle" @click="toggleExpandAll">
+                      {{ allExpanded ? '折叠全部' : '展开全部' }}
+                    </el-button>
+                  </div>
+                  <el-collapse class="ds-eval__scan-collapse">
+                    <el-collapse-item name="scan">
+                      <template #title>
+                        <span class="ds-eval__scan-title">阈值扫描 · effective recall = 命中且期望文档分 ≥ 阈值 的占比（找 recall 开始塌的拐点定阈值）</span>
+                      </template>
+                      <div class="ds-eval__scan-row" v-for="t in thresholdScan" :key="t.threshold">
+                        <span class="ds-eval__scan-label" :class="{ 'is-current': Math.abs(t.threshold - currentThreshold) < 0.001, 'is-recommended': Math.abs(t.threshold - recommendedThreshold) < 0.001 }">
+                          {{ (t.threshold * 100).toFixed(0) }}%{{ Math.abs(t.threshold - currentThreshold) < 0.001 ? '（当前）' : Math.abs(t.threshold - recommendedThreshold) < 0.001 ? '（推荐）' : '' }}
+                        </span>
+                        <div class="ds-eval__scan-bar-bg">
+                          <div class="ds-eval__scan-bar" :style="{ width: (t.recall * 100) + '%' }"></div>
+                        </div>
+                        <span class="ds-eval__scan-value">{{ (t.recall * 100).toFixed(0) }}%</span>
+                      </div>
+                    </el-collapse-item>
+                  </el-collapse>
+
+                  <!-- 推荐阈值 + 采纳/手动调整 -->
+                  <div class="ds-eval__threshold-panel" v-if="evalResult">
+                    <div class="ds-eval__threshold-rec" v-if="evalResult.recommendationReason">
+                      <div class="ds-eval__threshold-rec-head">
+                        <span class="ds-eval__threshold-rec-label">推荐阈值</span>
+                        <span class="ds-eval__threshold-rec-value">{{ (recommendedThreshold * 100).toFixed(0) }}%</span>
+                        <el-button size="small" type="primary" :disabled="adopting || Math.abs(recommendedThreshold - currentThreshold) < 0.001" @click="adoptRecommended">采纳</el-button>
+                      </div>
+                      <div class="ds-eval__threshold-rec-reason">{{ evalResult.recommendationReason }}</div>
+                    </div>
+                    <div class="ds-eval__threshold-manual">
+                      <span class="ds-eval__threshold-manual-label">当前阈值</span>
+                      <el-input-number v-model="manualThreshold" :min="0" :max="1" :step="0.05" :precision="2" size="small" controls-position="right" style="width: 120px" />
+                      <el-button size="small" :disabled="adopting || Math.abs(manualThreshold - currentThreshold) < 0.001" @click="saveManualThreshold">保存</el-button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 测评用例表(融合结果列 + 行展开钻取) -->
+                <el-table :data="evalQueries" v-loading="evalLoading" stripe size="small" row-key="id"
+                  :expand-row-keys="expandedEvalRows"
+                  @selection-change="handleEvalSelectionChange"
+                  @expand-change="handleEvalExpandChange"
+                  empty-text="暂无测评用例，可新增/导入，或在检索测试页点「标为期望答案」">
+                  <el-table-column type="expand">
+                    <template #default="{ row }">
+                      <div class="ds-eval__drill" v-if="evalResultMap.get(row.id)">
+                        <div class="ds-eval__drill-title">top-5 候选（精排）</div>
+                        <div class="ds-eval__drill-item" v-for="(c, i) in evalResultMap.get(row.id)!.candidates" :key="i" :class="{ 'is-expected': c.expected }">
+                          <span class="ds-eval__drill-rank">{{ i + 1 }}</span>
+                          <span class="ds-eval__drill-text">{{ c.text }}</span>
+                          <span class="ds-eval__drill-meta">
+                            <el-tag v-if="c.expected" type="warning" size="small" effect="light">期望</el-tag>
+                            <span class="ds-eval__drill-score">{{ (c.score * 100).toFixed(1) }}%</span>
+                            <span class="ds-eval__drill-source">{{ c.source || '-' }}</span>
+                          </span>
+                        </div>
+                        <div class="ds-eval__drill-reason" v-if="!evalResultMap.get(row.id)!.found">
+                          未命中：期望文档未进入 top-5
+                        </div>
+                      </div>
+                      <div v-else class="ds-eval__drill-empty">该用例未参与本次测评</div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column type="selection" width="42" />
+                  <el-table-column label="查询" min-width="200">
                     <template #default="{ row }"><span class="ds-eval__cell-query">{{ row.query }}</span></template>
                   </el-table-column>
-                  <el-table-column label="期望来源" width="150">
+                  <el-table-column label="期望来源" width="140">
                     <template #default="{ row }">{{ row.expectedSource || '-' }}</template>
                   </el-table-column>
-                  <el-table-column label="期望片段（原文逐字子串）" min-width="240">
+                  <el-table-column label="期望片段（原文逐字子串）" min-width="200">
                     <template #default="{ row }"><span class="ds-eval__cell-snip">{{ row.expectedSnippet || '-' }}</span></template>
+                  </el-table-column>
+                  <el-table-column label="命中" width="80" align="center">
+                    <template #default="{ row }">
+                      <el-tag v-if="evalResultMap.get(row.id)" :type="evalResultMap.get(row.id)!.found ? 'success' : 'danger'" size="small" effect="light">
+                        {{ evalResultMap.get(row.id)!.found ? '命中' : '未命中' }}
+                      </el-tag>
+                      <span v-else class="ds-eval__cell-dash">-</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="排名" width="70" align="center">
+                    <template #default="{ row }">{{ evalResultMap.get(row.id)?.rank || '-' }}</template>
+                  </el-table-column>
+                  <el-table-column label="top分" width="80" align="center">
+                    <template #default="{ row }">
+                      {{ evalResultMap.get(row.id) ? (evalResultMap.get(row.id)!.topScore * 100).toFixed(1) + '%' : '-' }}
+                    </template>
                   </el-table-column>
                   <el-table-column label="操作" width="140" align="center" fixed="right">
                     <template #default="{ row }">
@@ -783,59 +972,7 @@ onUnmounted(() => {
                     </template>
                   </el-table-column>
                 </el-table>
-
-                <!-- 评测结果 -->
-                <div class="ds-eval__result" v-if="evalResult">
-                  <div class="ds-eval__metrics">
-                    <div class="ds-eval__metric">
-                      <span class="ds-eval__metric-num">{{ (evalResult.recallAtK * 100).toFixed(1) }}%</span>
-                      <span class="ds-eval__metric-label">Recall@5</span>
-                    </div>
-                    <div class="ds-eval__metric">
-                      <span class="ds-eval__metric-num">{{ evalResult.mrr.toFixed(3) }}</span>
-                      <span class="ds-eval__metric-label">MRR</span>
-                    </div>
-                    <div class="ds-eval__metric">
-                      <span class="ds-eval__metric-num">{{ evalResult.total }}</span>
-                      <span class="ds-eval__metric-label">用例数</span>
-                    </div>
-                  </div>
-
-                  <!-- 阈值扫描 -->
-                  <div class="ds-eval__scan">
-                    <div class="ds-eval__scan-title">阈值扫描 · effective recall = 命中且期望文档分 ≥ 阈值 的占比（找 recall 开始塌的拐点定阈值）</div>
-                    <div class="ds-eval__scan-row" v-for="t in thresholdScan" :key="t.threshold">
-                      <span class="ds-eval__scan-label" :class="{ 'is-current': Math.abs(t.threshold - currentThreshold) < 0.001 }">
-                        {{ (t.threshold * 100).toFixed(0) }}%{{ Math.abs(t.threshold - currentThreshold) < 0.001 ? '（当前）' : '' }}
-                      </span>
-                      <div class="ds-eval__scan-bar-bg">
-                        <div class="ds-eval__scan-bar" :style="{ width: (t.recall * 100) + '%' }"></div>
-                      </div>
-                      <span class="ds-eval__scan-value">{{ (t.recall * 100).toFixed(0) }}%</span>
-                    </div>
-                  </div>
-
-                  <!-- 逐条明细 -->
-                  <div class="ds-eval__detail-title">逐条明细</div>
-                  <el-table :data="evalResult.items" stripe size="small">
-                    <el-table-column label="查询" min-width="220">
-                      <template #default="{ row }"><span class="ds-eval__cell-query">{{ row.query }}</span></template>
-                    </el-table-column>
-                    <el-table-column label="命中" width="80" align="center">
-                      <template #default="{ row }">
-                        <el-tag :type="row.found ? 'success' : 'danger'" size="small" effect="light">{{ row.found ? '命中' : '未命中' }}</el-tag>
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="排名" width="70" align="center" prop="rank" />
-                    <el-table-column label="top-1分" width="90" align="center">
-                      <template #default="{ row }">{{ (row.topScore * 100).toFixed(1) }}%</template>
-                    </el-table-column>
-                    <el-table-column label="期望文档分" width="100" align="center">
-                      <template #default="{ row }">{{ row.found ? (row.expectedScore * 100).toFixed(1) + '%' : '-' }}</template>
-                    </el-table-column>
-                  </el-table>
-                </div>
-                <div class="ds-search__empty" v-else-if="!evalRunning">尚未跑评测，点击上方「跑评测」</div>
+                <div class="ds-search__empty" v-if="!evalResult && !evalRunning">尚未测评，勾选用例或直接点「测评」</div>
               </div>
             </div>
 
@@ -1301,6 +1438,133 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+.ds-eval__selected {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--el-color-primary);
+}
+
+.ds-eval__summary {
+  margin-bottom: 14px;
+}
+
+.ds-eval__summary-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.ds-eval__expand-toggle {
+  flex-shrink: 0;
+}
+
+.ds-eval__scan-collapse {
+  margin-top: 10px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.ds-eval__scan-collapse :deep(.el-collapse-item__header) {
+  font-size: 13px;
+  font-weight: 500;
+  height: 36px;
+  line-height: 36px;
+}
+
+.ds-eval__scan-collapse :deep(.el-collapse-item__wrap) {
+  border-bottom: none;
+}
+
+.ds-eval__cell-dash {
+  color: var(--el-text-color-placeholder);
+}
+
+.ds-eval__drill {
+  padding: 4px 8px;
+}
+
+.ds-eval__drill-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.ds-eval__drill-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: 6px;
+  background: var(--el-fill-color-light);
+}
+
+.ds-eval__drill-item.is-expected {
+  background: rgba(230, 162, 60, 0.12);
+  outline: 1px solid rgba(230, 162, 60, 0.4);
+}
+
+.ds-eval__drill-rank {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--el-color-info-light-7);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--el-text-color-regular);
+}
+
+.ds-eval__drill-text {
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-regular);
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ds-eval__drill-meta {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
+.ds-eval__drill-score {
+  font-weight: 600;
+  color: var(--el-color-primary);
+}
+
+.ds-eval__drill-source {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-eval__drill-reason {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(245, 108, 108, 0.1);
+  font-size: 12px;
+  color: var(--el-color-danger);
+}
+
+.ds-eval__drill-empty {
+  padding: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+
 .ds-eval__prompt {
   margin-bottom: 14px;
   padding: 12px 14px;
@@ -1387,13 +1651,18 @@ onUnmounted(() => {
 }
 
 .ds-eval__scan-label {
-  width: 70px;
+  width: 84px;
   font-size: 12px;
   color: #86868b;
   flex-shrink: 0;
 
   &.is-current {
     color: #0071e3;
+    font-weight: 600;
+  }
+
+  &.is-recommended {
+    color: #34c759;
     font-weight: 600;
   }
 }
@@ -1420,6 +1689,52 @@ onUnmounted(() => {
   font-weight: 500;
   text-align: right;
   flex-shrink: 0;
+}
+
+// ---- 推荐阈值面板(采纳 + 手动微调) ----
+.ds-eval__threshold-panel {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ds-eval__threshold-rec-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ds-eval__threshold-rec-label {
+  font-size: 12px;
+  color: #86868b;
+}
+
+.ds-eval__threshold-rec-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #34c759;
+}
+
+.ds-eval__threshold-rec-reason {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6e6e73;
+  line-height: 1.5;
+}
+
+.ds-eval__threshold-manual {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ds-eval__threshold-manual-label {
+  font-size: 12px;
+  color: #86868b;
 }
 
 .ds-eval__detail-title {

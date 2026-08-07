@@ -21,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.Executor;
 
 /**
@@ -38,10 +37,10 @@ import java.util.concurrent.Executor;
 @RequiredArgsConstructor
 public class RetrievalEvalServiceImpl extends ServiceImpl<EvalQueryMapper, EvalQueryEntity> implements RetrievalEvalService {
 
-    /** Redis 任务状态 key 前缀:rag:eval:task:{taskId} */
+    /** Redis 任务状态 key 前缀:rag:eval:task:{datasetId} -- 一个库一个最近任务槽位 */
     private static final String TASK_KEY_PREFIX = "rag:eval:task:";
-    /** Redis 防重锁 key 前缀:rag:eval:dataset:{datasetId} -> 运行中的 taskId */
-    private static final String DATASET_KEY_PREFIX = "rag:eval:dataset:";
+    /** Redis 防重锁 key 前缀:rag:eval:lock:{datasetId} -- 运行中占位,完成释放(与 task key 分离,task 保留 2h 供恢复) */
+    private static final String LOCK_KEY_PREFIX = "rag:eval:lock:";
     private static final Duration TASK_TTL = Duration.ofHours(2);
 
     private final RetrievalEvaluator retrievalEvaluator;
@@ -117,27 +116,25 @@ public class RetrievalEvalServiceImpl extends ServiceImpl<EvalQueryMapper, EvalQ
     // ==================== 异步任务化评测 ====================
 
     @Override
-    public String submit(Long datasetId) {
+    public void submit(Long datasetId, List<Long> queryIds) {
         // 防重:同一库同时只允许一个评测任务在跑(setnx 占锁,任务结束释放)
-        String datasetKey = DATASET_KEY_PREFIX + datasetId;
-        String taskId = UUID.randomUUID().toString().replace("-", "");
-        if (!redisService.setIfAbsent(datasetKey, taskId, TASK_TTL)) {
+        if (!redisService.setIfAbsent(LOCK_KEY_PREFIX + datasetId, "1", TASK_TTL)) {
             throw new IllegalStateException("该知识库已有评测任务进行中，请等待完成后再试");
         }
-
+        String taskKey = TASK_KEY_PREFIX + datasetId;
         RetrievalEvalTask task = new RetrievalEvalTask();
-        task.setTaskId(taskId);
+        task.setTaskId(String.valueOf(datasetId)); // 仅作日志标识,Redis key 用 datasetId
         task.setDatasetId(datasetId);
         task.setStatus(RetrievalEvalTask.STATUS_PENDING);
         task.setTotal(0);
         task.setDone(0);
         task.setCurrentStep("已提交，排队中...");
         task.setCreatedAt(System.currentTimeMillis());
-        redisService.set(TASK_KEY_PREFIX + taskId, task, TASK_TTL);
+        redisService.set(taskKey, task, TASK_TTL);
 
-        taskExecutor.execute(() -> runAsync(taskId, datasetId));
-        log.info("提交异步评测任务: taskId={}, datasetId={}", taskId, datasetId);
-        return taskId;
+        taskExecutor.execute(() -> runAsync(datasetId, queryIds));
+        log.info("提交异步评测任务: datasetId={}, 范围={}", datasetId,
+                queryIds == null || queryIds.isEmpty() ? "全量" : queryIds.size() + "条");
     }
 
     /**
@@ -146,62 +143,65 @@ public class RetrievalEvalServiceImpl extends ServiceImpl<EvalQueryMapper, EvalQ
      * <p>内部串行(不并行)以保护内存有限的 embedding/reranker 下游;受 taskExecutor(core=2)
      * 限制,全局同时最多 2 个评测任务,且与文件向量化共享池天然排队。</p>
      */
-    private void runAsync(String taskId, Long datasetId) {
-        String taskKey = TASK_KEY_PREFIX + taskId;
+    private void runAsync(Long datasetId, List<Long> queryIds) {
+        String taskKey = TASK_KEY_PREFIX + datasetId;
         try {
-            List<EvalQueryEntity> entities = listByDataset(datasetId);
-            List<EvalQuery> queries = entities.stream().map(e -> {
-                EvalQuery q = new EvalQuery();
-                q.setQuery(e.getQuery());
-                q.setExpectedSource(e.getExpectedSource());
-                q.setExpectedSnippet(e.getExpectedSnippet());
-                return q;
-            }).toList();
-
+            // 选择性测评:queryIds 空=全量,非空=只跑指定用例(按 datasetId 过滤防跨库)
+            List<EvalQueryEntity> entities = (queryIds == null || queryIds.isEmpty())
+                    ? listByDataset(datasetId)
+                    : listByIds(queryIds).stream()
+                            .filter(e -> datasetId.equals(e.getDatasetId()))
+                            .toList();
             DatasetEntity dataset = datasetService.getById(datasetId);
             if (dataset == null) {
                 throw new IllegalArgumentException("知识库不存在: " + datasetId);
             }
 
-            RetrievalEvalTask task = getTask(taskId);
+            RetrievalEvalTask task = getTaskByDataset(datasetId);
             task.setStatus(RetrievalEvalTask.STATUS_RUNNING);
-            task.setTotal(queries.size());
-            task.setCurrentStep(queries.isEmpty() ? "无评测用例" : "评测中 0/" + queries.size());
+            task.setTotal(entities.size());
+            task.setCurrentStep(entities.isEmpty() ? "无评测用例" : "评测中 0/" + entities.size());
             redisService.set(taskKey, task, TASK_TTL);
 
-            List<RetrievalEvalResult.Item> items = new ArrayList<>(queries.size());
+            List<RetrievalEvalResult.Item> items = new ArrayList<>(entities.size());
             int done = 0;
-            for (EvalQuery q : queries) {
-                items.add(retrievalEvaluator.evaluateSingle(dataset, q));
+            for (EvalQueryEntity e : entities) {
+                EvalQuery q = new EvalQuery();
+                q.setQuery(e.getQuery());
+                q.setExpectedSource(e.getExpectedSource());
+                q.setExpectedSnippet(e.getExpectedSnippet());
+                RetrievalEvalResult.Item item = retrievalEvaluator.evaluateSingle(dataset, q);
+                item.setQueryId(e.getId());
+                items.add(item);
                 done++;
                 task.setDone(done);
-                task.setCurrentStep("评测中 " + done + "/" + queries.size());
+                task.setCurrentStep("评测中 " + done + "/" + entities.size());
                 redisService.set(taskKey, task, TASK_TTL);
             }
 
-            RetrievalEvalResult result = retrievalEvaluator.aggregate(queries.size(), items);
+            RetrievalEvalResult result = retrievalEvaluator.aggregate(entities.size(), items, dataset.getRerankScoreThreshold());
             task.setResult(result);
             task.setStatus(RetrievalEvalTask.STATUS_COMPLETED);
             task.setCurrentStep("完成");
             redisService.set(taskKey, task, TASK_TTL);
-            log.info("异步评测完成: taskId={}, datasetId={}, total={}, recall@5={}, mrr={}",
-                    taskId, datasetId, result.getTotal(), result.getRecallAtK(), result.getMrr());
+            log.info("异步评测完成: datasetId={}, total={}, recall@5={}, mrr={}",
+                    datasetId, result.getTotal(), result.getRecallAtK(), result.getMrr());
         } catch (Exception e) {
-            log.error("异步评测失败: taskId={}, datasetId={}", taskId, datasetId, e);
-            RetrievalEvalTask task = getTask(taskId);
+            log.error("异步评测失败: datasetId={}", datasetId, e);
+            RetrievalEvalTask task = getTaskByDataset(datasetId);
             if (task != null) {
                 task.setStatus(RetrievalEvalTask.STATUS_FAILED);
                 task.setErrorMessage(e.getMessage());
                 redisService.set(taskKey, task, TASK_TTL);
             }
         } finally {
-            // 释放防重锁,允许再次提交
-            redisService.delete(DATASET_KEY_PREFIX + datasetId);
+            // 释放防重锁,允许再次提交(task 保留 2h 供前端恢复)
+            redisService.delete(LOCK_KEY_PREFIX + datasetId);
         }
     }
 
     @Override
-    public RetrievalEvalTask getTask(String taskId) {
-        return redisService.get(TASK_KEY_PREFIX + taskId, RetrievalEvalTask.class);
+    public RetrievalEvalTask getTaskByDataset(Long datasetId) {
+        return redisService.get(TASK_KEY_PREFIX + datasetId, RetrievalEvalTask.class);
     }
 }

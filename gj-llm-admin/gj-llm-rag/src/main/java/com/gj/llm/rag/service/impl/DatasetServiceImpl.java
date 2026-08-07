@@ -121,6 +121,9 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
         if (request.getChunkOverlap() != null) {
             entity.setChunkOverlap(request.getChunkOverlap());
         }
+        if (request.getRerankScoreThreshold() != null) {
+            entity.setRerankScoreThreshold(request.getRerankScoreThreshold());
+        }
         updateById(entity);
         log.info("更新知识库成功: id={}", id);
         return entity;

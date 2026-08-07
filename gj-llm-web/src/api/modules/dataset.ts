@@ -32,6 +32,7 @@ export const datasetApi = {
     embeddingModel?: string
     chunkSize?: number
     chunkOverlap?: number
+    rerankScoreThreshold?: number
   }): Promise<ApiResponse<Dataset>> {
     return http.put(`/v1/datasets/${id}`, data)
   },

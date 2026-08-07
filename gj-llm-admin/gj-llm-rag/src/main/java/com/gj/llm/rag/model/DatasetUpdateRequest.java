@@ -24,4 +24,8 @@ public class DatasetUpdateRequest {
     @Min(value = 0, message = "重叠大小最小 0")
     @Max(value = 1000, message = "重叠大小最大 1000")
     private Integer chunkOverlap;
+
+    @Min(value = 0, message = "rerank 阈值最小 0")
+    @Max(value = 1, message = "rerank 阈值最大 1")
+    private Double rerankScoreThreshold;
 }

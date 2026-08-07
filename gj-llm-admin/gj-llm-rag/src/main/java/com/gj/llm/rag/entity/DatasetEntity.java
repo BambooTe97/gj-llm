@@ -51,6 +51,10 @@ public class DatasetEntity {
     @Builder.Default
     private Integer chunkOverlap = 150;
 
+    /** rerank 精排采纳阈值（低于此值视为无可靠答案，默认 0.3，评测后可采纳推荐值更新） */
+    @Builder.Default
+    private double rerankScoreThreshold = 0.3;
+
     /** 状态：READY=就绪, INDEXING=索引中, ERROR=异常 */
     @Builder.Default
     private String status = "READY";

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS dataset (
     collection_name  VARCHAR(100)  NOT NULL COMMENT '向量库中的集合名称',
     chunk_size       INT           DEFAULT 800 COMMENT '切片大小（字符数）',
     chunk_overlap    INT           DEFAULT 100 COMMENT '切片重叠（字符数）',
+    rerank_score_threshold DECIMAL(3,2) DEFAULT 0.30 COMMENT 'rerank 精排采纳阈值（默认0.3，评测后可采纳推荐值）',
     status           VARCHAR(20)   DEFAULT 'READY' COMMENT '状态：READY=就绪, INDEXING=索引中, ERROR=异常',
     doc_count        INT           DEFAULT 0 COMMENT '文档数量',
     segment_count    INT           DEFAULT 0 COMMENT '向量数量（切片总数）',
@@ -58,6 +59,12 @@ CREATE TABLE IF NOT EXISTS document_segment (
 -- ============================================================
 -- ALTER TABLE document_segment ADD COLUMN parent_id VARCHAR(100) NULL COMMENT '所属父块 ID' AFTER segment_id;
 -- ALTER TABLE document_segment ADD COLUMN chunk_index INT NULL COMMENT '子块在父块中的序号' AFTER parent_id;
+
+-- ============================================================
+-- 存量库迁移：为已存在的 dataset 表补充 rerank 阈值字段
+-- （新建库由上面的建表语句直接包含；存量库执行下方语句）
+-- ============================================================
+-- ALTER TABLE dataset ADD COLUMN rerank_score_threshold DECIMAL(3,2) DEFAULT 0.30 COMMENT 'rerank 精排采纳阈值';
 
 -- 检索评测用例表（按知识库持久化 评测 query + 期望命中依据，供离线评测 Recall@K / MRR）
 CREATE TABLE IF NOT EXISTS dataset_retrieval_eval_query (

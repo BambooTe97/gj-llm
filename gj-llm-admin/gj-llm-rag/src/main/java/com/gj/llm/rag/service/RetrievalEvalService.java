@@ -30,9 +30,11 @@ public interface RetrievalEvalService extends IService<EvalQueryEntity> {
     /** 跑评测（同步）：加载该库全部用例 -> 委托 RetrievalEvaluator 计算 Recall@K / MRR */
     RetrievalEvalResult run(Long datasetId);
 
-    /** 提交异步评测任务，返回 taskId（接口立即返回，后台串行执行，不抬高下游峰值） */
-    String submit(Long datasetId);
+    /** 提交异步评测任务（接口立即返回，后台串行执行，不抬高下游峰值）。
+     *  queryIds 为空=跑该库全部用例，非空=只跑指定用例（选择性测评）。
+     *  任务按 datasetId 存 Redis(一个库一个最近任务槽位),前端用 getTaskByDataset 轮询/恢复 */
+    void submit(Long datasetId, List<Long> queryIds);
 
-    /** 查询评测任务状态/结果（供前端轮询；任务不存在或已过期返回 null） */
-    RetrievalEvalTask getTask(String taskId);
+    /** 查询该库最近一次评测任务状态/结果（供前端轮询与重进恢复；不存在或已过期返回 null） */
+    RetrievalEvalTask getTaskByDataset(Long datasetId);
 }

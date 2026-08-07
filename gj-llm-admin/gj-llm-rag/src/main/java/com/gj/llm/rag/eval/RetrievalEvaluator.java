@@ -1,6 +1,5 @@
 package com.gj.llm.rag.eval;
 
-import com.gj.llm.rag.config.RagProperties;
 import com.gj.llm.rag.entity.DatasetEntity;
 import com.gj.llm.rag.service.DatasetService;
 import com.gj.llm.rag.service.HybridSearcher;
@@ -32,7 +31,6 @@ public class RetrievalEvaluator {
     private final HybridSearcher hybridSearcher;
     private final RerankerService rerankerService;
     private final DatasetService datasetService;
-    private final RagProperties ragProperties;
 
     public RetrievalEvalResult evaluate(Long datasetId, List<EvalQuery> queries) {
         DatasetEntity dataset = datasetService.getById(datasetId);
@@ -43,7 +41,7 @@ public class RetrievalEvaluator {
         for (EvalQuery q : queries) {
             items.add(evaluateSingle(dataset, q));
         }
-        RetrievalEvalResult result = aggregate(queries.size(), items);
+        RetrievalEvalResult result = aggregate(queries.size(), items, dataset.getRerankScoreThreshold());
         log.info("检索评测完成: datasetId={}, total={}, recall@{}={}, mrr={}",
                 datasetId, queries.size(), EVAL_TOP_K, result.getRecallAtK(), result.getMrr());
         return result;
@@ -80,17 +78,34 @@ public class RetrievalEvaluator {
             // 期望文档的精排分，供前端阈值扫描
             item.setExpectedScore(scoreOf(ranked.get(rank - 1)));
         }
+
+        // top-K 候选明细（供前端行展开钻取）：期望命中位标 expected
+        List<RetrievalEvalResult.CandidateDetail> candidateDetails = new ArrayList<>(ranked.size());
+        for (int i = 0; i < ranked.size(); i++) {
+            Document d = ranked.get(i);
+            RetrievalEvalResult.CandidateDetail cd = new RetrievalEvalResult.CandidateDetail();
+            cd.setText(d.getText());
+            cd.setScore(scoreOf(d));
+            cd.setSource((String) d.getMetadata().get("source"));
+            cd.setExpected(rank > 0 && i == rank - 1);
+            candidateDetails.add(cd);
+        }
+        item.setCandidates(candidateDetails);
         return item;
     }
 
     /**
-     * 聚合逐条明细为评测结果 -- 计算 Recall@K / MRR + 注入当前 rerank 阈值。
+     * 聚合逐条明细为评测结果 -- 计算 Recall@K / MRR + 注入当前 rerank 阈值 + 计算推荐阈值。
      *
-     * @param total 用例总数
-     * @param items 逐条明细
+     * <p>推荐阈值 = 有效召回率(effective recall)仍 ≥ 95%·Recall@5 的最高阈值,
+     * 即阈值扫描"拐点前最后一个不掉命中的点"--既能过滤精排低分弱结果,又几乎不损失命中。</p>
+     *
+     * @param total            用例总数
+     * @param items            逐条明细
+     * @param currentThreshold 当前知识库配置的 rerank 阈值
      * @return 评测结果
      */
-    public RetrievalEvalResult aggregate(int total, List<RetrievalEvalResult.Item> items) {
+    public RetrievalEvalResult aggregate(int total, List<RetrievalEvalResult.Item> items, double currentThreshold) {
         int hits = 0;
         double mrrSum = 0;
         for (RetrievalEvalResult.Item item : items) {
@@ -99,13 +114,50 @@ public class RetrievalEvaluator {
                 mrrSum += 1.0 / item.getRank();
             }
         }
+        double recallAtK = total == 0 ? 0 : (double) hits / total;
         RetrievalEvalResult result = new RetrievalEvalResult();
         result.setTotal(total);
-        result.setRecallAtK(total == 0 ? 0 : (double) hits / total);
+        result.setRecallAtK(recallAtK);
         result.setMrr(total == 0 ? 0 : mrrSum / total);
         result.setItems(items);
-        result.setRerankScoreThreshold(ragProperties.getRerankScoreThreshold());
+        result.setRerankScoreThreshold(currentThreshold);
+
+        // 推荐阈值:有效召回率仍 ≥ 95%·Recall@5 的最高阈值
+        double recommended = computeRecommendedThreshold(items, total, recallAtK, currentThreshold);
+        result.setRecommendedThreshold(recommended);
+        double effAtRecommended = total == 0 ? 0
+                : items.stream().filter(it -> it.isFound() && it.getExpectedScore() >= recommended).count() / (double) total;
+        result.setRecommendationReason(String.format(
+                "推荐阈值 %d%%:此阈值下有效召回率 %d%%(Recall@5 的 %d%%), 可在过滤精排低分弱结果的同时几乎不损失命中,再高即开始塌陷.",
+                Math.round(recommended * 100), Math.round(effAtRecommended * 100),
+                Math.round(recallAtK * 100),
+                Math.round(recallAtK > 0 ? effAtRecommended / recallAtK * 100 : 0)));
         return result;
+    }
+
+    /**
+     * 计算推荐阈值:步长 0.05 扫描 [0.10, 0.95],取有效召回率 ≥ 95%·Recall@5 的最高阈值。
+     * effective recall 随阈值单调递减,首个不满足即停;全不满足(Recall@5 过低)时回退当前阈值。
+     */
+    private double computeRecommendedThreshold(List<RetrievalEvalResult.Item> items, int total,
+                                               double recallAtK, double fallback) {
+        if (total == 0 || recallAtK <= 0) {
+            return fallback;
+        }
+        double target = recallAtK * 0.95;
+        double recommended = fallback;
+        for (double t = 0.10; t <= 0.95 + 1e-9; t += 0.05) {
+            final double tt = t;
+            double eff = items.stream()
+                    .filter(it -> it.isFound() && it.getExpectedScore() >= tt)
+                    .count() / (double) total;
+            if (eff >= target) {
+                recommended = t;
+            } else {
+                break;
+            }
+        }
+        return recommended;
     }
 
     private boolean matches(Document d, EvalQuery q) {

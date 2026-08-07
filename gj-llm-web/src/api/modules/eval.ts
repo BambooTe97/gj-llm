@@ -27,13 +27,13 @@ export const evalApi = {
     return http.post(`/v1/datasets/${datasetId}/eval-queries/import`, queries)
   },
 
-  /** 跑评测(异步):提交任务,返回 taskId,前端轮询 getEvalTaskStatus 取进度与结果 */
-  runEval(datasetId: string): Promise<ApiResponse<{ taskId: string }>> {
-    return http.post(`/v1/datasets/${datasetId}/eval`)
+  /** 测评(异步):提交任务;queryIds 空=全量,非空=选择性。任务按 datasetId 存,用 getEvalTask 轮询/恢复 */
+  runEval(datasetId: string, queryIds?: (string | number)[]): Promise<ApiResponse<null>> {
+    return http.post(`/v1/datasets/${datasetId}/eval`, { queryIds: queryIds && queryIds.length ? queryIds : undefined })
   },
 
-  /** 查询评测任务状态/结果(轮询;进行中含 done/total,完成含 result) */
-  getEvalTaskStatus(datasetId: string, taskId: string): Promise<ApiResponse<RetrievalEvalTask>> {
-    return http.get(`/v1/datasets/${datasetId}/eval/tasks/${taskId}`)
+  /** 查询该库最近一次测评任务状态/结果(轮询+重进恢复;进行中含 done/total,完成含 result,无任务返回 null) */
+  getEvalTask(datasetId: string): Promise<ApiResponse<RetrievalEvalTask>> {
+    return http.get(`/v1/datasets/${datasetId}/eval/task`)
   },
 }

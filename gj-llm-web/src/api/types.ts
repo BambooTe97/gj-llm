@@ -65,6 +65,8 @@ export interface Dataset {
   collectionName: string
   chunkSize: number
   chunkOverlap: number
+  /** rerank 精排采纳阈值(默认0.3,评测后可采纳推荐值) */
+  rerankScoreThreshold: number
   status: string
   docCount: number
   segmentCount: number
@@ -118,12 +120,24 @@ export interface EvalQuery {
 
 /** 评测结果明细项 */
 export interface EvalResultItem {
+  /** 关联用例 ID(前端据此将结果合入用例行) */
+  queryId: string | number
   query: string
   found: boolean
   rank: number
   topScore: number
   /** 期望文档的精排分(未命中记 0);前端据此做阈值扫描 */
   expectedScore: number
+  /** top-K 候选明细(行展开钻取) */
+  candidates: CandidateDetail[]
+}
+
+/** 候选文档明细(钻取展示) */
+export interface CandidateDetail {
+  text: string
+  score: number
+  source: string | null
+  expected: boolean
 }
 
 /** 检索评测结果:聚合指标 + 每条明细 */
@@ -133,6 +147,10 @@ export interface RetrievalEvalResult {
   mrr: number
   /** 当前配置的精排采纳阈值,供阈值扫描标记"当前"位置 */
   rerankScoreThreshold: number
+  /** 系统计算的推荐阈值(有效召回率≥95%·Recall@5 的最高阈值) */
+  recommendedThreshold: number
+  /** 推荐理由 */
+  recommendationReason: string
   items: EvalResultItem[]
 }
 

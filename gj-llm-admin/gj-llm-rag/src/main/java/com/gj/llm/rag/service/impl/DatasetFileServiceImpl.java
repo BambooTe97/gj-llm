@@ -292,15 +292,14 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
                     ragProperties.getDense().getProvider());
             long embedStart = System.currentTimeMillis();
             // ES:始终写文本做 BM25;仅 provider=es 时才写 embedding(ES 做 KNN),否则省内存
-            boolean esKnn = !ragProperties.getDense().isMilvus();
+            boolean esKnn = ragProperties.getDense().isEs();
             esSearchService.indexDocuments(dataset.getCollectionName(), splits, esKnn);
             // Milvus:provider=milvus 时写向量(专业向量库),向量只存这一份
-            if (ragProperties.getDense().isMilvus()) {
+            if (!esKnn) {
                 vectorStoreManager.getVectorStore(dataset.getCollectionName()).add(splits);
             }
             long embedCost = System.currentTimeMillis() - embedStart;
-            log.info("向量写入完成: dfId={}, cost={}ms, esKnn={}, milvus={}", dfId, embedCost, esKnn,
-                    ragProperties.getDense().isMilvus());
+            log.info("向量写入完成: dfId={}, cost={}ms, esKnn={}, milvus={}", dfId, embedCost, esKnn, ragProperties.getDense().isMilvus());
 
             df.setProgressPercent(90);
             df.setCurrentStep("保存切片元数据...");

@@ -87,8 +87,8 @@ public class RetrievalServiceImpl implements RetrievalService {
             // ④ 父子召回:按 parent_id 去重(同父块保留最高分)
             List<Document> deduped = dedupByParent(docs);
 
-            // ⑤ 质量护栏:过滤低于 rerank 阈值的弱结果
-            double threshold = ragProperties.getRerankScoreThreshold();
+            // ⑤ 质量护栏:过滤低于 rerank 阈值的弱结果(阈值随知识库配置,默认 0.3)
+            double threshold = dataset.getRerankScoreThreshold();
             List<Document> confident = deduped.stream()
                     .filter(d -> scoreOf(d) >= threshold)
                     .toList();
@@ -112,16 +112,17 @@ public class RetrievalServiceImpl implements RetrievalService {
 
     @Override
     public TestRankedResult retrieveRanked(String query, Long datasetId, int topK) {
-        // 线上精排采纳阈值:精排分 ≥ 此值的结果会在对话中被采用,随结果返回供页面标线
-        double threshold = ragProperties.getRerankScoreThreshold();
+        // 线上精排采纳阈值:精排分 ≥ 此值的结果会在对话中被采用,随结果返回供页面标线(阈值随知识库配置)
         if (datasetId == null) {
-            return TestRankedResult.empty(false, threshold);
+            return TestRankedResult.empty(false, 0.3);
         }
+        double threshold = 0.3; // 兜底,dataset 取到后覆盖
         try {
             DatasetEntity dataset = datasetService.getById(datasetId);
             if (dataset == null) {
                 return TestRankedResult.empty(false, threshold);
             }
+            threshold = dataset.getRerankScoreThreshold();
 
             // 粗排:取一个比 topK 大的候选池供精排重排
             int pool = Math.min(Math.max(topK * 2, 10), 20);
