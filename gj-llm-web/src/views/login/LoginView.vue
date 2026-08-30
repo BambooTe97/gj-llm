@@ -2,6 +2,7 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/modules/user'
+import { HOME_PATH } from '@/constants'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const route = useRoute()
@@ -32,7 +33,7 @@ async function handleLogin() {
   const result = await userStore.login(form)
   loading.value = false
   if (result.success) {
-    router.push((route.query.redirect as string) || '/chat')
+    router.push((route.query.redirect as string) || HOME_PATH)
   } else {
     errorMessage.value = result.message || '用户名或密码错误'
   }

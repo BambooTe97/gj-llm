@@ -1,0 +1,334 @@
+// ========== 聊天消息 Markdown 渲染样式 ==========
+// 作用于 ChatMessage 中 v-html 渲染的助手回答（.md-body 容器，见 utils/markdown.ts）
+// 颜色体系跟随项目的 Apple 玻璃风格；代码高亮为自定义 GitHub 配色（亮/暗两套），
+// 通过 CSS 变量切换，html.dark（vueuse useDark）时自动换肤。
+
+.md-body {
+  // ---- 主题变量（亮色） ----
+  --md-text: #1d1d1f;
+  --md-heading: #1d1d1f;
+  --md-link: #0071e3;
+  --md-inline-code-bg: rgba(0, 0, 0, 0.05);
+  --md-inline-code-color: #eb5757;
+  --md-quote-border: #0071e3;
+  --md-quote-bg: rgba(0, 113, 227, 0.05);
+  --md-quote-text: #515154;
+  --md-table-border: #e5e5ea;
+  --md-table-head-bg: #f5f5f7;
+  --md-table-stripe-bg: #fafafc;
+  --md-hr: #e5e5ea;
+  --md-code-bg: #f6f8fa;
+  --md-code-border: rgba(31, 35, 40, 0.12);
+  --md-code-header-bg: #eceef1;
+  --md-code-header-text: #86868b;
+  --md-code-text: #1f2328;
+
+  // ---- highlight.js 主题变量（GitHub Light） ----
+  --hl-comment: #57606a;
+  --hl-keyword: #cf222e;
+  --hl-string: #0a3069;
+  --hl-number: #0550ae;
+  --hl-function: #8250df;
+  --hl-tag: #116329;
+  --hl-text: #1f2328;
+
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--md-text);
+  word-break: break-word;
+
+  // 首尾元素不吃外边距，避免气泡内容上下留白
+  > *:first-child {
+    margin-top: 0 !important;
+  }
+  > *:last-child {
+    margin-bottom: 0 !important;
+  }
+
+  p {
+    margin: 0.5em 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin: 1.2em 0 0.6em;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--md-heading);
+  }
+  h1 {
+    font-size: 1.4em;
+  }
+  h2 {
+    font-size: 1.25em;
+  }
+  h3 {
+    font-size: 1.12em;
+  }
+  h4 {
+    font-size: 1em;
+  }
+  h5,
+  h6 {
+    font-size: 0.95em;
+  }
+
+  ul,
+  ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+  }
+  li {
+    margin: 0.25em 0;
+  }
+  li > ul,
+  li > ol {
+    margin: 0.25em 0;
+  }
+
+  a {
+    color: var(--md-link);
+    text-decoration: none;
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  strong {
+    font-weight: 600;
+  }
+
+  blockquote {
+    margin: 0.8em 0;
+    padding: 0.4em 1em;
+    border-left: 3px solid var(--md-quote-border);
+    background: var(--md-quote-bg);
+    border-radius: 0 8px 8px 0;
+    color: var(--md-quote-text);
+
+    > p {
+      margin: 0.25em 0;
+    }
+  }
+
+  // 行内代码（代码块内的 code 带 .hljs 类，不命中）
+  code:not(.hljs) {
+    padding: 0.15em 0.4em;
+    background: var(--md-inline-code-bg);
+    color: var(--md-inline-code-color);
+    border-radius: 5px;
+    font-size: 0.88em;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+  }
+
+  table {
+    margin: 0.8em 0;
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.92em;
+    display: block; // 宽表横向滚动而不撑破气泡
+    overflow-x: auto;
+  }
+  th,
+  td {
+    border: 1px solid var(--md-table-border);
+    padding: 6px 12px;
+    text-align: left;
+    white-space: nowrap;
+  }
+  th {
+    background: var(--md-table-head-bg);
+    font-weight: 600;
+  }
+  tbody tr:nth-child(even) td {
+    background: var(--md-table-stripe-bg);
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--md-hr);
+    margin: 1.2em 0;
+  }
+
+  img {
+    max-width: 100%;
+    border-radius: 8px;
+  }
+
+  // ---- 代码块（.md-code 由 markdown.ts 的 fence 渲染器生成） ----
+  .md-code {
+    margin: 0.8em 0;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--md-code-border);
+    background: var(--md-code-bg);
+  }
+
+  .md-code__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 8px 5px 12px;
+    background: var(--md-code-header-bg);
+    border-bottom: 1px solid var(--md-code-border);
+    font-size: 12px;
+    color: var(--md-code-header-text);
+    user-select: none;
+  }
+
+  .md-code__copy {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--md-link);
+    padding: 2px 8px;
+    border-radius: 6px;
+    transition: background 0.15s;
+
+    &:hover {
+      background: rgba(0, 113, 227, 0.08);
+    }
+    &:active {
+      transform: scale(0.96);
+    }
+  }
+
+  .md-code pre {
+    margin: 0;
+    padding: 12px 14px;
+    overflow-x: auto;
+
+    &::-webkit-scrollbar {
+      height: 6px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background-color: rgba(0, 0, 0, 0.15);
+      border-radius: 3px;
+    }
+  }
+
+  .md-code code.hljs {
+    display: block;
+    padding: 0;
+    background: transparent;
+    color: var(--md-code-text);
+    font-size: 13px;
+    line-height: 1.6;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+  }
+
+  // ---- highlight.js 令牌配色（变量驱动，亮暗共用） ----
+  .hljs-comment,
+  .hljs-quote {
+    color: var(--hl-comment);
+  }
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-meta-keyword,
+  .hljs-doctag,
+  .hljs-template-tag {
+    color: var(--hl-keyword);
+  }
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-meta .hljs-string {
+    color: var(--hl-string);
+  }
+  .hljs-number,
+  .hljs-literal,
+  .hljs-variable,
+  .hljs-template-variable,
+  .hljs-type,
+  .hljs-attr,
+  .hljs-built_in,
+  .hljs-symbol,
+  .hljs-bullet,
+  .hljs-meta,
+  .hljs-selector-attr,
+  .hljs-selector-pseudo,
+  .hljs-selector-id,
+  .hljs-selector-class {
+    color: var(--hl-number);
+  }
+  .hljs-title,
+  .hljs-title.class_,
+  .hljs-title.function_ {
+    color: var(--hl-function);
+  }
+  .hljs-name {
+    color: var(--hl-tag);
+  }
+  .hljs-tag,
+  .hljs-params {
+    color: var(--hl-text);
+  }
+  .hljs-section {
+    font-weight: 600;
+  }
+  .hljs-emphasis {
+    font-style: italic;
+  }
+  .hljs-strong {
+    font-weight: 600;
+  }
+  .hljs-deletion {
+    color: var(--hl-keyword);
+    background: rgba(207, 34, 46, 0.08);
+  }
+  .hljs-addition {
+    color: var(--hl-tag);
+    background: rgba(17, 99, 41, 0.08);
+  }
+}
+
+// ========== 暗色模式（html.dark 由 vueuse useDark 切换） ==========
+html.dark .md-body {
+  --md-text: #e6edf3;
+  --md-heading: #f0f6fc;
+  --md-link: #58a6ff;
+  --md-inline-code-bg: rgba(255, 255, 255, 0.1);
+  --md-inline-code-color: #ff7b72;
+  --md-quote-border: #388bfd;
+  --md-quote-bg: rgba(56, 139, 253, 0.1);
+  --md-quote-text: #9aa4b2;
+  --md-table-border: #30363d;
+  --md-table-head-bg: rgba(255, 255, 255, 0.06);
+  --md-table-stripe-bg: rgba(255, 255, 255, 0.02);
+  --md-hr: #30363d;
+  --md-code-bg: #161b22;
+  --md-code-border: #30363d;
+  --md-code-header-bg: rgba(255, 255, 255, 0.04);
+  --md-code-header-text: #8b949e;
+  --md-code-text: #e6edf3;
+
+  // GitHub Dark 配色
+  --hl-comment: #8b949e;
+  --hl-keyword: #ff7b72;
+  --hl-string: #a5d6ff;
+  --hl-number: #79c0ff;
+  --hl-function: #d2a8ff;
+  --hl-tag: #7ee787;
+  --hl-text: #e6edf3;
+
+  .md-code__copy:hover {
+    background: rgba(88, 166, 255, 0.12);
+  }
+
+  .md-code pre::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.18);
+  }
+
+  .hljs-deletion {
+    color: #f85149;
+    background: rgba(248, 81, 73, 0.12);
+  }
+  .hljs-addition {
+    color: #aff5b4;
+    background: rgba(63, 185, 80, 0.12);
+  }
+}

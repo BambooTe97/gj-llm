@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import type { ChatMessage } from '@/api/types'
+import { renderMarkdown } from '@/utils/markdown'
 
 const props = defineProps<{
   message: ChatMessage
@@ -40,6 +41,92 @@ watch(isThinkingPhase, (val) => {
     thinkingExpanded.value = false
   }
 })
+
+// ===== 助手正文 Markdown 渲染 =====
+// 流式时 content 逐 token 追加，每次都全量 re-parse Markdown 很浪费，
+// 这里按 RENDER_THROTTLE_MS 节流重渲染（80ms 一帧足够顺滑）；
+// 非流式（历史消息 / 终态）直接同步渲染，首屏无闪烁。
+const renderedHtml = ref('')
+const RENDER_THROTTLE_MS = 80
+let pendingTimer: number | null = null
+let lastRenderAt = 0
+
+function renderNow() {
+  renderedHtml.value = renderMarkdown(props.message.content || '', {
+    streaming: !!props.streaming,
+  })
+}
+
+watch(
+  () => props.message.content,
+  () => {
+    if (!props.streaming) {
+      if (pendingTimer !== null) {
+        clearTimeout(pendingTimer)
+        pendingTimer = null
+      }
+      renderNow()
+      return
+    }
+    const elapsed = performance.now() - lastRenderAt
+    if (elapsed >= RENDER_THROTTLE_MS) {
+      lastRenderAt = performance.now()
+      renderNow()
+    } else if (pendingTimer === null) {
+      pendingTimer = window.setTimeout(() => {
+        pendingTimer = null
+        lastRenderAt = performance.now()
+        renderNow()
+      }, RENDER_THROTTLE_MS - elapsed)
+    }
+  },
+  { immediate: true },
+)
+
+/** 流结束 -> 立即终渲染（此时语法已完整，不再做流式兼容处理） */
+watch(
+  () => props.streaming,
+  (val) => {
+    if (!val) {
+      if (pendingTimer !== null) {
+        clearTimeout(pendingTimer)
+        pendingTimer = null
+      }
+      renderNow()
+    }
+  },
+)
+
+onBeforeUnmount(() => {
+  if (pendingTimer !== null) clearTimeout(pendingTimer)
+})
+
+/** 代码块复制按钮：v-html 内容无法直接绑定事件，在容器上事件委托 */
+async function onContentClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  const btn = target.closest('[data-code-copy]') as HTMLButtonElement | null
+  if (!btn) return
+  const text = btn.closest('.md-code')?.querySelector('code')?.textContent ?? ''
+  if (!text) return
+
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    // 剪贴板 API 不可用（如非安全上下文）时回退 execCommand
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+  }
+  btn.textContent = '已复制 ✓'
+  setTimeout(() => {
+    btn.textContent = '复制'
+  }, 1500)
+}
 </script>
 
 <template>
@@ -65,14 +152,17 @@ watch(isThinkingPhase, (val) => {
         <span class="chat-message__waiting-text">正在思考…</span>
       </div>
 
-      <!-- 正文 -- 仅在非思考阶段且有内容时展示 -->
+      <!-- 正文 -- 仅在非思考阶段且有内容时展示；助手消息渲染 Markdown，用户消息保持纯文本 -->
       <div
         v-if="!isThinkingPhase && (hasContent || !streaming)"
         class="chat-message__content"
         :class="{ streaming: streaming }"
+        @click="onContentClick"
       >
-        {{ message.content }}
-        <span v-if="streaming" class="cursor-blink">|</span>
+        <!-- 内容已经过 DOMPurify 消毒（utils/markdown.ts），可安全 v-html -->
+        <!-- eslint-disable-next-line vue/no-v-html -->
+        <div v-if="message.role === 'assistant'" class="md-body" v-html="renderedHtml"></div>
+        <template v-else>{{ message.content }}</template>
       </div>
     </div>
   </div>
@@ -238,14 +328,68 @@ watch(isThinkingPhase, (val) => {
   color: #1d1d1f;
 }
 
-.cursor-blink {
+/* 流式光标：挂在渲染后正文的最后一个元素末尾（段落场景下紧跟文字） */
+.chat-message__content.streaming .md-body > :last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: #0071e3;
   animation: blink 1s infinite;
-  color: #0071e3;
-  font-weight: 300;
 }
 
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
+}
+</style>
+
+<style lang="scss">
+/* ====== 暗色模式气泡适配 ====== */
+/* 不 scoped：html.dark 根类在组件作用域之外；类名本组件独有，无泄漏风险。
+   与 markdown.scss 的暗色代码主题配套，否则深色代码块会压在白色气泡上。 */
+html.dark {
+  .chat-message--assistant .chat-message__content {
+    background: rgba(30, 32, 48, 0.78);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .chat-message__waiting {
+    background: rgba(30, 32, 48, 0.78);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .chat-message__waiting-text {
+    color: #9aa4b2;
+  }
+
+  .thinking-dots span {
+    background: #58a6ff;
+  }
+
+  .chat-message__think {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  .chat-message__think-header {
+    color: #9aa4b2;
+  }
+
+  .chat-message__think-body {
+    color: #a5b4c8;
+  }
+
+  .chat-message__content.streaming .md-body > :last-child::after {
+    background: #58a6ff;
+  }
 }
 </style>
