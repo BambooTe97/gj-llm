@@ -2,6 +2,8 @@ package com.gj.llm.rag.service;
 
 import com.gj.llm.rag.model.TestRankedResult;
 
+import java.util.List;
+
 /**
  * 检索服务门面 -- 对外暴露的检索能力出口。
  *
@@ -21,6 +23,17 @@ public interface RetrievalService {
      * @return 检索结果,永不抛异常(内部失败时返回 empty)
      */
     RetrievalResult retrieve(String query, Long datasetId);
+
+    /**
+     * 多知识库检索编排(chat 智能路由调用):多库并发粗排 -> 跨库合并去重 ->
+     * 统一精排(Cross-Encoder 分数全局可比) -> 父子召回去重 -> 按各自来源库阈值过滤。
+     * 引用片段逐条携带各自库的名称/ID,支撑多库回答的出处标注。
+     *
+     * @param query      用户原始查询
+     * @param datasetIds 目标知识库 ID 列表;空/null 时返回 {@link RetrievalResult#empty()}
+     * @return 检索结果,永不抛异常(内部失败时返回 empty)
+     */
+    RetrievalResult retrieve(String query, List<Long> datasetIds);
 
     /**
      * 精排测试 -- 单查询走 hybrid 粗排 + reranker 精排,返回双分对照(不过阈值、不去父块),

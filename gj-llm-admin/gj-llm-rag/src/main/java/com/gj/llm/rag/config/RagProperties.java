@@ -29,8 +29,31 @@ public class RagProperties {
     /** 查询改写使用的模型名（rag 自配，独立于 chat 对话模型）；为空时用默认 ChatModel。 */
     private String rewriteModel;
 
+    /** 智能路由（QueryPlanner）配置 */
+    private Routing routing = new Routing();
+
     /** 稠密检索(dense)来源配置 */
     private Dense dense = new Dense();
+
+    /** 智能路由配置（库清单缓存 + 规划模式切换） */
+    @Data
+    public static class Routing {
+
+        /** READY 库数 ≤ 此值走全库多路召回（忽略 LLM 选库，仅判意图，零路由风险）；超过则启用 LLM 选库 */
+        private int fanoutThreshold = 8;
+
+        /** LLM 选库模式下每问最多路由的知识库数 */
+        private int maxDatasets = 2;
+
+        /** 规划调用超时（ms），超时走降级链（小库全量扇出 / 大库按文档量取前 N） */
+        private long plannerTimeoutMs = 8000;
+
+        /** 库清单 Redis 缓存 TTL（秒）；库增删改时主动失效 */
+        private long datasetCacheTtlSeconds = 60;
+
+        /** 规划模型名（空则复用 rewrite-model） */
+        private String plannerModel;
+    }
 
     @Data
     public static class Dense {

@@ -27,9 +27,12 @@
 | 能力 | 说明 |
 |------|------|
 | 文档自动向量化 | 上传文件 → 自动解析 → 智能分块 → 向量嵌入 → 入库 |
+| 智能路由 | 用户免选知识库：QueryPlanner 判定意图并路由目标库（多库并发检索） |
 | 混合检索 | BM25 关键词 + KNN 语义，双路召回融合 |
 | 精排重打分 | Cross-Encoder 逐对计算 query-document 相关性 |
 | 查询改写 | 口语化自动转书面语 + HyDE 生成假设答案 |
+| 引用溯源 | 行内角标 [n] + 参考来源面板，每条引用自带知识库/文档出处 |
+| 离线检索评测 | 评测集持久化 + Recall@5 / MRR / 阈值扫描，调参有数据依据 |
 | 流式对话 | SSE 流式输出，支持 thinking/references/content 事件 |
 | 多知识库管理 | 每个知识库独立 ES 索引 + Milvus 集合，物理隔离 |
 
@@ -38,13 +41,14 @@
 | 组件 | 选型 | 用途 |
 |------|------|------|
 | 框架 | Spring Boot 4.1 + Spring AI 2.0 | 应用框架 |
-| LLM | gemma2:2b (Ollama) | 对话生成、查询改写、HyDE |
+| LLM | gemma2:2b (Ollama) | 对话生成、查询改写、HyDE、路由规划 |
 | Embedding | BGE-M3 (Ollama) | 文本转向量（1024维） |
 | 检索引擎 | Elasticsearch 9.x | BM25 全文检索（dense 走 Milvus 时 ES 不存向量，省内存） |
 | 向量库 | Milvus | 稠密向量检索（默认 dense 源，专业向量库；可配切换为 ES KNN） |
 | Re-Ranker | BGE-Reranker (TEI) | Cross-Encoder 精排 |
 | 分词器 | IK Analyzer | 中文分词 |
 | 数据库 | MySQL + MyBatis-Plus | 元数据持久化 |
+| 缓存 | Redis 7.4 | 路由库清单缓存（60s TTL + CRUD 主动失效）、评测任务状态、用户/Token 缓存 |
 | 文件存储 | 本地磁盘 | 上传文件物理存储 |
 
 ---
@@ -55,46 +59,47 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    用户浏览器 (SSE)                       │
-└──────────────────────┬──────────────────────────────────┘
+│                     用户浏览器 (SSE)                      │
+└──────────────────────┬───────────────────────────────────┘
                        │
-┌──────────────────────▼──────────────────────────────────┐
-│              gj-llm-start (Spring Boot)                  │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │              gj-llm-chat (对话编排模块)            │   │
-│  │  Agent/AgentRouter/AgentRegistry: 智能体策略编排   │   │
-│  │  ChatServiceImpl: 瘦编排(校验/路由/持久化)         │   │
-│  └──────────────────────┬───────────────────────────┘   │
-│                         │ RetrievalService 门面          │
-│  ┌──────────────────────▼───────────────────────────┐   │
-│  │              gj-llm-rag (RAG 核心)                 │   │
-│  │  RetrievalService: 检索门面(改写/粗排/精排/护栏)   │   │
-│  │  HybridSearcher: BM25+dense+RRF 融合              │   │
-│  │  DenseRetriever: dense 策略(Milvus/EsKnn 二选一)   │   │
-│  │  DatasetFileServiceImpl: 文件管道(写 ES+Milvus)    │   │
-│  │  QueryRewriter: 查询改写 + HyDE(ChatModel)         │   │
-│  │  ParentChildSplitter: 父子切分              │   │
-│  │  DynamicVectorStoreManager: Milvus 管理            │   │
-│  └──────┬──────────────────────────────┬─────────────┘   │
-│         │                              │                  │
-│  ┌──────▼──────┐  ┌──────────────┐  ┌──▼─────────────┐  │
-│  │  gj-es      │  │ gj-reranker  │  │  gj-file       │  │
-│  │  ES 原子检索 │  │ 精排重打分   │  │  文件存储管理   │  │
-│  │ bm25/knnDocs│  │              │  │                │  │
-│  └──────┬──────┘  └──────┬───────┘  └────────────────┘  │
-└─────────┼────────────────┼──────────────────────────────┘
-          │                │
-┌─────────▼────────────────▼──────────────────────────────┐
-│                 中间件服务层 (192.168.40.130)             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐   │
-│  │ ES 9.4.2 │  │  Milvus  │  │ TEI (BGE-Reranker)   │   │
-│  │ :9200    │  │  :19530  │  │ :3000                │   │
-│  └──────────┘  └──────────┘  └──────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │              Ollama :11434                        │   │
-│  │  gemma2:2b (对话) / BGE-M3 (嵌入)               │   │
-│  └──────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────▼───────────────────────────────────┐
+│               gj-llm-start (Spring Boot)                  │
+│  ┌──────────────────────────────────────────────────┐    │
+│  │              gj-llm-chat (对话编排模块)            │    │
+│  │  RuleBasedAgentRouter: 三级路由(锁库>规划>降级)     │    │
+│  │  ChatServiceImpl: 瘦编排(校验/路由/持久化)          │    │
+│  │  RagQaAgent: RAG 问答(消费 RoutingDecision)        │    │
+│  └──────────────────────┬───────────────────────────┘    │
+│                         │ RetrievalService 门面           │
+│  ┌──────────────────────▼───────────────────────────┐    │
+│  │              gj-llm-rag (RAG 核心)                 │    │
+│  │  QueryPlanner: 智能路由(意图+选库, Redis 库清单缓存)│    │
+│  │  RetrievalService: 多库检索编排(扇出/精排/护栏)     │    │
+│  │  HybridSearcher: BM25 + dense + RRF 融合           │    │
+│  │  DenseRetriever: dense 策略(Milvus/EsKnn 二选一)    │    │
+│  │  QueryRewriter: 查询改写 + HyDE(ChatModel)          │    │
+│  │  DatasetFileServiceImpl: 文件管道(写 ES+Milvus)     │    │
+│  │  RetrievalEvalService: 离线评测(Recall@5/MRR)       │    │
+│  │  ParentChildSplitter / DynamicVectorStoreManager    │    │
+│  └───┬─────────┬───────────────┬──────────────┬─────┘    │
+│      │         │               │              │           │
+│  ┌───▼────┐ ┌──▼─────────┐ ┌──▼───────┐ ┌───▼───────┐    │
+│  │ gj-es  │ │gj-reranker │ │ gj-file  │ │ gj-redis  │    │
+│  │ES 原子检索│ │ 精排重打分 │ │ 文件存储管理│ │ 缓存服务   │    │
+│  └───┬────┘ └─────┬──────┘ └──────────┘ └─────┬─────┘    │
+└──────┼───────────┼─────────────────────────────┼─────────┘
+       │           │                             │
+┌──────▼───────────▼─────────────────────────────▼─────────┐
+│          中间件服务层 (host 见各 application-*.yml)         │
+│  ┌─────────┐ ┌─────────┐ ┌────────────────┐ ┌─────────┐  │
+│  │   ES    │ │ Milvus  │ │ TEI(BGE-Rank)  │ │ Redis   │  │
+│  │  :9200  │ │ :19530  │ │     :3000      │ │  :6379  │  │
+│  └─────────┘ └─────────┘ └────────────────┘ └─────────┘  │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │                   Ollama :11434                     │  │
+│  │        gemma2:2b (对话) / BGE-M3 (嵌入)              │  │
+│  └────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### 2.2 数据流全景
@@ -102,11 +107,11 @@
 ```
 ┌─────────────────── 写入路径（文档上传） ───────────────────┐
                                                              │
-  PDF/文本上传                                                │
+  文档上传（PDF / Markdown / Office / 文本）                                                │
     → FileStorageService: 保存到磁盘                          │
     → DatasetFileEntity: 创建数据库关联 (状态=PENDING)        │
     → @Async: 异步处理                                        │
-        → PdfContentReader/TextContentReader: 内容提取        │
+        → FileReaderDispatcher: 按扩展名分发读取(PDF/Markdown/Tika/Text)        │
         → ParentChildSplitter: 父子切分 + ChunkContextEnricher: 上下文注入            │
         → EmbeddingModel(BGE-M3): 批量向量嵌入 (每批20条)     │
         → EsSearchService.indexDocuments 写 ES(文本始终;embedding 仅 provider=es) + [provider=milvus] VectorStore.add 写 Milvus 向量     │
@@ -115,15 +120,18 @@
                                                              │
 ┌─────────────────── 读取路径（用户提问） ───────────────────┐
                                                              │
-  用户口语化提问                                              │
-    → QueryRewriter.rewrite(): 书面语改写 + HyDE 假设答案     │
-    → HybridSearcher.search(): 多路混合检索            │
-        ├─ BM25: ik_max_word 关键词匹配                      │
-        ├─ Dense(Milvus/ES): HNSW 图搜索 + 余弦相似度                     │
-        └─ RRF: 加权倒数排名融合                              │
-    → RerankerService.rerank(): 精排 + 父子去重 + 阈值过滤           │
-    → LLM (gemma2:2b): 流式生成回答                        │
-    → SSE: thinking → no_result? → references → content → done            │
+  用户口语化提问
+    → QueryPlanner.plan(): 意图判定 + 目标库选择(小库全量扇出 / 大库 LLM 选库)
+    → QueryRewriter.rewrite(): 书面语改写 + HyDE 假设答案
+    → SEARCH_POOL 并发: 每库每变体 HybridSearcher.search()
+        ├─ BM25: ik_max_word 关键词匹配
+        ├─ Dense(Milvus/ES): HNSW 图搜索 + 余弦相似度
+        └─ RRF: 加权倒数排名融合
+    → 跨库合并去重(同文本保留最高分)
+    → RerankerService.rerank(): 统一精排 + 父子去重 + 逐库阈值过滤
+    → buildCitedContext: 编号上下文 + 引用列表(逐条自带库/文档出处)
+    → LLM (gemma2:2b): 流式生成回答(带 [n] 引用角标)
+    → SSE: thinking → no_result? → references → content → done
 ```
 
 ---
@@ -148,12 +156,12 @@ gj-llm/
 ├── gj-llm-admin/                    # 业务模块层
 │   ├── gj-llm-rag/                  # RAG 核心模块
 │   │   ├── entity/                  # DatasetEntity, DatasetFileEntity, DocumentSegmentEntity, EvalQueryEntity
-│   │   ├── model/                   # DTO: DatasetCreateRequest, TestRankedResult 等
-│   │   ├── service/                 # DatasetService, DatasetFileService, QueryRewriter, RetrievalService(门面), HybridSearcher(融合), DenseRetriever(Milvus/EsKnn 策略), RetrievalEvalService(评测集CRUD+跑评测)
+│   │   ├── model/                   # DTO: DatasetCreateRequest, RoutingDecision(路由决策), TestRankedResult 等
+│   │   ├── service/                 # DatasetService, DatasetFileService, QueryRewriter, RetrievalService(门面), HybridSearcher(融合), DenseRetriever(Milvus/EsKnn 策略), QueryPlanner(智能路由), RetrievalEvalService(评测集CRUD+跑评测)
 │   │   ├── vector/
 │   │   │   ├── splitter/            # RecursiveCharacterTextSplitter(切分核心), ParentChildSplitter(父子切分),
 │   │   │   │                        # Chunk, ChunkSeparators(类型分发), ChunkContextEnricher(上下文注入)
-│   │   │   ├── reader/              # PdfContentReader, TextContentReader
+│   │   │   ├── reader/              # FileReaderDispatcher + Pdf/Markdown/Tika/Text 四类读取器
 │   │   │   └── DynamicVectorStoreManager
 │   │   ├── eval/                    # RetrievalEvaluator(评测跑分逻辑), EvalQuery, RetrievalEvalResult
 │   │   ├── config/                  # RagProperties, MilvusConfig
@@ -161,7 +169,7 @@ gj-llm/
 │   │   └── controller/              # DatasetController(知识库/文档/检索测试) + RetrievalEvalController(评测集CRUD+跑评测)
 │   │
 │   └── gj-llm-chat/                 # 对话模块
-│       ├── agent/                  # ChatAgent 策略 + AgentRouter + AgentRegistry + RagQaAgent/ChitchatAgent/RemoteHttpAgent
+│       ├── agent/                  # Agent 策略 + AgentRouter(三级路由) + AgentRegistry + RagQaAgent/ChitchatAgent/RemoteHttpAgent
 │       └── service/impl/            # ChatServiceImpl 瘦编排(校验/路由/持久化)
 │
 └── gj-llm-start/                    # 启动模块 (Spring Boot 入口)
@@ -172,8 +180,8 @@ gj-llm/
 | 层次 | 模块 | 职责 |
 |------|------|------|
 | 启动层 | gj-llm-start | Spring Boot 入口，聚合所有模块 |
-| 业务层 | gj-llm-chat | 智能体编排(Agent/Router/Registry)、SSE 流控、持久化 |
-| 业务层 | gj-llm-rag | 知识库管理、文档管道、查询改写、分块、检索编排(HybridSearcher)、dense 策略、离线检索评测 |
+| 业务层 | gj-llm-chat | 智能体编排(Agent/三级Router/Registry)、SSE 流控、消息+引用持久化 |
+| 业务层 | gj-llm-rag | 知识库管理、文档管道、查询改写、分块、智能路由(QueryPlanner)、检索编排(HybridSearcher)、dense 策略、离线检索评测 |
 | 基础设施层 | gj-es | ES 索引管理、BM25/KNN 原子检索(融合在 rag 的 HybridSearcher) |
 | 基础设施层 | gj-reranker | Cross-Encoder 精排、TEI API 调用 |
 | 基础设施层 | gj-file | 文件上传/下载/删除 |
@@ -220,17 +228,19 @@ DatasetFileEventListener.handleUploaded()
 | 读取器 | 支持格式 | 实现 |
 |--------|---------|------|
 | PdfContentReader | `.pdf` | Spring AI ParagraphPdfDocumentReader，回退 PagePdfDocumentReader |
-| TextContentReader | `.txt, .md, .json, .xml, .csv, .html, .java, .py, .sql` 等 | 纯文本读取，整个文件作为一个 Document |
+| MarkdownContentReader | `.md, .markdown` | commonmark AST 按标题层级切分，title 进 metadata（供 §5.4 上下文前缀） |
+| TikaContentReader | `.doc/.docx/.ppt/.pptx/.xls/.xlsx/.html/.htm/.epub/.odt/.rtf` | Tika AutoDetectParser 自动解析（Office/Web/电子书兜底） |
+| TextContentReader | `.txt, .json, .xml, .csv, .yml, .java, .py, .js, .sql, .sh` 等 | 纯文本读取，整个文件作为一个 Document |
 
 ### 4.3 已支持 / 未支持的格式
 
 | 格式 | 状态 | 说明 |
 |------|------|------|
 | PDF | ✅ 已支持 | 段落级解析 |
-| TXT, MD, JSON, CSV, HTML 等 | ✅ 已支持 | 纯文本读取 |
-| DOC, DOCX | ❌ 未支持 | 需要 Apache POI |
-| XLS, XLSX | ❌ 未支持 | 需要 Apache POI |
-| PPT, PPTX | ❌ 未支持 | 需要 Apache POI |
+| Markdown | ✅ 已支持 | 按标题层级切分，title 进上下文前缀 |
+| TXT, JSON, CSV, XML, 源码, 配置 | ✅ 已支持 | 纯文本读取 |
+| DOC/DOCX, XLS/XLSX, PPT/PPTX | ✅ 已支持 | Tika 自动解析（表格/版面保真有限，见 §13.2） |
+| HTML, EPUB, ODT, RTF | ✅ 已支持 | Tika 自动解析 |
 | 图片 (PNG, JPG) | ❌ 未支持 | 需要 OCR 或多模态模型 |
 
 ---
@@ -295,7 +305,7 @@ reader-Document
 
 ### 5.5（可选）LLM Contextual Retrieval
 
-`ContextualRetrievalEnricher` 在入库时调 gemma2:2b 给每个父块生成一句上下文说明，拼到子块前缀（在 5.4 确定性前缀之上）。**默认关闭**（`contextual-retrieval-enabled=false`），因 2b 模型质量不确定，须用 §7.7 评测器证明有正收益再开。
+`ContextualRetrievalEnricher` 在入库时调 gemma2:2b 给每个父块生成一句上下文说明，拼到子块前缀（在 5.4 确定性前缀之上）。**默认关闭**（`contextual-retrieval-enabled=false`），因 2b 模型质量不确定，须用 §7.8 评测器证明有正收益再开。
 
 ### 5.6 关键参数
 
@@ -383,10 +393,37 @@ reader-Document
 
 ## 7. 检索管道
 
-### 7.1 完整检索链路
+### 7.1 智能路由（多知识库自动选库）
+
+用户不选知识库。每次提问先由 rag 模块的 `QueryPlanner` 规划路由决策（`RoutingDecision`：intent + datasetIds + datasetNames），chat 层 `RuleBasedAgentRouter` 据此分发智能体，检索侧据此多库并发检索。
+
+**三级路由优先级**（`RuleBasedAgentRouter`）：
+
+1. **显式锁库**：request 直传 `datasetId` 时不做规划，直接走检索智能体（保留 API 直连语义，兼容既有集成与测试入口）
+2. **智能规划**：`QueryPlanner.plan()` 判定意图与目标库，决策写入 `AgentContext`；CHAT 意图走闲聊智能体（省掉整条检索链路），RETRIEVE 意图走检索智能体
+3. **降级**：planner 永不抛异常，超时/失败在其内部降级为扇出检索，路由器无需兜底
+
+**自适应选库策略**（按 READY 库数切换）：
+
+| 场景 | 策略 | 依据 |
+|------|------|------|
+| 库数 ≤ fanout-threshold (8) | 全库多路召回：LLM 仅判意图，选库被忽略 | Dify Multiple Recall / OpenAI file_search 形态，零路由风险（小模型选错库会漏答） |
+| 库数 > 8 | LLM 选库：每问最多 max-datasets (2) 个，id 做存在性校验（防幻觉编号） | Dify N-to-1 泛化 / LlamaIndex multi-select |
+| 规划失败/超时 (8s) | 降级扇出：小库全量 / 大库按 docCount 降序取前 8 | 宁可多检索不可漏答 |
+
+**库清单缓存**：Redis key `rag:route:datasets`，TTL 60s 兜底 + 知识库 create/update/delete 主动失效；多实例共享一份，库变更即时生效。
+
+**职责边界**：QueryPlanner 只做路由（输出窄值域 intent + datasetIds），不吞并 QueryRewriter——查询改写属于检索管线，两者的延迟、失败模式、Prompt 形态都不同，市场主流项目（Dify/LangChain/LlamaIndex）均保持分离。
+
+### 7.2 完整检索链路（多库统一管线）
 
 ```
 用户查询 (原始口语)
+    │
+    ▼
+QueryPlanner.plan()  [见 §7.1]
+    ├─ 意图=CHAT: 分发闲聊智能体（免检索直接回答）
+    └─ 意图=RETRIEVE: 输出目标库列表（全库扇出 或 LLM 选库）
     │
     ▼
 QueryRewriter.rewrite()
@@ -395,7 +432,7 @@ QueryRewriter.rewrite()
     ├─ 查询变体3: HyDE 假设答案 ("配置系统参数需要先进入设置页面...")
     └─ 查询变体0: 原始查询 (保底)
     │
-    ▼ (每个变体独立检索)
+    ▼ (目标库并发 × 每变体独立检索, SEARCH_POOL 8 守护线程)
 HybridSearcher.search()
     │
     ├─ BM25 搜索 ──────────────────────┐
@@ -412,29 +449,29 @@ HybridSearcher.search()
     └─ RRF 融合 ───────────────────────┘
         加权倒数排名融合:
           sparseWeight=0.3, denseWeight=0.7, k=60
-        返回: Top-8 (VARIANT_TOP_K)
+        每库每变体返回: Top-8 (VARIANT_TOP_K)
     │
     ▼
-多路合并去重 (按文本内容去重，保留高分)
+跨库合并去重 (按文本内容去重，保留高分；同文本来源库取首个)
     │
     ▼ (最多 30 条候选)
-RerankerService.rerank()
+RerankerService.rerank()   [cross-encoder 分数跨库可比，全局统一精排]
     │
-    ▼ (返回 Top-5 子块)
+    ▼ (返回 Top-5 子块，按文本回关联来源库)
 父子召回去重 (按 parent_id 合并同父块，保留高分)
     │
     ▼
-质量护栏 (rerank 分数 < 阈值 过滤)
+质量护栏 (每个候选按其来源库的 rerank-score-threshold 过滤)
     │
-    ├─ 有可信结果: 父块上下文构建 (受 context-budget-chars 约束)
+    ├─ 有可信结果: 编号上下文构建【片段n】(受 context-budget-chars 约束) + 引用列表 (rank 1:1 联动)
     │                │
     │                ▼
-    │            LLM 上下文 → 流式生成回答
+    │            LLM 上下文 → 流式生成回答（带 [n] 引用角标）
     │
     └─ 无可信结果: no_result 事件 + 我不知道 prompt（不编造）
 ```
 
-### 7.2 BM25 检索
+### 7.3 BM25 检索
 
 **BM25**（Best Match 25）是一种基于**词频-逆文档频率**的概率检索模型。它衡量查询词在文档中出现的频率，同时惩罚常见词。
 
@@ -442,7 +479,7 @@ RerankerService.rerank()
 - 索引时用 `ik_max_word`（最大粒度切分，提高召回）
 - 搜索时用 `ik_smart`（智能切分，提高精度）
 
-### 7.3 KNN 向量检索
+### 7.4 KNN 向量检索
 
 **KNN**（K-Nearest Neighbors）在向量空间中查找与查询向量最相似的 K 个文档向量。
 
@@ -450,7 +487,7 @@ RerankerService.rerank()
 - 相似度度量：**余弦相似度**
 - 查询前将文本通过 BGE-M3 转为 1024 维向量
 
-### 7.4 RRF 融合
+### 7.5 RRF 融合
 
 **RRF**（Reciprocal Rank Fusion，倒数排名融合）是一种将多个排序列表合并为一个的算法。
 
@@ -473,19 +510,20 @@ RRF_score(doc) = Σ w_i / (k + rank_i(doc))
 - 中文的 BM25 依赖 IK 分词器，专有名词切分可能不准
 - 但 BM25 对精确关键词匹配仍然有价值，保留 30% 权重做互补
 
-### 7.5 父子召回与质量护栏
+### 7.6 父子召回、质量护栏与引用构建
 
-精排后追加两步，让检索结果既完整又不编造：
+精排后追加三步，让检索结果既完整、可溯源又不编造：
 
 1. **父子召回去重**：rerank 返回的 Top-5 是子块。按 `parent_id` 合并同父块子块（保留最高分），避免同一父块多个子块占用上下文名额。
 2. **上下文构建**：用父块 `parent_content`（完整上下文）而非子块文本喂给 LLM；按 score 降序累加，受 `context-budget-chars`（默认 3500）约束，防止溢出 gemma2:2b 的 8k token 窗口。旧数据无 `parent_content` 时回退子块文本。
-3. **质量护栏**：rerank 分数 < `rerank-score-threshold`（默认 0.3）的弱结果被过滤。若全部低于阈值或无检索结果，走"我不知道"分支：发 `no_result` SSE 事件 + 专用 prompt，不把弱上下文塞给 LLM 编造。
+3. **质量护栏（逐库阈值）**：每个候选按其**来源库**的 `rerankScoreThreshold`（`dataset` 表字段，默认 0.3）过滤——多库场景各库阈值各自生效。若全部低于阈值或无检索结果，走"我不知道"分支：发 `no_result` SSE 事件 + 专用 prompt，不把弱上下文塞给 LLM 编造。
+4. **引用构建**：`buildCitedContext` 单次遍历同时产出编号上下文【片段n】（含「来源: 知识库『X』文档『Y』」标注）与 `Reference` 列表，rank 与片段编号严格 1:1；字符预算截断与引用联动——被预算裁掉的片段不进引用列表，模型看不到的内容前端也不标注，杜绝角标指向未见内容。
 
-### 7.6 元数据过滤
+### 7.7 元数据过滤
 
 `hybridSearch` 及其 filter 重载已随融合逻辑上移到 rag 的 `HybridSearcher` 而移除（ES 只保留 `bm25SearchDocs`/`knnSearchDocs` 原子检索）。元数据过滤暂未接入 HybridSearcher；如需"文档内检索"等场景，可在 HybridSearcher 增参支持。
 
-### 7.7 离线检索评测
+### 7.8 离线检索评测
 
 量化衡量切分/检索改动效果，是检索测试页（定性单条）的"量化半壁"。评测用例按知识库持久化（`dataset_retrieval_eval_query` 表），由 `RetrievalEvalController` 统一管理，`RetrievalEvaluator` 负责跑分逻辑（职责分离）。
 
@@ -559,7 +597,7 @@ Cross-Encoder（交叉编码器，如 BGE-Reranker）:
 
 当前部署的是简化版（受服务器内存限制），精排分数上限约为 0.85-0.88。
 
-> **分数阈值护栏**：rerank 后过滤分数 < `gj.llm.rag.rerank-score-threshold`（默认 0.3）的结果。简化版 reranker 分数区间压缩（不相关查询约 0.5-0.6），0.3 为保守默认（基本不过滤、无回归风险），**建议用 §7.7 评测器标定后调高**。全部低于阈值时走"我不知道"分支（见 §7.5）。
+> **分数阈值护栏**：rerank 后过滤分数 < 来源库的 `rerankScoreThreshold`（`dataset` 表字段，默认 0.3）的结果。简化版 reranker 分数区间压缩（不相关查询约 0.5-0.6），0.3 为保守默认（基本不过滤、无回归风险），**建议逐库用 §7.8 评测器标定后调高**。全部低于阈值时走"我不知道"分支（见 §7.6）。
 
 ---
 
@@ -612,7 +650,7 @@ HyDE 是当前 RAG 领域最有效的查询增强技术之一。假设答案虽�
 
 ## 10. LLM 对话集成
 
-chat 模块采用**智能体编排架构**：`ChatServiceImpl` 是瘦编排器（校验会话 → 存用户消息 → `AgentRouter` 路由 → Agent 执行 → 存助手消息）；`Agent` 策略接口由 `RagQaAgent`（走 `RetrievalService` 检索 + RAG prompt）、`ChitchatAgent`（无检索）等实现，差异化用策略隔离；`AgentRegistry` 支持配置接入外部/市面智能体（`RemoteHttpAgent`）。检索不归 chat，由 rag 的 `RetrievalService` 门面提供。下面 Prompt/SSE 描述对应 `RagQaAgent` 的行为。
+chat 模块采用**智能体编排架构**：`ChatServiceImpl` 是瘦编排器（校验会话 → 存用户消息 → 三级路由 → Agent 执行 → 存助手消息）；路由器 `RuleBasedAgentRouter` 三级决策（request 显式锁库 > `QueryPlanner` 智能规划 > 降级，决策写入 `AgentContext` 供检索智能体取库，见 §7.1）。`Agent` 策略接口由 `RagQaAgent`（走 `RetrievalService` 检索 + RAG prompt）、`ChitchatAgent`（无检索）等实现，差异化用策略隔离；`AgentRegistry` 支持配置接入外部/市面智能体（`RemoteHttpAgent`）。检索不归 chat，由 rag 的 `RetrievalService` 门面提供。下面 Prompt/SSE 描述对应 `RagQaAgent` 的行为。
 
 ### 10.1 系统 Prompt
 
@@ -620,7 +658,14 @@ chat 模块采用**智能体编排架构**：`ChatServiceImpl` 是瘦编排器�
 你是一个智能知识库助手。请根据【参考上下文】回答用户的问题。
 如果上下文中没有答案或信息不足，请诚实地告诉用户你不知道，不要编造。
 回答时请保持专业、准确、简洁。
+
+引用标注要求：
+1. 回答中凡引用了参考上下文的知识，请在对应句子末尾标注片段编号，格式如 [1]，多个片段可连写如 [1][3]。
+2. 编号必须使用参考上下文中真实存在的【片段n】编号，严禁编造不存在的编号。
+3. 上下文中没有依据的内容不要标注编号。
 ```
+
+> 引用标注要求与编号上下文【片段n】配套（§7.6 第 4 条）：LLM 按真实编号标 [n]，前端 markdown 渲染把角标转为可点击上标（编号有效性校验防幻觉），点击定位到本消息的参考来源面板。
 
 ### 10.2 用户 Prompt 结构
 
@@ -641,9 +686,9 @@ chat 模块采用**智能体编排架构**：`ChatServiceImpl` 是瘦编排器�
 
 | 事件类型 | 触发时机 | 内容 |
 |---------|---------|------|
-| `thinking` | LLM 输出 thinking token 时 | gemma2:2b 的思考过程（若模型支持） |
-| `no_result` | 检索无可靠结果时 | 提示"知识库中未找到相关内容"（见 §7.5 质量护栏） |
-| `references` | 检索完成后 | 引用的文档片段（排名、内容摘要、分数、source、datasetFileId） |
+| `thinking` | 检索开始时 / LLM 输出 thinking token | 先下发「正在检索知识库: 库名...」提示（目标库来自路由决策），再续传模型思考过程 |
+| `no_result` | 检索无可靠结果时 | 提示"知识库中未找到相关内容"（见 §7.6 质量护栏） |
+| `references` | 检索完成后（先于 content） | 引用列表：rank、内容摘要（200 字截断）、score、source、datasetId + datasetName（逐条自带出处）、datasetFileId |
 | `content` | LLM 输出内容时 | 逐 token 流式回答 |
 | `done` | 对话完成 | messageId, conversationId, title |
 
@@ -652,6 +697,10 @@ chat 模块采用**智能体编排架构**：`ChatServiceImpl` 是瘦编排器�
 - 最近 10 对（20 条）对话历史通过 `messages[]` 数组传递给 Ollama
 - 每条消息标注 `user` / `assistant` 角色
 - 历史消息独立于 RAG 上下文，互不干扰
+
+### 10.5 引用持久化与历史还原
+
+流结束后，编排器把 thinking 与 references 随 assistant 消息序列化进 `chat_message.metadata_json`（JSON 列）。前端拉取历史时（`MessageVO`）引用与思考随消息返回，历史对话同样渲染角标与参考来源面板——引用是**消息级**数据，不依赖会话或前端状态。
 
 ---
 
@@ -792,6 +841,22 @@ chat 模块采用**智能体编排架构**：`ChatServiceImpl` 是瘦编排器�
 结果: ✅ 跨文档检索成功，LLM 综合多文档信息回答
 ```
 
+### 场景 5：智能路由多知识库
+
+```
+用户提问: "报销流程和公司考勤制度分别是什么？"
+系统有 5 个知识库（财务制度、行政制度、产品手册、法律合规、常见问答）
+
+路由过程:
+  ① QueryPlanner: 库数 5 ≤ 8 → 全库扇出模式, LLM 仅判意图 = RETRIEVE
+  ② SEARCH_POOL 并发检索 5 库:
+     财务制度命中"报销流程", 行政制度命中"考勤制度", 其余库无高分结果
+  ③ 跨库合并 → 统一精排 → 逐库阈值过滤 → 财务/行政两库片段进入上下文
+  ④ 回答带 [1][2] 角标, 参考来源面板分别显示两条引用各自的库名与文档名
+
+结果: ✅ 用户未选任何知识库，系统自动从正确的两个库检索并标注出处
+```
+
 ---
 
 ## 13. 已知局限与改进方向
@@ -809,6 +874,8 @@ chat 模块采用**智能体编排架构**：`ChatServiceImpl` 是瘦编排器�
 | 上下文字符预算护栏 | 防止父块拼接溢出 gemma2:2b 8k 窗口 | RetrievalServiceImpl |
 | 离线检索评测（评测集持久化 + Recall@5/MRR + 阈值扫描） | 调参不盲，阈值标定有数据 | RetrievalEvalService / RetrievalEvaluator / RetrievalEvalController |
 | 可选 LLM Contextual Retrieval（默认关） | 进一步提升 embedding 命中（需评测验证） | ContextualRetrievalEnricher |
+| 引用溯源（行内角标 + 参考来源面板 + metadata_json 历史还原） | 回答可溯源，模型所见与用户所见同源 | Reference / RetrievalServiceImpl / RagQaAgent |
+| 智能路由多知识库（自适应扇出 / LLM 选库 + 多库并发管线） | 用户免选库，多库问题一次覆盖 | QueryPlanner / RuleBasedAgentRouter / RetrievalServiceImpl |
 
 ### 13.2 仍存在的局限
 
@@ -827,7 +894,8 @@ chat 模块采用**智能体编排架构**：`ChatServiceImpl` 是瘦编排器�
 |------|------|---------|
 | BM25 无自定义词典 | 领域专有名词被 IK 错误切分 | 配置 IK 自定义词典 |
 | BM25 无查询扩展 | 同义词不能互相匹配 | 同义词扩展 |
-| rerank 阈值未标定 | 0.3 默认偏保守，可能未过滤不相关 | 用 §7.7 评测器标定合适阈值 |
+| 各库 rerank 阈值未逐一标定 | 默认 0.3 偏保守（已支持按库配置，见 §7.6） | 逐库用 §7.8 评测器标定 |
+| reranker 不可用时降级语义错位 | 降级返回粗排（RRF 融合）分数，与按精排分标定的阈值不可比 | 降级时换兜底阈值或跳过阈值过滤 |
 | Top-K 固定为 5 | 简单/复杂查询用同样返回数 | 动态 Top-K |
 
 #### 文档处理层面
@@ -845,15 +913,16 @@ chat 模块采用**智能体编排架构**：`ChatServiceImpl` 是瘦编排器�
 |------|------|---------|
 | 无用户反馈闭环 | 无法知道哪些回答被用户认可 | 点赞/踩 + 日志分析 |
 | 事件驱动无持久化 | 服务重启丢事件，文件卡在 PENDING | 引入消息队列 |
-| 无缓存机制 | 相似问题重复检索全链路 | 查询结果缓存 |
+| 查询结果无缓存 | 相似问题重复走全链路（Redis 已用于路由库清单/评测任务/用户缓存） | 查询缓存 |
 
 ### 13.3 改进优先级建议（剩余）
 
 | 优先级 | 改进项 | 预期收益 | 实现难度 |
 |--------|-------|---------|---------|
 | P0 | IK 自定义词典 | 专有名词匹配提升 3-5% | 低（配置文件） |
-| P0 | 用评测器标定 rerank 阈值 | 不相关查询正确返回空 | 低 |
+| P0 | 逐库用评测器标定 rerank 阈值 | 不相关查询正确返回空 | 低 |
 | P1 | 升级 Re-Ranker 到完整版 | 精排分数突破 0.90 | 低（替换模型文件） |
+| P1 | reranker 降级时阈值兜底 | TEI 宕机时质量下限不塌 | 低 |
 | P1 | 动态 Top-K | 简单/复杂查询差异化返回 | 低 |
 | P2 | 支持 DOCX/XLSX 格式 | 扩大可用文档类型 | 中 |
 | P2 | MinerU/Docling 结构化解析 | 标题层级/表格保真 | 中（需新工具） |
@@ -884,13 +953,13 @@ spring:
         index-type: hnsw
         metric-type: cosine
         client:
-          host: 192.168.40.130
+          host: 192.168.50.109
           port: 19530
 
 gj:
   llm:
     es:
-      host: 192.168.40.130
+      host: 192.168.50.109
       port: 9200
       index-prefix: rag_
       embedding-dimension: 1024
@@ -898,16 +967,13 @@ gj:
       replicas: 0
     reranker:
       enabled: true
-      host: 192.168.40.130
+      host: 192.168.50.109
       port: 3000
       timeout: 30000
     rag:
-      parent-size-multiplier: 3
-      context-prefix-enabled: true
-      rerank-score-threshold: 0.3
-      context-budget-chars: 3500
-      contextual-retrieval-enabled: false
-      rewrite-model: gemma2:2b        # rag 自配的查询改写模型
+      rewrite-model: gemma2:2b        # rag 自配的查询改写模型；为空则用默认 ChatModel
       dense:
         provider: milvus              # milvus(向量走 Milvus,ES 只做 BM25,省内存) | es(ES 做 KNN)
 ```
+
+> 未显式配置时的 `RagProperties` 默认值：`parent-size-multiplier=3`、`context-prefix-enabled=true`、`context-budget-chars=3500`、`contextual-retrieval-enabled=false`（默认关，评测证明正收益再开）。rerank 阈值已按库落在 `dataset.rerank_score_threshold`（默认 0.3），不再走 yml。

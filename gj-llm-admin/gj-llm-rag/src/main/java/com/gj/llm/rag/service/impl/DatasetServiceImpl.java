@@ -16,7 +16,9 @@ import com.gj.llm.rag.model.DatasetCreateRequest;
 import com.gj.llm.rag.model.DatasetUpdateRequest;
 import com.gj.llm.rag.constant.VectorStoreConstants;
 import com.gj.llm.rag.service.DatasetService;
+import com.gj.llm.rag.service.QueryPlanner;
 import com.gj.llm.rag.vector.DynamicVectorStoreManager;
+import com.gj.llm.redis.service.RedisService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,17 +35,29 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
     private final DatasetFileMapper datasetFileMapper;
     private final DocumentSegmentMapper segmentMapper;
     private final FileStorageService fileStorageService;
+    private final RedisService redisService;
 
     public DatasetServiceImpl(DynamicVectorStoreManager storeManager,
                               EsSearchService esSearchService,
                               DatasetFileMapper datasetFileMapper,
                               DocumentSegmentMapper segmentMapper,
-                              FileStorageService fileStorageService) {
+                              FileStorageService fileStorageService,
+                              RedisService redisService) {
         this.storeManager = storeManager;
         this.esSearchService = esSearchService;
         this.datasetFileMapper = datasetFileMapper;
         this.segmentMapper = segmentMapper;
         this.fileStorageService = fileStorageService;
+        this.redisService = redisService;
+    }
+
+    /** 库增删改后失效智能路由的库清单缓存(60s TTL 只是兜底,主动失效保新) */
+    private void invalidateRouteCache() {
+        try {
+            redisService.delete(QueryPlanner.DATASET_CACHE_KEY);
+        } catch (Exception e) {
+            log.warn("失效路由库清单缓存失败(60s TTL 兜底): {}", e.getMessage());
+        }
     }
 
     @Override
@@ -95,6 +109,7 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
         storeManager.getVectorStore(finalTypeName);
         log.info("Milvus 集合创建/确认成功: {}{}", VectorStoreConstants.COLLECTION_PREFIX, finalTypeName);
 
+        invalidateRouteCache();
         log.info("创建知识库成功: name={}, collectionName={}", entity.getName(), entity.getCollectionName());
         return entity;
     }
@@ -125,6 +140,7 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
             entity.setRerankScoreThreshold(request.getRerankScoreThreshold());
         }
         updateById(entity);
+        invalidateRouteCache();
         log.info("更新知识库成功: id={}", id);
         return entity;
     }
@@ -183,6 +199,7 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
 
         // 4. 删除知识库记录
         removeById(id);
+        invalidateRouteCache();
 
         log.info("删除知识库成功: id={}, collectionName={}, 清理文件数={}", id, entity.getCollectionName(), files.size());
     }

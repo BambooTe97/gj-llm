@@ -2,30 +2,22 @@
 import { ref } from 'vue'
 
 export interface ChatInputControls {
-  datasetId?: string
   enableThinking: boolean
 }
 
 const props = defineProps<{
   disabled?: boolean
-  datasets?: Array<{ id: string; name: string }>
-  selectedDatasetId?: string
   enableThinking?: boolean
 }>()
 
 const emit = defineEmits<{
   send: [content: string, controls: ChatInputControls]
   stop: []
-  'update:selectedDatasetId': [value: string | undefined]
   'update:enableThinking': [value: boolean]
 }>()
 
 const inputText = ref('')
 const sending = ref(false)
-
-function onDatasetChange(value: string | undefined) {
-  emit('update:selectedDatasetId', value || undefined)
-}
 
 function onThinkingToggle(value: boolean) {
   emit('update:enableThinking', value)
@@ -38,7 +30,6 @@ async function handleSend() {
   sending.value = true
   inputText.value = ''
   await emit('send', text, {
-    datasetId: props.selectedDatasetId,
     enableThinking: props.enableThinking ?? true,
   })
   sending.value = false
@@ -65,27 +56,16 @@ function handleKeydown(e: Event | KeyboardEvent) {
         @keydown="handleKeydown"
       />
       <div class="chat-input__bar">
-        <!-- 左侧：知识库 + 思考开关 -->
+        <!-- 左侧：思考开关（知识库由后端智能路由，无需用户选择） -->
         <div class="chat-input__bar-left">
-          <div class="chat-input__ctl" v-if="datasets && datasets.length > 0">
-            <el-select
-              :model-value="selectedDatasetId"
-              placeholder="知识库"
-              clearable
-              size="small"
-              style="width: 110px"
-              @change="onDatasetChange"
-            >
-              <el-option v-for="ds in datasets" :key="ds.id" :label="ds.name" :value="ds.id" />
-            </el-select>
-          </div>
           <button
             class="chat-input__think-btn"
             :class="{ active: enableThinking ?? true }"
-            @click="onThinkingToggle(!(enableThinking ?? true))"
             title="开启后模型会先推理再回答，回答更严谨但稍慢"
+            @click="onThinkingToggle(!(enableThinking ?? true))"
           >
-            <svg v-if="enableThinking ?? true" width="13" height="13" viewBox="0 0 24 24" fill="none"
+            <svg
+v-if="enableThinking ?? true" width="13" height="13" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
             </svg>
@@ -97,10 +77,11 @@ function handleKeydown(e: Event | KeyboardEvent) {
           v-if="!disabled"
           class="chat-input__send"
           :disabled="!inputText.trim() || sending"
-          @click="handleSend"
           title="发送 (Enter)"
+          @click="handleSend"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          <svg
+width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13" />
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
@@ -109,8 +90,8 @@ function handleKeydown(e: Event | KeyboardEvent) {
         <button
           v-else
           class="chat-input__stop"
-          @click="emit('stop')"
           title="停止生成"
+          @click="emit('stop')"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <rect x="4" y="4" width="16" height="16" rx="3" />
@@ -179,11 +160,6 @@ function handleKeydown(e: Event | KeyboardEvent) {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.chat-input__ctl {
-  display: flex;
-  align-items: center;
 }
 
 /* ====== 深度思考按钮 ====== */

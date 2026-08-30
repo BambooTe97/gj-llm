@@ -48,6 +48,15 @@ gj:
       # 切换需重建向量库。两条代码路径(DenseRetriever)都保留,按此配置激活其一。
       dense:
         provider: milvus
+      # 智能路由:按库数自适应(≤ fanout-threshold 全库多路召回,仅判意图;
+      # 超过则 LLM 选库,每问最多 max-datasets 个,防小模型选错漏答/幻觉编号)
+      routing:
+        fanout-threshold: 8
+        max-datasets: 2
+        planner-timeout-ms: 8000
+        dataset-cache-ttl-seconds: 60
+        # 规划模型,空则复用 rewrite-model
+        planner-model: gemma2:2b
     # chat 智能体编排平台:声明智能体 + 路由规则
     # 加内部智能体=加 bean;加外部/市面智能体=在此声明 type:remote + endpoint
     chat:

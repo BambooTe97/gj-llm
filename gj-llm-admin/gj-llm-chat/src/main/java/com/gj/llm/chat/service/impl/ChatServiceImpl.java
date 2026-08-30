@@ -67,12 +67,12 @@ public class ChatServiceImpl implements ChatService {
                     .build();
             messageMapper.insert(userMsg);
 
-            // 3. 解析数据集 + 历史记忆 + 思考开关
-            Long datasetId = request.getDatasetId() != null ? request.getDatasetId() : conversation.getDatasetId();
+            // 3. 显式锁库(request 直传,历史会话不再回退绑定库,统一走智能路由) + 历史记忆 + 思考开关
+            Long datasetId = request.getDatasetId();
             boolean enableThinking = request.getEnableThinking() == null || request.getEnableThinking();
             List<MessageEntity> history = getRecentHistory(conversationId, 10);
 
-            // 4. 构建上下文 + 路由智能体
+            // 4. 构建上下文 + 路由智能体(智能路由决策写入 ctx)
             AgentContext ctx = new AgentContext(conversation, userContent, datasetId, enableThinking, history);
             Agent agent = agentRouter.route(ctx);
             log.info("[chatStream] 路由到智能体: {}, datasetId={}", agent.id(), datasetId);

@@ -21,11 +21,16 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
- * 检索服务实现 -- RAG 检索编排(改写 -> 多路粗排 -> 精排 -> 父子召回 -> 质量护栏)。
+ * 检索服务实现 -- RAG 检索编排(多库路由结果 -> 改写 -> 多库并发粗排 -> 精排 -> 父子召回 -> 逐库质量护栏)。
  *
- * <p>检索是 rag 的本分,此处把完整管道收敛在模块内,对外只暴露 {@link RetrievalResult}。</p>
+ * <p>检索是 rag 的本分,此处把完整管道收敛在模块内,对外只暴露 {@link RetrievalResult}。
+ * 单库入口是规模为 1 的多库特例,委托同一条管线,保证行为一致。</p>
  *
  * @author gj-llm
  */
@@ -47,60 +52,113 @@ public class RetrievalServiceImpl implements RetrievalService {
     /** 合并后送 re-ranker 的最大候选数 */
     private static final int MAX_RERANK_CANDIDATES = 30;
 
+    /**
+     * 多库并发检索线程池 -- 守护线程(不阻碍 JVM 退出),固定 8 并发
+     * (扇出上限即库数 ≤8,保护下游 ES/Milvus;不复用 taskExecutor 是避免与评测任务争抢)。
+     */
+    private static final ExecutorService SEARCH_POOL = Executors.newFixedThreadPool(8, r -> {
+        Thread t = new Thread(r, "rag-fanout-search");
+        t.setDaemon(true);
+        return t;
+    });
+
+    /** 粗排候选:文档 + 来源库(跨库合并、逐库阈值过滤、引用出处标注都需要知道来源) */
+    private record Candidate(Document doc, DatasetEntity dataset) {
+
+        String text() {
+            return doc.getText().trim();
+        }
+
+        double score() {
+            return doc.getScore() != null ? doc.getScore() : 0.0;
+        }
+    }
+
     @Override
     public RetrievalResult retrieve(String query, Long datasetId) {
-        if (datasetId == null) {
+        // 单库是规模为 1 的多库:委托统一管线,避免两套实现漂移
+        return retrieve(query, datasetId == null ? List.of() : List.of(datasetId));
+    }
+
+    @Override
+    public RetrievalResult retrieve(String query, List<Long> datasetIds) {
+        if (datasetIds == null || datasetIds.isEmpty()) {
             return RetrievalResult.empty();
         }
         try {
             long t0 = System.currentTimeMillis();
-            DatasetEntity dataset = datasetService.getById(datasetId);
-            if (dataset == null) {
+            // 载入目标库(去重保序;不存在的库跳过,不阻断其余库)
+            List<DatasetEntity> datasets = datasetIds.stream()
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .map(datasetService::getById)
+                    .filter(Objects::nonNull)
+                    .toList();
+            if (datasets.isEmpty()) {
                 return RetrievalResult.empty();
             }
 
-            // ① 查询改写:生成多个检索变体(含原始查询),扩大粗排覆盖面
+            // ① 查询改写:生成多个检索变体(含原始查询),扩大粗排覆盖面(改写与路由职责分离,不在此合并)
             List<String> queries = queryRewriter.rewrite(query);
 
-            // ② 多路粗排:每个变体分别检索,合并去重(同文本保留最高分)
-            Map<String, Document> merged = new LinkedHashMap<>();
-            for (String q : queries) {
-                List<Document> hits = hybridSearcher.search(dataset.getCollectionName(), q, VARIANT_TOP_K);
-                for (Document doc : hits) {
-                    String key = doc.getText().trim();
-                    Document existing = merged.get(key);
-                    if (existing == null || doc.getScore() > existing.getScore()) {
-                        merged.put(key, doc);
+            // ② 多库并发粗排:每库跑完整变体循环,库内按文本去重(同文本保留最高分);
+            //    并发降低多库墙钟延迟,单库请求等价原实现
+            List<CompletableFuture<List<Candidate>>> futures = datasets.stream()
+                    .map(ds -> CompletableFuture.supplyAsync(() -> searchDataset(ds, queries), SEARCH_POOL)
+                            .exceptionally(e -> {
+                                log.warn("[Retrieval] 库「{}」检索异常(跳过该库): {}", ds.getName(), e.getMessage());
+                                return List.of();
+                            }))
+                    .toList();
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+            // 跨库合并去重(同文本保留最高分;全局统一 embedding 模型,粗排分跨库可比)
+            Map<String, Candidate> merged = new LinkedHashMap<>();
+            for (CompletableFuture<List<Candidate>> f : futures) {
+                for (Candidate c : f.join()) {
+                    Candidate existing = merged.get(c.text());
+                    if (existing == null || c.score() > existing.score()) {
+                        merged.put(c.text(), c);
                     }
                 }
             }
-            List<Document> candidates = new ArrayList<>(merged.values());
-            candidates.sort(Comparator.comparingDouble(Document::getScore).reversed());
+            List<Candidate> candidates = new ArrayList<>(merged.values());
+            candidates.sort(Comparator.comparingDouble(Candidate::score).reversed());
             if (candidates.size() > MAX_RERANK_CANDIDATES) {
                 candidates = candidates.subList(0, MAX_RERANK_CANDIDATES);
             }
-            log.info("[Retrieval] 多路检索完成, 合并去重后候选 {} 条", candidates.size());
+            log.info("[Retrieval] 多库检索完成, 目标 {} 库, 合并去重后候选 {} 条, 耗时: {}ms",
+                    datasets.size(), candidates.size(), System.currentTimeMillis() - t0);
 
-            // ③ 精排:Cross-Encoder Re-Ranker 重打分
-            List<Document> docs = rerankerService.rerank(query, candidates, TOP_K);
+            // ③ 精排:Cross-Encoder Re-Ranker 重打分(文本对打分与 embedding 空间无关,跨库全局可比)
+            List<Document> docs = rerankerService.rerank(query,
+                    candidates.stream().map(Candidate::doc).toList(), TOP_K);
+
+            // 精排重建了 Document(保留原 metadata):按文本回关联来源库,score 已是精排分
+            List<Candidate> reranked = docs.stream()
+                    .map(d -> {
+                        Candidate origin = merged.get(d.getText().trim());
+                        return origin == null ? null : new Candidate(d, origin.dataset());
+                    })
+                    .filter(Objects::nonNull)
+                    .toList();
 
             // ④ 父子召回:按 parent_id 去重(同父块保留最高分)
-            List<Document> deduped = dedupByParent(docs);
+            List<Candidate> deduped = dedupByParent(reranked);
 
-            // ⑤ 质量护栏:过滤低于 rerank 阈值的弱结果(阈值随知识库配置,默认 0.3)
-            double threshold = dataset.getRerankScoreThreshold();
-            List<Document> confident = deduped.stream()
-                    .filter(d -> scoreOf(d) >= threshold)
+            // ⑤ 质量护栏:按各自来源库的 rerank 阈值过滤弱结果(阈值随库配置)
+            List<Candidate> confident = deduped.stream()
+                    .filter(c -> c.score() >= c.dataset().getRerankScoreThreshold())
                     .toList();
 
             if (confident.isEmpty()) {
-                log.info("[Retrieval] 无可靠检索结果(rerank 阈值 {}),走我不知道分支, 耗时: {}ms",
-                        threshold, System.currentTimeMillis() - t0);
+                log.info("[Retrieval] 无可靠检索结果(按各自库 rerank 阈值过滤),走我不知道分支, 耗时: {}ms",
+                        System.currentTimeMillis() - t0);
                 return new RetrievalResult("", List.of(), true);
             }
 
-            // ⑥ 构建编号上下文与引用列表(同一次遍历,保证编号 1:1 对应)
-            CitedContext cited = buildCitedContext(confident, dataset);
+            // ⑥ 构建编号上下文与引用列表(同一次遍历,编号 1:1 对应;每条引用自带各自库信息)
+            CitedContext cited = buildCitedContext(confident);
             log.info("[Retrieval] 命中 {} 父块, 可信 {} 条, 引用 {} 条, context.len={}, 耗时: {}ms",
                     deduped.size(), confident.size(), cited.references().size(),
                     cited.context().length(), System.currentTimeMillis() - t0);
@@ -109,6 +167,26 @@ public class RetrievalServiceImpl implements RetrievalService {
             log.warn("[Retrieval] 检索失败,返回空结果: {}", e.getMessage());
             return RetrievalResult.empty();
         }
+    }
+
+    /** 单库粗排:跑完所有查询变体,库内按文本去重(同文本保留最高分) */
+    private List<Candidate> searchDataset(DatasetEntity dataset, List<String> queries) {
+        Map<String, Document> byText = new LinkedHashMap<>();
+        for (String q : queries) {
+            List<Document> hits = hybridSearcher.search(dataset.getCollectionName(), q, VARIANT_TOP_K);
+            for (Document doc : hits) {
+                String key = doc.getText().trim();
+                Document existing = byText.get(key);
+                if (existing == null || scoreOf(doc) > scoreOf(existing)) {
+                    byText.put(key, doc);
+                }
+            }
+        }
+        List<Candidate> result = new ArrayList<>(byText.size());
+        for (Document d : byText.values()) {
+            result.add(new Candidate(d, dataset));
+        }
+        return result;
     }
 
     @Override
@@ -165,12 +243,14 @@ public class RetrievalServiceImpl implements RetrievalService {
      * 严格 1:1 对应(含字符预算截断联动:被预算裁掉的片段不出现在引用列表,
      * 模型看不到的内容前端也不标注,杜绝"角标指向模型未见过的内容")。
      */
-    private CitedContext buildCitedContext(List<Document> docs, DatasetEntity dataset) {
+    private CitedContext buildCitedContext(List<Candidate> candidates) {
         int budget = ragProperties.getContextBudgetChars();
         StringBuilder ctx = new StringBuilder();
         List<Reference> refs = new ArrayList<>();
         int rank = 0;
-        for (Document d : docs) {
+        for (Candidate c : candidates) {
+            DatasetEntity dataset = c.dataset();
+            Document d = c.doc();
             // 片段正文:优先父块完整上下文(parent_content 为 null 时回退子块文本)
             String parentContent = (String) d.getMetadata().get("parent_content");
             String segBody = (parentContent != null && !parentContent.isBlank()) ? parentContent : d.getText();
@@ -189,7 +269,7 @@ public class RetrievalServiceImpl implements RetrievalService {
             ctx.append(segHead).append(segBody);
 
             // 引用内容与模型所见同源(父块),截断 200 字供前端展示
-            refs.add(new Reference(rank, truncate(segBody, 200), round3(scoreOf(d)),
+            refs.add(new Reference(rank, truncate(segBody, 200), round3(c.score()),
                     source, dataset.getName(), dataset.getId(), d.getMetadata().get("dataset_file_id")));
         }
         return new CitedContext(ctx.toString(), refs);
@@ -212,18 +292,18 @@ public class RetrievalServiceImpl implements RetrievalService {
      * 父子召回去重:按 parent_id 合并同父块的子块(保留最高分)。
      * parent_id 为 null(旧数据)时视为独立块,不合并,保持向后兼容。
      */
-    private List<Document> dedupByParent(List<Document> docs) {
-        Map<String, Document> byParent = new LinkedHashMap<>();
-        for (Document d : docs) {
-            String pid = (String) d.getMetadata().get("parent_id");
-            String key = pid != null ? pid : "child:" + d.getId();
-            Document ex = byParent.get(key);
-            if (ex == null || scoreOf(d) > scoreOf(ex)) {
-                byParent.put(key, d);
+    private List<Candidate> dedupByParent(List<Candidate> candidates) {
+        Map<String, Candidate> byParent = new LinkedHashMap<>();
+        for (Candidate c : candidates) {
+            String pid = (String) c.doc().getMetadata().get("parent_id");
+            String key = pid != null ? pid : "child:" + c.doc().getId();
+            Candidate ex = byParent.get(key);
+            if (ex == null || c.score() > ex.score()) {
+                byParent.put(key, c);
             }
         }
-        List<Document> result = new ArrayList<>(byParent.values());
-        result.sort(Comparator.comparingDouble(this::scoreOf).reversed());
+        List<Candidate> result = new ArrayList<>(byParent.values());
+        result.sort(Comparator.comparingDouble(Candidate::score).reversed());
         return result;
     }
 

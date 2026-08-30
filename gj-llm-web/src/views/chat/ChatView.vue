@@ -3,8 +3,6 @@ import { watch, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/modules/chat'
 import { useConversationStore } from '@/stores/modules/conversation'
-import { datasetApi } from '@/api/modules/dataset'
-import type { Dataset } from '@/api/types'
 import { ChatDotRound } from '@element-plus/icons-vue'
 import ChatMessage from '@/components/ChatMessage/ChatMessage.vue'
 import ChatInput from '@/components/ChatInput/ChatInput.vue'
@@ -14,22 +12,11 @@ const router = useRouter()
 const chatStore = useChatStore()
 const conversationStore = useConversationStore()
 
-/** 知识库列表（用于选择器） */
-const datasets = ref<Dataset[]>([])
-const selectedDatasetId = ref<string | undefined>()
 /** 深度思考开关 */
 const enableThinking = ref(true)
 
 onMounted(async () => {
-  // 加载知识库列表
-  try {
-    const res = await datasetApi.getList(1, 100)
-    datasets.value = res.data.data.records || []
-  } catch {
-    datasets.value = []
-  }
-
-  // 初始化：加载会话列表
+  // 初始化：加载会话列表（知识库选择已移除，由后端智能路由自动决定检索目标）
   await conversationStore.fetchList()
 })
 
@@ -49,13 +36,9 @@ watch(
         await chatStore.loadHistory(convIdStr)
       }
       setTimeout(() => scrollToBottom(false), 50)
-      // 恢复关联的知识库
-      const conv = conversationStore.list.find((c) => String(c.id) === convIdStr)
-      selectedDatasetId.value = conv?.datasetId != null ? String(conv.datasetId) : undefined
     } else {
       // 新建对话空白态：仅切走激活桶，不销毁其它对话的后台流
       chatStore.setActive(null)
-      selectedDatasetId.value = undefined
     }
   },
   { immediate: true },
@@ -91,8 +74,8 @@ function handleStop() {
   chatStore.abortStream()
 }
 
-/** 发送消息 */
-async function handleSend(content: string, controls: { datasetId?: string; enableThinking: boolean }) {
+/** 发送消息（知识库由后端智能路由，前端不再选择） */
+async function handleSend(content: string, controls: { enableThinking: boolean }) {
   const existing = conversationStore.currentId
   let convId: string
   let isNew: boolean
@@ -100,7 +83,7 @@ async function handleSend(content: string, controls: { datasetId?: string; enabl
     convId = existing
     isNew = false
   } else {
-    const conv = await conversationStore.create(undefined, controls.datasetId)
+    const conv = await conversationStore.create(undefined, undefined)
     if (!conv) return
     convId = String(conv.id)
     isNew = true
@@ -113,7 +96,7 @@ async function handleSend(content: string, controls: { datasetId?: string; enabl
   const streamPromise = chatStore.sendMessageStream(
     convId,
     content,
-    controls.datasetId,
+    undefined,
     controls.enableThinking,
   )
   if (isNew) {
@@ -129,7 +112,7 @@ async function handleSend(content: string, controls: { datasetId?: string; enabl
 <template>
   <div class="chat-view">
     <!-- 消息列表 -->
-    <div class="chat-messages" v-if="chatStore.messages.length > 0 || chatStore.streaming">
+    <div v-if="chatStore.messages.length > 0 || chatStore.streaming" class="chat-messages">
       <ChatMessage
         v-for="msg in chatStore.messages"
         :key="msg.id"
@@ -152,22 +135,20 @@ async function handleSend(content: string, controls: { datasetId?: string; enabl
     </div>
 
     <!-- 空状态 -->
-    <div class="chat-empty" v-else>
+    <div v-else class="chat-empty">
       <div class="chat-empty__icon">
         <el-icon :size="48"><ChatDotRound /></el-icon>
       </div>
       <p class="chat-empty__text">开始一段新的对话</p>
-      <p class="chat-empty__hint">选择知识库可获得更精准的回答，Enter 发送消息</p>
+      <p class="chat-empty__hint">AI 将自动检索匹配的知识库，Enter 发送消息</p>
     </div>
 
-    <!-- 输入区域（含知识库选择 + 思考开关 + 发送按钮） -->
+    <!-- 输入区域（思考开关 + 发送按钮；知识库由后端智能路由） -->
     <ChatInput
+      v-model:enable-thinking="enableThinking"
+      :disabled="chatStore.streaming"
       @send="handleSend"
       @stop="handleStop"
-      :disabled="chatStore.streaming"
-      :datasets="datasets.map(d => ({ id: String(d.id), name: d.name }))"
-      v-model:selected-dataset-id="selectedDatasetId"
-      v-model:enable-thinking="enableThinking"
     />
   </div>
 </template>

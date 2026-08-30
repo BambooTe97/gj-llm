@@ -2,6 +2,7 @@ package com.gj.llm.chat.agent;
 
 import com.gj.llm.chat.config.ChatProperties;
 import com.gj.llm.chat.sse.SseEventBuilder;
+import com.gj.llm.rag.model.RoutingDecision;
 import com.gj.llm.rag.service.Reference;
 import com.gj.llm.rag.service.RetrievalResult;
 import com.gj.llm.rag.service.RetrievalService;
@@ -27,8 +28,6 @@ import java.util.Map;
 @Component
 public class RagQaAgent extends AbstractLlmAgent {
 
-    private static final String SEARCHING_HINT = "正在检索知识库...";
-
     private final RetrievalService retrievalService;
 
     public RagQaAgent(ChatModel chatModel, ChatProperties chatProperties, RetrievalService retrievalService) {
@@ -43,12 +42,14 @@ public class RagQaAgent extends AbstractLlmAgent {
 
     @Override
     protected PreparedPrompt prepare(AgentContext ctx) {
-        RetrievalResult rr = retrievalService.retrieve(ctx.getUserContent(), ctx.getDatasetId());
+        // 检索目标三级取值:显式锁库 > 智能路由决策 > 空(交由检索服务返回空结果)
+        List<Long> targetDatasetIds = resolveTargetDatasets(ctx);
+        RetrievalResult rr = retrievalService.retrieve(ctx.getUserContent(), targetDatasetIds);
         // 引用暂存到上下文,编排器流结束后随消息持久化(前端历史消息可还原角标与参考来源)
         ctx.setReferences(rr.references());
 
         List<ServerSentEvent<String>> preEvents = new ArrayList<>();
-        preEvents.add(SseEventBuilder.event("thinking", Map.of("content", SEARCHING_HINT)));
+        preEvents.add(SseEventBuilder.event("thinking", Map.of("content", searchingHint(ctx))));
         if (rr.noConfidentResult()) {
             preEvents.add(SseEventBuilder.event("no_result",
                     Map.of("message", "知识库中未找到与该问题相关的内容")));
@@ -60,6 +61,24 @@ public class RagQaAgent extends AbstractLlmAgent {
         String systemPrompt = rr.noConfidentResult() ? buildNoResultPrompt() : buildSystemPrompt(rr.context());
         String userPrompt = buildUserPrompt(ctx.getUserContent(), rr.context());
         return new PreparedPrompt(preEvents, buildMessageList(systemPrompt, userPrompt, ctx));
+    }
+
+    /** 检索目标:显式锁库(request 直传)优先,否则取路由决策的目标库列表 */
+    private List<Long> resolveTargetDatasets(AgentContext ctx) {
+        if (ctx.getDatasetId() != null) {
+            return List.of(ctx.getDatasetId());
+        }
+        RoutingDecision decision = ctx.getRoutingDecision();
+        return (decision != null && decision.datasetIds() != null) ? decision.datasetIds() : List.of();
+    }
+
+    /** 检索提示:带目标库名,让用户看到系统正在查哪些库(无库时退化为通用提示) */
+    private String searchingHint(AgentContext ctx) {
+        RoutingDecision decision = ctx.getRoutingDecision();
+        if (decision != null && !decision.datasetNames().isEmpty()) {
+            return "正在检索知识库: " + String.join("、", decision.datasetNames()) + "...";
+        }
+        return "正在检索知识库...";
     }
 
     // ==================== RAG Prompt 构建(本智能体私有) ====================
