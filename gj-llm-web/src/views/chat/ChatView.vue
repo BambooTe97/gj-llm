@@ -77,9 +77,9 @@ watch(
   () => scrollToBottom(),
 )
 
-/** 流式输出内容变化 → 仅当用户处于底部时才跟随 */
+/** 流式输出内容/引用到达 → 仅当用户处于底部时才跟随 */
 watch(
-  () => [chatStore.currentAssistantMsg, chatStore.thinking],
+  () => [chatStore.currentAssistantMsg, chatStore.thinking, chatStore.references.length],
   () => {
     const el = document.querySelector('.chat-messages')
     if (el && isNearBottom(el)) scrollToBottom()
@@ -135,7 +135,7 @@ async function handleSend(content: string, controls: { datasetId?: string; enabl
         :key="msg.id"
         :message="msg"
       />
-      <!-- 流式输出中的临时消息（思考内容内嵌在组件中展示） -->
+      <!-- 流式输出中的临时消息（思考/引用内容内嵌在组件中展示） -->
       <ChatMessage
         v-if="chatStore.streaming"
         :message="{
@@ -147,20 +147,8 @@ async function handleSend(content: string, controls: { datasetId?: string; enabl
         }"
         :streaming="true"
         :streaming-thinking="chatStore.thinking"
+        :streaming-references="chatStore.references"
       />
-      <!-- 引用来源 -->
-      <div class="chat-references" v-if="chatStore.references.length > 0 && !chatStore.streaming">
-        <div class="chat-references__title">📎 参考来源</div>
-        <div
-          class="chat-references__item"
-          v-for="ref in chatStore.references"
-          :key="ref.rank"
-        >
-          <span class="chat-references__rank">#{{ ref.rank }}</span>
-          <span class="chat-references__score">{{ ref.score }}</span>
-          <p class="chat-references__content">{{ ref.content }}...</p>
-        </div>
-      </div>
     </div>
 
     <!-- 空状态 -->
@@ -202,51 +190,6 @@ async function handleSend(content: string, controls: { datasetId?: string; enabl
   &::-webkit-scrollbar-thumb {
     background-color: rgba(0, 0, 0, 0.1);
     border-radius: 3px;
-  }
-}
-
-.chat-references {
-  margin: 0 0 16px 48px;
-  padding: 12px 16px;
-  background: rgba(245, 245, 247, 0.8);
-  border-radius: 10px;
-  border: 1px solid rgba(210, 210, 215, 0.4);
-  font-size: 12px;
-
-  &__title {
-    font-weight: 600;
-    color: #515154;
-    margin-bottom: 8px;
-  }
-
-  &__item {
-    display: flex;
-    gap: 8px;
-    align-items: flex-start;
-    margin-bottom: 6px;
-    line-height: 1.5;
-  }
-
-  &__rank {
-    flex-shrink: 0;
-    font-weight: 600;
-    color: #0071e3;
-    min-width: 20px;
-  }
-
-  &__score {
-    flex-shrink: 0;
-    color: #aeaeb2;
-    font-size: 11px;
-    min-width: 36px;
-  }
-
-  &__content {
-    margin: 0;
-    color: #86868b;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 }
 

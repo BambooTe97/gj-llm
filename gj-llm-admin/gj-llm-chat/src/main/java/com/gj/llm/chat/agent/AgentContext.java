@@ -2,6 +2,7 @@ package com.gj.llm.chat.agent;
 
 import com.gj.llm.chat.entity.ConversationEntity;
 import com.gj.llm.chat.entity.MessageEntity;
+import com.gj.llm.rag.service.Reference;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
@@ -11,7 +12,7 @@ import java.util.List;
  * 智能体执行上下文 -- 编排器在路由前构建,贯穿智能体执行全程。
  *
  * <p>不可变部分(会话/用户消息/历史/数据集)由编排器注入;
- * 可变部分({@code fullAnswer}/{@code fullThinking})由智能体在流式过程中写入,
+ * 可变部分({@code fullAnswer}/{@code fullThinking}/{@code references})由智能体在执行过程中写入,
  * 编排器在流结束后读取,用于持久化与 done 事件。</p>
  *
  * @author gj-llm
@@ -40,4 +41,11 @@ public class AgentContext {
 
     /** 累积的完整思考(智能体流式写入,编排器读取做持久化) */
     private final StringBuffer fullThinking = new StringBuffer();
+
+    /** 检索命中的引用片段(智能体在 prepare 阶段写入,编排器读取随消息持久化) */
+    private List<Reference> references = List.of();
+
+    public void setReferences(List<Reference> references) {
+        this.references = references == null ? List.of() : references;
+    }
 }

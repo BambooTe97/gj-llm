@@ -44,6 +44,8 @@ public class RagQaAgent extends AbstractLlmAgent {
     @Override
     protected PreparedPrompt prepare(AgentContext ctx) {
         RetrievalResult rr = retrievalService.retrieve(ctx.getUserContent(), ctx.getDatasetId());
+        // 引用暂存到上下文,编排器流结束后随消息持久化(前端历史消息可还原角标与参考来源)
+        ctx.setReferences(rr.references());
 
         List<ServerSentEvent<String>> preEvents = new ArrayList<>();
         preEvents.add(SseEventBuilder.event("thinking", Map.of("content", SEARCHING_HINT)));
@@ -68,6 +70,11 @@ public class RagQaAgent extends AbstractLlmAgent {
                     你是一个智能知识库助手。请根据【参考上下文】回答用户的问题。
                     如果上下文中没有答案或信息不足，请诚实地告诉用户你不知道，不要编造。
                     回答时请保持专业、准确、简洁。
+
+                    引用标注要求：
+                    1. 回答中凡引用了参考上下文的知识，请在对应句子末尾标注片段编号，格式如 [1]，多个片段可连写如 [1][3]。
+                    2. 编号必须使用参考上下文中真实存在的【片段n】编号，严禁编造不存在的编号。
+                    3. 上下文中没有依据的内容不要标注编号。
                     """;
         }
         return """

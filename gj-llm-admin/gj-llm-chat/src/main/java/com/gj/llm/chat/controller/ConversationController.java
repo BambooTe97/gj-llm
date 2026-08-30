@@ -6,8 +6,11 @@ import com.gj.llm.chat.model.ConversationVO;
 import com.gj.llm.chat.model.MessageVO;
 import com.gj.llm.chat.model.RenameRequest;
 import com.gj.llm.chat.service.ConversationService;
+import com.gj.llm.common.util.JacksonUtils;
 import com.gj.llm.common.web.R;
+import com.gj.llm.rag.service.Reference;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.format.DateTimeFormatter;
@@ -19,6 +22,7 @@ import java.util.stream.Collectors;
  *
  * @author gj-llm
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/conversations")
 @RequiredArgsConstructor
@@ -62,8 +66,23 @@ public class ConversationController {
                 .conversationId(m.getConversationId())
                 .role(m.getRole())
                 .content(m.getContent())
+                .thinking(m.getThinking())
+                .references(parseReferences(m.getMetadataJson()))
                 .createdAt(m.getCreatedAt() != null ? m.getCreatedAt().format(DTF) : null)
                 .build()).collect(Collectors.toList());
         return R.ok(vos);
+    }
+
+    /** 从 metadata_json 解析引用片段;格式异常或无引用时返回 null(历史消息降级为无角标展示) */
+    private List<Reference> parseReferences(String metadataJson) {
+        if (metadataJson == null || metadataJson.isBlank()) {
+            return null;
+        }
+        try {
+            return JacksonUtils.listFromJson(metadataJson, "references", Reference.class);
+        } catch (Exception e) {
+            log.warn("解析消息引用元数据失败, 降级为无引用展示: {}", e.getMessage());
+            return null;
+        }
     }
 }

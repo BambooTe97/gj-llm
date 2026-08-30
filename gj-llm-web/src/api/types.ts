@@ -13,6 +13,24 @@ export interface LoginResponse {
   avatar?: string
 }
 
+/** 引用片段（RAG 检索命中的参考来源，assistant 消息携带） */
+export interface ChatReference {
+  /** 编号（从 1 开始，与回答正文中的行内角标 [n] 对应） */
+  rank: number
+  /** 片段正文（父块内容，截断 200 字，与模型所见同源） */
+  content: string
+  /** rerank 精排分数 */
+  score: number
+  /** 来源文件名 */
+  source: string | null
+  /** 所属知识库名称（多知识库检索时逐条区分） */
+  datasetName: string | null
+  /** 所属知识库 ID */
+  datasetId: string | number | null
+  /** 知识库-文件关联 ID */
+  datasetFileId: string | number | null
+}
+
 /** 消息结构 */
 export interface ChatMessage {
   id: string
@@ -20,6 +38,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   thinking?: string
+  /** RAG 检索引用片段（流式 done 后挂载；历史消息由 metadata 还原） */
+  references?: ChatReference[]
   createdAt: string
 }
 

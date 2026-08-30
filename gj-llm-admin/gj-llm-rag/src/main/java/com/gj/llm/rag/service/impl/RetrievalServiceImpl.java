@@ -99,11 +99,12 @@ public class RetrievalServiceImpl implements RetrievalService {
                 return new RetrievalResult("", List.of(), true);
             }
 
-            String context = buildParentContext(confident);
-            List<Reference> references = buildReferences(confident);
-            log.info("[Retrieval] 命中 {} 父块, 可信 {} 条, context.len={}, 耗时: {}ms",
-                    deduped.size(), confident.size(), context.length(), System.currentTimeMillis() - t0);
-            return new RetrievalResult(context, references, false);
+            // ⑥ 构建编号上下文与引用列表(同一次遍历,保证编号 1:1 对应)
+            CitedContext cited = buildCitedContext(confident, dataset);
+            log.info("[Retrieval] 命中 {} 父块, 可信 {} 条, 引用 {} 条, context.len={}, 耗时: {}ms",
+                    deduped.size(), confident.size(), cited.references().size(),
+                    cited.context().length(), System.currentTimeMillis() - t0);
+            return new RetrievalResult(cited.context(), cited.references(), false);
         } catch (Exception e) {
             log.warn("[Retrieval] 检索失败,返回空结果: {}", e.getMessage());
             return RetrievalResult.empty();
@@ -159,18 +160,52 @@ public class RetrievalServiceImpl implements RetrievalService {
 
     // ==================== 辅助方法 ====================
 
-    private List<Reference> buildReferences(List<Document> docs) {
+    /**
+     * 编号上下文 + 引用列表 -- 单次遍历同时产出,保证【片段n】编号与 {@code Reference.rank}
+     * 严格 1:1 对应(含字符预算截断联动:被预算裁掉的片段不出现在引用列表,
+     * 模型看不到的内容前端也不标注,杜绝"角标指向模型未见过的内容")。
+     */
+    private CitedContext buildCitedContext(List<Document> docs, DatasetEntity dataset) {
+        int budget = ragProperties.getContextBudgetChars();
+        StringBuilder ctx = new StringBuilder();
         List<Reference> refs = new ArrayList<>();
-        for (int i = 0; i < docs.size(); i++) {
-            Document doc = docs.get(i);
-            double score = doc.getScore() != null ? doc.getScore() : 0.0;
-            String text = doc.getText();
-            String content = text != null ? text.substring(0, Math.min(text.length(), 200)) : "";
-            String source = (String) doc.getMetadata().get("source");
-            Object datasetFileId = doc.getMetadata().get("dataset_file_id");
-            refs.add(new Reference(i + 1, content, Math.round(score * 1000.0) / 1000.0, source, datasetFileId));
+        int rank = 0;
+        for (Document d : docs) {
+            // 片段正文:优先父块完整上下文(parent_content 为 null 时回退子块文本)
+            String parentContent = (String) d.getMetadata().get("parent_content");
+            String segBody = (parentContent != null && !parentContent.isBlank()) ? parentContent : d.getText();
+            String source = (String) d.getMetadata().get("source");
+            rank++;
+
+            // 片段头:编号 + 来源标注(知识库/文件),供 LLM 标注引用编号时锚定
+            String segHead = "【片段" + rank + "】(来源: 知识库「" + dataset.getName() + "」 文档「"
+                    + (source != null ? source : "未知") + "」)\n";
+            if (ctx.length() > 0 && ctx.length() + segHead.length() + segBody.length() + 2 > budget) {
+                break; // 超预算截断,保留已累加的高分父块
+            }
+            if (ctx.length() > 0) {
+                ctx.append("\n\n");
+            }
+            ctx.append(segHead).append(segBody);
+
+            // 引用内容与模型所见同源(父块),截断 200 字供前端展示
+            refs.add(new Reference(rank, truncate(segBody, 200), round3(scoreOf(d)),
+                    source, dataset.getName(), dataset.getId(), d.getMetadata().get("dataset_file_id")));
         }
-        return refs;
+        return new CitedContext(ctx.toString(), refs);
+    }
+
+    /** 编号上下文 + 引用列表的打包结构(见 {@link #buildCitedContext}) */
+    private record CitedContext(String context, List<Reference> references) {
+    }
+
+    private String truncate(String s, int max) {
+        if (s == null) return "";
+        return s.substring(0, Math.min(s.length(), max));
+    }
+
+    private double round3(double v) {
+        return Math.round(v * 1000.0) / 1000.0;
     }
 
     /**
@@ -194,26 +229,5 @@ public class RetrievalServiceImpl implements RetrievalService {
 
     private double scoreOf(Document d) {
         return d.getScore() != null ? d.getScore() : 0.0;
-    }
-
-    /**
-     * 用父块完整上下文构建 LLM context(parent_content 为 null 时回退子块文本)。
-     * 受 {@link RagProperties#getContextBudgetChars()} 字符预算约束,防止溢出上下文窗口。
-     */
-    private String buildParentContext(List<Document> deduped) {
-        int budget = ragProperties.getContextBudgetChars();
-        StringBuilder ctx = new StringBuilder();
-        for (Document d : deduped) {
-            String parentContent = (String) d.getMetadata().get("parent_content");
-            String seg = (parentContent != null && !parentContent.isBlank()) ? parentContent : d.getText();
-            if (ctx.length() > 0 && ctx.length() + seg.length() + 2 > budget) {
-                break; // 超预算截断,保留已累加的高分父块
-            }
-            if (ctx.length() > 0) {
-                ctx.append("\n\n");
-            }
-            ctx.append(seg);
-        }
-        return ctx.toString();
     }
 }

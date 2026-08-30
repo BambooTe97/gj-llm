@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatMessage } from '@/api/types'
+import type { ChatMessage, ChatReference } from '@/api/types'
 import { chatApi } from '@/api/modules/chat'
 
 /** 单个对话的运行时状态（按 conversationId 分桶，互不干扰） */
@@ -9,7 +9,8 @@ interface ChatSession {
   streaming: boolean
   currentAssistantMsg: string
   thinking: string
-  references: Array<{ rank: number; content: string; score: number }>
+  /** 流式过程中暂存的引用片段（done 提交消息时挂载到消息上并清空） */
+  references: ChatReference[]
   /** 是否已加载过历史消息（幂等守卫，避免覆盖流式中的本地状态） */
   loaded: boolean
   abortController: AbortController | null
@@ -105,12 +106,12 @@ export const useChatStore = defineStore('chat', () => {
     getSession(activeId.value).currentAssistantMsg += text
   }
 
-  function setReferences(refs: Array<{ rank: number; content: string; score: number }>) {
+  function setReferences(refs: ChatReference[]) {
     if (!activeId.value) return
     getSession(activeId.value).references = refs
   }
 
-  /** 把流式输出提交为一条正式的助手消息 */
+  /** 把流式输出提交为一条正式的助手消息（引用一并挂载到消息维度） */
   function commitStreamMessage(conversationId: string) {
     const s = getSession(conversationId)
     const msg: ChatMessage = {
@@ -119,6 +120,7 @@ export const useChatStore = defineStore('chat', () => {
       role: 'assistant',
       content: s.currentAssistantMsg,
       thinking: s.streamingThinking || s.thinking || undefined,
+      references: s.references.length ? s.references : undefined,
       createdAt: new Date().toISOString(),
     }
     s.messages.push(msg)

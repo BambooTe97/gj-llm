@@ -11,6 +11,7 @@ import com.gj.llm.chat.model.ChatRequest;
 import com.gj.llm.chat.service.ChatService;
 import com.gj.llm.chat.service.ConversationService;
 import com.gj.llm.chat.sse.SseEventBuilder;
+import com.gj.llm.common.util.JacksonUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.codec.ServerSentEvent;
@@ -89,7 +90,7 @@ public class ChatServiceImpl implements ChatService {
         });
     }
 
-    /** 流结束:保存 assistant 消息(含 thinking)、更新会话、发送 done 事件 */
+    /** 流结束:保存 assistant 消息(含 thinking/引用)、更新会话、发送 done 事件 */
     private Flux<ServerSentEvent<String>> persistAndDone(AgentContext ctx, ConversationEntity conversation,
                                                          Long conversationId, long t0) {
         MessageEntity assistantMsg = MessageEntity.builder()
@@ -97,6 +98,7 @@ public class ChatServiceImpl implements ChatService {
                 .role("assistant")
                 .content(ctx.getFullAnswer().toString())
                 .thinking(ctx.getFullThinking().length() == 0 ? null : ctx.getFullThinking().toString())
+                .metadataJson(buildMetadataJson(ctx))
                 .createdAt(LocalDateTime.now())
                 .build();
         messageMapper.insert(assistantMsg);
@@ -137,6 +139,7 @@ public class ChatServiceImpl implements ChatService {
                     .role("assistant")
                     .content(ctx.getFullAnswer().toString())
                     .thinking(ctx.getFullThinking().length() == 0 ? null : ctx.getFullThinking().toString())
+                    .metadataJson(buildMetadataJson(ctx))
                     .createdAt(LocalDateTime.now())
                     .build();
             messageMapper.insert(partialMsg);
@@ -158,5 +161,16 @@ public class ChatServiceImpl implements ChatService {
         List<MessageEntity> recent = all.size() > limit ? all.subList(0, limit) : all;
         Collections.reverse(recent);
         return recent;
+    }
+
+    /**
+     * 构建消息扩展元数据 JSON -- 当前仅存引用片段,供历史消息还原行内角标 [n] 与参考来源面板。
+     * 无引用(闲聊/无结果)时返回 null,不占存储。
+     */
+    private String buildMetadataJson(AgentContext ctx) {
+        if (ctx.getReferences().isEmpty()) {
+            return null;
+        }
+        return JacksonUtils.toJson(Map.of("references", ctx.getReferences()));
     }
 }

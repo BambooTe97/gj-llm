@@ -98,6 +98,24 @@
     }
   }
 
+  // 行内引用角标（[n] 转换而来，见 markdown.ts 的 citation 规则；
+  // 点击行为由 ChatMessage 的事件委托处理，此处仅样式）
+  sup.md-cite {
+    color: var(--md-link);
+    font-size: 0.72em;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    vertical-align: super;
+    margin: 0 1px;
+    transition: color 0.15s;
+
+    &:hover {
+      color: var(--md-quote-border);
+    }
+  }
+
   strong {
     font-weight: 600;
   }

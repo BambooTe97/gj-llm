@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
-import type { ChatMessage } from '@/api/types'
+import type { ChatMessage, ChatReference } from '@/api/types'
 import { renderMarkdown } from '@/utils/markdown'
 
 const props = defineProps<{
@@ -8,6 +8,8 @@ const props = defineProps<{
   streaming?: boolean
   /** 流式传输中的思考内容（仅在 streaming 模式下使用） */
   streamingThinking?: string
+  /** 流式传输中的引用片段（仅在 streaming 模式下使用，done 提交后改由 message.references 携带） */
+  streamingReferences?: ChatReference[]
 }>()
 
 const thinkingExpanded = ref(false)
@@ -15,6 +17,15 @@ const thinkingExpanded = ref(false)
 /** 有效的思考内容：优先来自 message.thinking（历史消息），其次来自 streamingThinking（流式中） */
 const thinkingText = computed(() =>
   (props.message.thinking || props.streamingThinking || '').trim()
+)
+
+/** 当前消息的引用列表：历史/终态消息取 message.references，流式中取 streamingReferences */
+const refsList = computed<ChatReference[]>(() =>
+  props.message.references && props.message.references.length
+    ? props.message.references
+    : props.streaming && props.streamingReferences
+      ? props.streamingReferences
+      : []
 )
 
 /** 是否有正文内容 */
@@ -46,6 +57,8 @@ watch(isThinkingPhase, (val) => {
 // 流式时 content 逐 token 追加，每次都全量 re-parse Markdown 很浪费，
 // 这里按 RENDER_THROTTLE_MS 节流重渲染（80ms 一帧足够顺滑）；
 // 非流式（历史消息 / 终态）直接同步渲染，首屏无闪烁。
+// maxCite 取当前引用数：references 事件先于 content 到达，流式中编号即已知；
+// 超出范围的 [n]（模型幻觉编号）不会被转成角标，保持纯文本。
 const renderedHtml = ref('')
 const RENDER_THROTTLE_MS = 80
 let pendingTimer: number | null = null
@@ -54,11 +67,12 @@ let lastRenderAt = 0
 function renderNow() {
   renderedHtml.value = renderMarkdown(props.message.content || '', {
     streaming: !!props.streaming,
+    maxCite: refsList.value.length,
   })
 }
 
 watch(
-  () => props.message.content,
+  [() => props.message.content, refsList],
   () => {
     if (!props.streaming) {
       if (pendingTimer !== null) {
@@ -101,9 +115,17 @@ onBeforeUnmount(() => {
   if (pendingTimer !== null) clearTimeout(pendingTimer)
 })
 
-/** 代码块复制按钮：v-html 内容无法直接绑定事件，在容器上事件委托 */
+/** 代码块复制 / 行内角标点击：v-html 内容无法直接绑定事件，在容器上事件委托 */
 async function onContentClick(e: MouseEvent) {
   const target = e.target as HTMLElement
+
+  // 行内角标 [n] -> 滚动定位到本消息的参考来源条目并高亮
+  const cite = target.closest('[data-cite]') as HTMLElement | null
+  if (cite) {
+    locateReference(cite)
+    return
+  }
+
   const btn = target.closest('[data-code-copy]') as HTMLButtonElement | null
   if (!btn) return
   const text = btn.closest('.md-code')?.querySelector('code')?.textContent ?? ''
@@ -126,6 +148,21 @@ async function onContentClick(e: MouseEvent) {
   setTimeout(() => {
     btn.textContent = '复制'
   }, 1500)
+}
+
+/** 滚动定位角标对应的参考来源条目并闪烁高亮（查询范围限定在本消息内，rank 跨消息会重复） */
+function locateReference(cite: HTMLElement) {
+  const msgRoot = cite.closest('.chat-message')
+  if (!msgRoot) return
+  const item = msgRoot.querySelector(
+    `.chat-message__ref[data-rank="${cite.dataset.cite}"]`,
+  ) as HTMLElement | null
+  if (!item) return
+  item.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  item.classList.remove('flash')
+  // 触发重绘以重启动画
+  void item.offsetWidth
+  item.classList.add('flash')
 }
 </script>
 
@@ -163,6 +200,29 @@ async function onContentClick(e: MouseEvent) {
         <!-- eslint-disable-next-line vue/no-v-html -->
         <div v-if="message.role === 'assistant'" class="md-body" v-html="renderedHtml"></div>
         <template v-else>{{ message.content }}</template>
+      </div>
+
+      <!-- 参考来源（RAG 检索命中片段；引用事件先于正文到达，流式中即展示） -->
+      <div v-if="refsList.length" class="chat-message__refs">
+        <div class="chat-message__refs-title">📎 参考来源（{{ refsList.length }}）</div>
+        <div
+          v-for="item in refsList"
+          :key="item.rank"
+          class="chat-message__ref"
+          :data-rank="item.rank"
+        >
+          <div class="chat-message__ref-meta">
+            <span class="chat-message__ref-rank">[{{ item.rank }}]</span>
+            <span class="chat-message__ref-source" :title="item.source || undefined">
+              {{ item.source || '未知来源' }}
+            </span>
+            <span v-if="item.datasetName" class="chat-message__ref-dataset">
+              {{ item.datasetName }}
+            </span>
+            <span class="chat-message__ref-score">{{ item.score }}</span>
+          </div>
+          <p class="chat-message__ref-content">{{ item.content }}…</p>
+        </div>
       </div>
     </div>
   </div>
@@ -344,6 +404,92 @@ async function onContentClick(e: MouseEvent) {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
 }
+
+/* ====== 参考来源面板 ====== */
+.chat-message__refs {
+  max-width: 100%;
+  padding: 8px 12px;
+  background: #f5f5f7;
+  border: 1px solid #e5e5ea;
+  border-radius: 10px;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.chat-message__refs-title {
+  font-weight: 600;
+  color: #515154;
+  margin-bottom: 6px;
+  user-select: none;
+}
+
+.chat-message__ref {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  line-height: 1.5;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.03);
+  }
+
+  &.flash {
+    animation: refFlash 1.6s ease-out;
+  }
+}
+
+@keyframes refFlash {
+  0%, 60% { background: rgba(0, 113, 227, 0.15); }
+  100% { background: transparent; }
+}
+
+.chat-message__ref-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chat-message__ref-rank {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: #0071e3;
+}
+
+.chat-message__ref-source {
+  color: #1d1d1f;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+}
+
+.chat-message__ref-dataset {
+  flex-shrink: 0;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: rgba(0, 113, 227, 0.08);
+  color: #0071e3;
+  font-size: 11px;
+}
+
+.chat-message__ref-score {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: #aeaeb2;
+  font-size: 11px;
+}
+
+.chat-message__ref-content {
+  margin: 0;
+  color: #86868b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 </style>
 
 <style lang="scss">
@@ -391,5 +537,48 @@ html.dark {
   .chat-message__content.streaming .md-body > :last-child::after {
     background: #58a6ff;
   }
+
+  .chat-message__refs {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .chat-message__refs-title {
+    color: #9aa4b2;
+  }
+
+  .chat-message__ref:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .chat-message__ref.flash {
+    animation-name: refFlashDark;
+  }
+
+  .chat-message__ref-rank {
+    color: #58a6ff;
+  }
+
+  .chat-message__ref-source {
+    color: #e6edf3;
+  }
+
+  .chat-message__ref-dataset {
+    background: rgba(88, 166, 255, 0.15);
+    color: #58a6ff;
+  }
+
+  .chat-message__ref-score {
+    color: #6e7681;
+  }
+
+  .chat-message__ref-content {
+    color: #9aa4b2;
+  }
+}
+
+@keyframes refFlashDark {
+  0%, 60% { background: rgba(88, 166, 255, 0.2); }
+  100% { background: transparent; }
 }
 </style>
