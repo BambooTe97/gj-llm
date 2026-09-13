@@ -146,6 +146,17 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
     }
 
     @Override
+    public void adjustCounters(Long id, int docDelta, int segmentDelta) {
+        if (docDelta == 0 && segmentDelta == 0) {
+            return;
+        }
+        int rows = baseMapper.adjustCounters(id, docDelta, segmentDelta);
+        if (rows == 0) {
+            log.warn("知识库计数调整未生效（知识库不存在）: id={}", id);
+        }
+    }
+
+    @Override
     @Transactional
     public void delete(Long id) {
         DatasetEntity entity = getById(id);

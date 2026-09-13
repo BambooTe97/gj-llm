@@ -25,4 +25,19 @@
         chunk_size, chunk_overlap, status, doc_count, segment_count, created_at, updated_at
     </sql>
 
+    <!-- 原子调整知识库计数：算术在数据库端完成，行锁保证并发安全；GREATEST 兜底防止计数变负 -->
+    <update id="adjustCounters">
+        UPDATE dataset
+        <set>
+            <if test="docDelta != 0">
+                doc_count = GREATEST(doc_count + #{docDelta}, 0),
+            </if>
+            <if test="segmentDelta != 0">
+                segment_count = GREATEST(segment_count + #{segmentDelta}, 0),
+            </if>
+            updated_at = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
 </mapper>

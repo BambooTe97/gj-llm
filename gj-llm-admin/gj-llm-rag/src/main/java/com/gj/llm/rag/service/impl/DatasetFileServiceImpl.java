@@ -124,9 +124,8 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
                 .build();
         save(df);
 
-        // 更新知识库统计
-        dataset.setDocCount(dataset.getDocCount() + 1);
-        datasetService.updateById(dataset);
+        // 更新知识库统计（数据库端原子自增，避免并发上传丢失更新）
+        datasetService.adjustCounters(datasetId, 1, 0);
 
         // 发布事件，由 @TransactionalEventListener(afterCommit) 触发异步向量化
         eventPublisher.publishEvent(new DatasetFileUploadedEvent(df.getId()));
@@ -174,11 +173,9 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
         // 删除关联记录
         removeById(datasetFileId);
 
-        // 更新知识库统计
-        if (dataset != null && dataset.getDocCount() > 0) {
-            dataset.setDocCount(dataset.getDocCount() - 1);
-            dataset.setSegmentCount(Math.max(0, dataset.getSegmentCount() - df.getSegmentCount()));
-            datasetService.updateById(dataset);
+        // 更新知识库统计（数据库端原子递减，GREATEST 兜底防止负数）
+        if (dataset != null) {
+            datasetService.adjustCounters(df.getDatasetId(), -1, -df.getSegmentCount());
         }
 
         log.info("知识库文件删除成功: dfId={}, fileId={}", datasetFileId, df.getFileId());
@@ -216,9 +213,8 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
             }
         }
 
-        // 更新统计（减去旧的切片数）
-        dataset.setSegmentCount(Math.max(0, dataset.getSegmentCount() - df.getSegmentCount()));
-        datasetService.updateById(dataset);
+        // 更新统计（数据库端原子递减旧的切片数）
+        datasetService.adjustCounters(df.getDatasetId(), 0, -df.getSegmentCount());
 
         // 重置状态，重新触发向量化
         df.setStatus("PENDING");
@@ -324,8 +320,8 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
             df.setCurrentStep(null);
             updateById(df);
 
-            dataset.setSegmentCount(dataset.getSegmentCount() + splits.size());
-            datasetService.updateById(dataset);
+            // 更新知识库切片统计（数据库端原子累加，避免并发解析丢失更新）
+            datasetService.adjustCounters(dataset.getId(), 0, splits.size());
 
             log.info("文件向量化完成: dfId={}, fileId={}, segments={}", dfId, df.getFileId(), splits.size());
         } catch (Exception e) {
