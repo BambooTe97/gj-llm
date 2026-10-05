@@ -1,4 +1,4 @@
-package com.gj.llm.auth.entity;
+package com.gj.llm.base.entity;
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;

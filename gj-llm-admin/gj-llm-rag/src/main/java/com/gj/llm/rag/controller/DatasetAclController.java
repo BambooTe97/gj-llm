@@ -1,16 +1,19 @@
 package com.gj.llm.rag.controller;
 
-import com.gj.llm.auth.config.AuthProperties;
-import com.gj.llm.auth.entity.ResourceAclEntity;
-import com.gj.llm.auth.mapper.UserRoleMapper;
-import com.gj.llm.auth.service.PrincipalLookupService;
-import com.gj.llm.auth.service.ResourceAclService;
+import com.gj.llm.base.config.AuthProperties;
+import com.gj.llm.base.entity.ResourceAclEntity;
+import com.gj.llm.base.entity.RoleEntity;
+import com.gj.llm.base.entity.UserEntity;
+import com.gj.llm.base.service.ResourceAclService;
+import com.gj.llm.base.service.RoleService;
+import com.gj.llm.base.service.UserService;
 import com.gj.llm.common.util.SecurityUtils;
 import com.gj.llm.common.web.R;
 import com.gj.llm.rag.entity.DatasetEntity;
 import com.gj.llm.rag.model.AclDetailVO;
 import com.gj.llm.rag.model.AclGrantRequest;
 import com.gj.llm.rag.model.AclGrantVO;
+import com.gj.llm.rag.model.PrincipalOptionVO;
 import com.gj.llm.rag.model.VisibilityUpdateRequest;
 import com.gj.llm.rag.service.DatasetService;
 import com.gj.llm.rag.service.DatasetVisibleService;
@@ -34,7 +37,8 @@ public class DatasetAclController {
     private final DatasetService datasetService;
     private final DatasetVisibleService datasetVisibleService;
     private final ResourceAclService resourceAclService;
-    private final PrincipalLookupService principalLookupService;
+    private final UserService userService;
+    private final RoleService roleService;
 
     /**
      * 共享设置详情：可见性 + 授权列表（主体展示名已解析）。
@@ -82,11 +86,11 @@ public class DatasetAclController {
             throw new RuntimeException("非法主体类型: " + principalType + "（仅支持 user/role）");
         }
         if (AuthProperties.PRINCIPAL_USER.equals(principalType)
-                && !principalLookupService.userExists(request.getPrincipalId())) {
+                && userService.getById(request.getPrincipalId()) == null) {
             throw new RuntimeException("用户不存在: id=" + request.getPrincipalId());
         }
         if (AuthProperties.PRINCIPAL_ROLE.equals(principalType)
-                && !principalLookupService.roleExists(request.getPrincipalId())) {
+                && roleService.getById(request.getPrincipalId()) == null) {
             throw new RuntimeException("角色不存在: id=" + request.getPrincipalId());
         }
         Long aclId = resourceAclService.grant(ResourceAclEntity.RESOURCE_TYPE_DATASET, datasetId,
@@ -116,19 +120,28 @@ public class DatasetAclController {
     // ==================== 主体选择器 ====================
 
     /**
-     * 按关键词搜索启用用户（共享面板下拉）。
+     * 按关键词搜索启用用户（共享面板下拉，仅返回 id + 展示名）。
      */
     @GetMapping("/acl/users")
-    public R<List<UserRoleMapper.PrincipalOption>> searchUsers(@RequestParam(required = false) String keyword) {
-        return R.ok(principalLookupService.searchUsers(keyword));
+    public R<List<PrincipalOptionVO>> searchUsers(@RequestParam(required = false) String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return R.ok(List.of());
+        }
+        List<PrincipalOptionVO> options = userService.page(1, 20, keyword.trim()).getRecords().stream()
+                .filter(u -> u.getStatus() != null && u.getStatus() == 1)
+                .map(u -> new PrincipalOptionVO(u.getId(), u.getNickname() + " (" + u.getUsername() + ")"))
+                .toList();
+        return R.ok(options);
     }
 
     /**
      * 角色列表（共享面板下拉）。
      */
     @GetMapping("/acl/roles")
-    public R<List<UserRoleMapper.PrincipalOption>> listRoles() {
-        return R.ok(principalLookupService.listRoles());
+    public R<List<PrincipalOptionVO>> listRoles() {
+        return R.ok(roleService.listAll().stream()
+                .map(r -> new PrincipalOptionVO(r.getId(), r.getName()))
+                .toList());
     }
 
     // ==================== 内部 ====================
@@ -154,9 +167,21 @@ public class DatasetAclController {
         }
     }
 
+    /** 主体展示名：用户取昵称兜底登录名，角色取名称。 */
     private String displayName(String principalType, Long principalId) {
-        return AuthProperties.PRINCIPAL_ROLE.equals(principalType)
-                ? principalLookupService.roleDisplayName(principalId)
-                : principalLookupService.userDisplayName(principalId);
+        if (AuthProperties.PRINCIPAL_ROLE.equals(principalType)) {
+            RoleEntity role = principalId == null ? null : roleService.getById(principalId);
+            return role != null && role.getName() != null && !role.getName().isBlank()
+                    ? role.getName() : "角色#" + principalId;
+        }
+        if (principalId == null) {
+            return null;
+        }
+        UserEntity user = userService.getById(principalId);
+        if (user == null) {
+            return "用户#" + principalId;
+        }
+        return user.getNickname() != null && !user.getNickname().isBlank()
+                ? user.getNickname() : user.getUsername();
     }
 }

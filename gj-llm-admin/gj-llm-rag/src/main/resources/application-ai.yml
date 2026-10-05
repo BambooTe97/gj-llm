@@ -27,7 +27,7 @@ spring:
 # ==================== ES 配置（主要检索引擎） ====================
 gj:
   llm:
-    # 数据授权(库级可见域隔离):原语在 gj-auth,组合判定在 rag 的 DatasetVisibleService
+    # 数据授权(库级可见域隔离):原语在 gj-base-admin,组合判定在 rag 的 DatasetVisibleService
     auth:
       # 授权/角色/可见集 Redis 缓存 TTL(秒,兜底;授权与库变更走主动失效)
       cache-ttl-seconds: 60

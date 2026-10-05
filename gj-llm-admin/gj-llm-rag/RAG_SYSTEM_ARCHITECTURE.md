@@ -1010,10 +1010,10 @@ chat 模块采用**智能体编排架构**：`ChatServiceImpl` 是瘦编排器�
 
 ### 14.2 判定规则（决策集中）
 
-授权原语在独立叶子模块 **`gj-auth`**（gj-core 下，不依赖任何业务模块），可见性**组合**在 rag 的 `DatasetVisibleService` —— auth 不读 dataset 表，避免跨模块 SQL / 循环依赖：
+授权原语在 **`gj-base-admin`**（与用户/角色体系同模块，复用其 `UserService` / `RoleService`），可见性**组合**在 rag 的 `DatasetVisibleService` —— base-admin 不读 dataset 表，避免跨模块 SQL / 循环依赖：
 
 ```
-GrantService（auth）                    DatasetVisibleService（rag）
+GrantService（base-admin）              DatasetVisibleService（rag）
   ├─ userRoles(uid)                       ├─ visibleDatasetIds(uid)   ← Redis rag:visible:u{uid}
   │    缓存 auth:roles:u{uid}              │    PUBLIC(含NULL) ∪ owner ∪ grants ∪ admin旁路
   ├─ grantedResourceIds(uid,type)         ├─ canAccessDataset(uid,id)  ← 读/检索/聊天锁库
@@ -1048,7 +1048,7 @@ GrantService（auth）                    DatasetVisibleService（rag）
 | 用户授权集 | `auth:grants:u{uid}:{type}` | TTL 兜底 + ACL 写后 `deleteByPattern("auth:grants:*")`（角色授权影响面不可知，全清） |
 | 用户可见集 | `rag:visible:u{uid}` | TTL 兜底 + 库增删改（`invalidateRouteCache` 一并失效）+ 共享设置变更 |
 
-授权写操作在 `ResourceAclService`（auth 内）自动失效 grants 缓存；rag 端点在写后追加失效 `rag:visible:*`。
+授权写操作在 `ResourceAclService`（base-admin 内）自动失效 grants 缓存；rag 端点在写后追加失效 `rag:visible:*`。
 
 ### 14.6 共享管理面
 

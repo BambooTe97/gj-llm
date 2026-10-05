@@ -58,7 +58,7 @@ cd gj-llm
 
 # 2. 初始化数据库（执行 sql/ 目录下的脚本）
 mysql -u root -p gj_llm < sql/gj-base/auth-schema.sql
-mysql -u root -p gj_llm < sql/gj-auth/acl-schema.sql
+mysql -u root -p gj_llm < sql/gj-base/acl-schema.sql
 mysql -u root -p gj_llm < sql/gj-chat/chat-schema.sql
 mysql -u root -p gj_llm < sql/gj-file/file-schema.sql
 mysql -u root -p gj_llm < sql/gj-llm-admin/dataset-schema.sql
@@ -108,7 +108,7 @@ cd gj-llm-web && pnpm install && pnpm dev
 │   │  JWT 双令牌 · 登出黑名单 · 用户缓存                 │    │
 │   └─────────────────────────────────────────────────┘    │
 │   ┌─────────────────────────────────────────────────┐    │
-│   │  基础设施：Security · Auth · Redis · MyBatis · File  │    │
+│   │  基础设施：Security · Redis · MyBatis · File       │    │
 │   │            ES 混合检索 · Reranker 精排             │    │
 │   └─────────────────────────────────────────────────┘    │
 └──────┬──────────┬──────────┬──────────┬──────────┬───────┘
@@ -157,13 +157,12 @@ gj-llm/
 ├── gj-core/                     # 核心基础设施层
 │   ├── gj-common/               # 通用工具（JacksonUtils · SpringUtils）
 │   ├── gj-security/             # 安全认证（JWT · SecurityUser · 过滤器 · 黑名单接口）
-│   ├── gj-auth/                 # 数据授权原语（用户角色解析 · 授权判定 · 主体查询）
 │   ├── gj-mybatis/              # MyBatis-Plus 持久层配置
 │   ├── gj-redis/                # Redis 缓存（RedisService · 序列化 · Key 常量）
 │   ├── gj-file/                 # 文件存储（上传 / 下载 / 删除）
 │   ├── gj-es/                   # Elasticsearch 混合检索（BM25 + KNN + RRF）
 │   └── gj-reranker/             # Cross-Encoder 精排（TEI）
-├── gj-base-admin/               # 基础管理（RBAC：用户 · 角色 · 菜单 · 接口权限 · 认证）
+├── gj-base-admin/               # 基础管理（RBAC：用户 · 角色 · 菜单 · 接口权限 · 认证 · 资源 ACL）
 ├── gj-llm-admin/                # 业务模块层
 │   ├── gj-llm-chat/             # 对话（智能体编排 + SSE 流式 + 引用溯源）
 │   ├── gj-llm-rag/              # RAG（知识库 · 文档管道 · 查询改写 · 分块 · 智能路由 · 检索评测）

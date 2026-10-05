@@ -22,7 +22,6 @@
     <modules>
         <module>gj-common</module>
         <module>gj-security</module>
-        <module>gj-auth</module>
         <module>gj-mybatis</module>
         <module>gj-file</module>
         <module>gj-es</module>

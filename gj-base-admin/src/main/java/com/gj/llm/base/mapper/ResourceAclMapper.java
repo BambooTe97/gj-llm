@@ -1,7 +1,7 @@
-package com.gj.llm.auth.mapper;
+package com.gj.llm.base.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.gj.llm.auth.entity.ResourceAclEntity;
+import com.gj.llm.base.entity.ResourceAclEntity;
 
 /**
  * 资源授权 Mapper —— 基础 CRUD 走 MyBatis-Plus 通用方法（mapper 扫描由

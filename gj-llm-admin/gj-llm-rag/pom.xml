@@ -17,12 +17,6 @@
     <dependencies>
         <dependency>
             <groupId>com.gj.llm</groupId>
-            <artifactId>gj-auth</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.gj.llm</groupId>
             <artifactId>gj-base-admin</artifactId>
             <version>${project.version}</version>
         </dependency>

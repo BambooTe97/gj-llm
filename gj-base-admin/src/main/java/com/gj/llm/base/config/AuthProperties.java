@@ -1,4 +1,4 @@
-package com.gj.llm.auth.config;
+package com.gj.llm.base.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -8,9 +8,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 数据授权配置 —— 可见域缓存、默认可见性与管理员角色。
+ * 数据授权配置 —— 资源 ACL 的缓存 TTL 与管理员角色。
  *
- * <p>配置前缀 {@code gj.llm.auth}，与 {@code RagProperties} 同风格（{@code @Component} + {@code @ConfigurationProperties}）。</p>
+ * <p>配置前缀 {@code gj.llm.auth}（数据授权语义，与登录认证 {@code AuthService} 区分）。</p>
  *
  * @author gj-llm
  */
@@ -19,7 +19,7 @@ import java.util.List;
 @ConfigurationProperties(prefix = "gj.llm.auth")
 public class AuthProperties {
 
-    /** 可见性：全员可见（新建库默认值，保持既有行为） */
+    /** 可见性：全员可见（新建资源默认值，保持既有行为） */
     public static final String VISIBILITY_PUBLIC = "PUBLIC";
 
     /** 可见性：仅 owner + 授权主体可见 */
@@ -34,7 +34,7 @@ public class AuthProperties {
     /** 主体类型：部门（预留，用户体系暂无部门概念） */
     public static final String PRINCIPAL_DEPT = "dept";
 
-    /** 角色/授权/可见集 Redis 缓存 TTL（秒）——兜底，授权变更走主动失效 */
+    /** 角色/授权缓存 TTL（秒）——兜底，授权变更走主动失效 */
     private int cacheTtlSeconds = 60;
 
     /** 新建知识库默认可见性：PUBLIC（全员可见，商用化时可切 RESTRICTED） */
