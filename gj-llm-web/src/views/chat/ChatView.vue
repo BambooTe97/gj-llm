@@ -60,9 +60,14 @@ watch(
   () => scrollToBottom(),
 )
 
-/** 流式输出内容/引用到达 → 仅当用户处于底部时才跟随 */
+/** 流式输出内容/引用/权限提示到达 → 仅当用户处于底部时才跟随 */
 watch(
-  () => [chatStore.currentAssistantMsg, chatStore.thinking, chatStore.references.length],
+  () => [
+    chatStore.currentAssistantMsg,
+    chatStore.thinking,
+    chatStore.references.length,
+    chatStore.permissionNotice,
+  ],
   () => {
     const el = document.querySelector('.chat-messages')
     if (el && isNearBottom(el)) scrollToBottom()
@@ -132,6 +137,12 @@ async function handleSend(content: string, controls: { enableThinking: boolean }
         :streaming-thinking="chatStore.thinking"
         :streaming-references="chatStore.references"
       />
+
+      <!-- 无权限提示（no_permission 事件：锁库越权等；后端不生成助手消息，发送新消息时清空） -->
+      <div v-if="chatStore.permissionNotice" class="chat-permission-notice">
+        <span class="chat-permission-notice__icon">🔒</span>
+        <span class="chat-permission-notice__text">{{ chatStore.permissionNotice }}</span>
+      </div>
     </div>
 
     <!-- 空状态 -->
@@ -172,6 +183,27 @@ async function handleSend(content: string, controls: { enableThinking: boolean }
     background-color: rgba(0, 0, 0, 0.1);
     border-radius: 3px;
   }
+}
+
+/* ====== 无权限提示行（no_permission 事件） ====== */
+.chat-permission-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(255, 245, 235, 0.85);
+  border: 1px solid rgba(255, 159, 10, 0.35);
+  border-radius: 6px 16px 16px 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.chat-permission-notice__icon {
+  font-size: 14px;
+}
+
+.chat-permission-notice__text {
+  font-size: 13px;
+  color: #b25000;
 }
 
 .chat-empty {

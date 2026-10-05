@@ -219,6 +219,9 @@ function locateReference(cite: HTMLElement) {
             <span v-if="item.datasetName" class="chat-message__ref-dataset">
               {{ item.datasetName }}
             </span>
+            <span v-if="item.subQueryText" class="chat-message__ref-subq" :title="item.subQueryText">
+              子问题{{ item.subQueryIndex }}
+            </span>
             <span class="chat-message__ref-score">{{ item.score }}</span>
           </div>
           <p class="chat-message__ref-content">{{ item.content }}…</p>
@@ -476,6 +479,19 @@ function locateReference(cite: HTMLElement) {
   font-size: 11px;
 }
 
+.chat-message__ref-subq {
+  flex-shrink: 0;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: rgba(52, 199, 89, 0.1);
+  color: #248a3d;
+  font-size: 11px;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-message__ref-score {
   flex-shrink: 0;
   margin-left: auto;
@@ -566,6 +582,11 @@ html.dark {
   .chat-message__ref-dataset {
     background: rgba(88, 166, 255, 0.15);
     color: #58a6ff;
+  }
+
+  .chat-message__ref-subq {
+    background: rgba(63, 185, 80, 0.15);
+    color: #3fb950;
   }
 
   .chat-message__ref-score {

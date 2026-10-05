@@ -37,8 +37,8 @@ public class RuleBasedAgentRouter implements AgentRouter {
             return registry.get(ragAgent(routing));
         }
 
-        // ② 智能规划:判定意图与目标库,决策暂存到 ctx
-        RoutingDecision decision = queryPlanner.plan(ctx.getUserContent());
+        // ② 智能规划:判定意图与目标库(可见域交集在 planner 内做),决策暂存到 ctx
+        RoutingDecision decision = queryPlanner.plan(ctx.getUserContent(), ctx.getUserId());
         ctx.setRoutingDecision(decision);
         log.info("[Router] 智能路由: intent={}, datasetIds={}, datasetNames={}",
                 decision.intent(), decision.datasetIds(), decision.datasetNames());

@@ -29,6 +29,10 @@ export interface ChatReference {
   datasetId: string | number | null
   /** 知识库-文件关联 ID */
   datasetFileId: string | number | null
+  /** 命中该片段的子问题序号（1 起始；null = 未拆解的单查询路径/历史数据） */
+  subQueryIndex?: number | null
+  /** 命中该片段的子问题文本（null = 未拆解） */
+  subQueryText?: string | null
 }
 
 /** 消息结构 */
@@ -88,10 +92,39 @@ export interface Dataset {
   /** rerank 精排采纳阈值(默认0.3,评测后可采纳推荐值) */
   rerankScoreThreshold: number
   status: string
+  /** 创建者用户 ID（数据可见域判定用；老数据为 null） */
+  ownerId?: string | null
+  /** 可见性：PUBLIC=全员可见 / RESTRICTED=仅 owner+授权主体（老数据可能缺省） */
+  visibility?: 'PUBLIC' | 'RESTRICTED' | null
   docCount: number
   segmentCount: number
   createdAt: string
   updatedAt: string
+}
+
+/** 知识库授权项（共享面板） */
+export interface AclGrant {
+  id: string
+  /** 主体类型：user | role */
+  principalType: 'user' | 'role'
+  principalId: string
+  /** 主体展示名（用户昵称/登录名、角色名称） */
+  principalName: string
+  createdAt: string
+}
+
+/** 知识库共享设置详情 */
+export interface AclDetail {
+  visibility: 'PUBLIC' | 'RESTRICTED' | null
+  grants: AclGrant[]
+  /** 当前用户是否可管理共享设置（owner/管理员；后端判定） */
+  canManage?: boolean
+}
+
+/** 主体选择器选项（用户/角色下拉） */
+export interface PrincipalOption {
+  id: string
+  name: string
 }
 
 /** 知识库-文件关联记录（含文件信息） */

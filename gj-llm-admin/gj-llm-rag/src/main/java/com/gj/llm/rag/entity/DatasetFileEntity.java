@@ -37,6 +37,9 @@ public class DatasetFileEntity {
     /** 关联的文件记录 ID（file_record.id） */
     private Long fileId;
 
+    /** 上传者用户 ID（文档级隔离预留字段，当前逻辑不启用） */
+    private Long ownerId;
+
     /** 处理状态：PENDING=排队中, PROCESSING=向量化中, COMPLETED=完成, FAILED=失败 */
     @Builder.Default
     private String status = "PENDING";

@@ -40,6 +40,9 @@ public class AgentContext {
     /** 最近的历史消息(按时间正序,user/assistant 交替) */
     private final List<MessageEntity> history;
 
+    /** 发起提问的用户 ID(编排器在调用方线程解析后注入,经参数显式下传 —— 线程池内不触碰 ThreadLocal) */
+    private final Long userId;
+
     /** 累积的完整答案(智能体流式写入,编排器读取做持久化) */
     private final StringBuffer fullAnswer = new StringBuffer();
 

@@ -20,9 +20,10 @@ public interface RetrievalService {
      *
      * @param query     用户原始查询
      * @param datasetId 知识库 ID;为 null 时返回 {@link RetrievalResult#empty()}(通用对话)
+     * @param userId    发起检索的用户 ID(可见域终检);null 或无权时返回 empty(fail-closed)
      * @return 检索结果,永不抛异常(内部失败时返回 empty)
      */
-    RetrievalResult retrieve(String query, Long datasetId);
+    RetrievalResult retrieve(String query, Long datasetId, Long userId);
 
     /**
      * 多知识库检索编排(chat 智能路由调用):多库并发粗排 -> 跨库合并去重 ->
@@ -31,9 +32,23 @@ public interface RetrievalService {
      *
      * @param query      用户原始查询
      * @param datasetIds 目标知识库 ID 列表;空/null 时返回 {@link RetrievalResult#empty()}
+     * @param userId     发起检索的用户 ID(可见域终检,与可见集求交集);null 或交集为空时返回 empty
      * @return 检索结果,永不抛异常(内部失败时返回 empty)
      */
-    RetrievalResult retrieve(String query, List<Long> datasetIds);
+    RetrievalResult retrieve(String query, List<Long> datasetIds, Long userId);
+
+    /**
+     * 子问题拆解检索编排:对每个检索单元(原始问题 + 各子问题)独立跑完整检索管线
+     * (改写 -> 多库并发粗排 -> 精排 -> 父子去重 -> 阈值护栏),再跨单元去重、轮转交错合并,
+     * 全局重编号构建上下文;引用片段携带 subQueryIndex/subQueryText 标注来源子问题。
+     *
+     * @param originalQuery 用户原始问题(安全网检索单元,受配置 include-original 控制)
+     * @param subQueries    拆解出的子问题
+     * @param datasetIds    目标知识库 ID 列表(所有子问题共用)
+     * @param userId        发起检索的用户 ID(可见域终检,与可见集求交集);null 或交集为空时返回 empty
+     * @return 检索结果,永不抛异常(单个单元失败跳过,全部失败返回 empty)
+     */
+    RetrievalResult retrievePerSubQueries(String originalQuery, List<String> subQueries, List<Long> datasetIds, Long userId);
 
     /**
      * 精排测试 -- 单查询走 hybrid 粗排 + reranker 精排,返回双分对照(不过阈值、不去父块),

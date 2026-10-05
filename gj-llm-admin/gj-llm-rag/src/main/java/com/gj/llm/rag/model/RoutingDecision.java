@@ -14,9 +14,12 @@ import java.util.List;
  * @param intent       意图:CHAT(闲聊,无需检索) / RETRIEVE(需要知识库检索)
  * @param datasetIds   检索目标知识库 ID(intent=RETRIEVE 时非空;多库并发检索)
  * @param datasetNames 对应知识库名称(供"正在检索知识库: xxx"提示展示,与 ids 同序)
+ * @param subQueries   问题拆解子问题(空=未拆解;≥2 条时 {@link #decomposed()} 为 true,
+ *                     由 RagQaAgent 逐子问题检索后合并;所有子问题共用 datasetIds)
  * @author gj-llm
  */
-public record RoutingDecision(Intent intent, List<Long> datasetIds, List<String> datasetNames) {
+public record RoutingDecision(Intent intent, List<Long> datasetIds, List<String> datasetNames,
+                              List<String> subQueries) {
 
     /** 用户意图 */
     public enum Intent {
@@ -26,12 +29,22 @@ public record RoutingDecision(Intent intent, List<Long> datasetIds, List<String>
         RETRIEVE
     }
 
+    /** 兼容旧三参构造(未拆解):subQueries 置空列表 */
+    public RoutingDecision(Intent intent, List<Long> datasetIds, List<String> datasetNames) {
+        this(intent, datasetIds, datasetNames, List.of());
+    }
+
     public boolean retrieve() {
         return intent == Intent.RETRIEVE;
     }
 
+    /** 是否存在有效拆解(≥2 条子问题才算,1 条视为未拆解) */
+    public boolean decomposed() {
+        return subQueries != null && subQueries.size() >= 2;
+    }
+
     /** 闲聊决策(无知识库可检或意图判定为闲聊时使用) */
     public static RoutingDecision chat() {
-        return new RoutingDecision(Intent.CHAT, List.of(), List.of());
+        return new RoutingDecision(Intent.CHAT, List.of(), List.of(), List.of());
     }
 }

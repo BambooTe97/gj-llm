@@ -116,10 +116,11 @@ public class DatasetFileServiceImpl extends ServiceImpl<DatasetFileMapper, Datas
         // 上传到物理文件存储（file_record 表）
         FileInfo fileInfo = fileStorageService.upload(file);
 
-        // 创建知识库-文件关联记录
+        // 创建知识库-文件关联记录（ownerId 仅作文档级隔离预留，当前逻辑不启用）
         DatasetFileEntity df = DatasetFileEntity.builder()
                 .datasetId(datasetId)
                 .fileId(fileInfo.getId())
+                .ownerId(com.gj.llm.common.util.SecurityUtils.getCurrentUserId())
                 .status("PENDING")
                 .build();
         save(df);

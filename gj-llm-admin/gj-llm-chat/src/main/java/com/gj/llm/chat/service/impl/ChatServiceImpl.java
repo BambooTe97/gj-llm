@@ -12,6 +12,8 @@ import com.gj.llm.chat.service.ChatService;
 import com.gj.llm.chat.service.ConversationService;
 import com.gj.llm.chat.sse.SseEventBuilder;
 import com.gj.llm.common.util.JacksonUtils;
+import com.gj.llm.common.util.SecurityUtils;
+import com.gj.llm.rag.service.DatasetVisibleService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.codec.ServerSentEvent;
@@ -25,12 +27,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 对话编排器 -- 替代原单线流水线,做顶层编排:校验 -> 存用户消息 -> 路由智能体 -> 收尾持久化。
+ * 对话编排器 -- 替代原单线流水线,做顶层编排:鉴权 -> 校验 -> 存用户消息 -> 路由智能体 -> 收尾持久化。
  *
  * <p>编排器只管"流程串联 + 持久化 + 流式收发",不碰检索(归 rag)、不碰模型调用细节(归智能体)、
  * 不碰工具(归 mcp)。智能体产出事件流,编排器追加 done 事件并持久化。</p>
  *
- * <p>SSE 事件类型(与前端协议一致):thinking / references / content / no_result / error / done。</p>
+ * <p><b>数据可见域</b>:userId 在此处(调用方线程)解析后经 {@link AgentContext} 显式下传,
+ * 全链路不触碰 ThreadLocal —— 检索线程池/虚拟线程内仅凭参数判定;会话归属与显式锁库
+ * 越权在本层短路拦截。</p>
+ *
+ * <p>SSE 事件类型(与前端协议一致):thinking / references / content / no_result / no_permission / error / done。</p>
  *
  * @author gj-llm
  */
@@ -42,6 +48,7 @@ public class ChatServiceImpl implements ChatService {
     private final ConversationService conversationService;
     private final MessageMapper messageMapper;
     private final AgentRouter agentRouter;
+    private final DatasetVisibleService datasetVisibleService;
 
     @Override
     public Flux<ServerSentEvent<String>> chatStream(ChatRequest request) {
@@ -52,13 +59,32 @@ public class ChatServiceImpl implements ChatService {
             log.info("[chatStream] ========== 开始, conversationId={}, content.length()={}",
                     conversationId, userContent.length());
 
-            // 1. 校验会话
+            // 1. 身份解析(调用方线程解析,后续经 ctx/参数显式下传,红线:线程池内不触碰 ThreadLocal)
+            Long userId = SecurityUtils.getCurrentUserId();
+            if (userId == null) {
+                return Flux.just(SseEventBuilder.event("error", Map.of("message", "未登录或登录已过期,请重新登录")));
+            }
+
+            // 2. 校验会话 + 归属:仅本人可对其会话提问(数据隔离第零道门)
             ConversationEntity conversation = conversationService.getById(conversationId);
             if (conversation == null) {
                 return Flux.just(SseEventBuilder.event("error", Map.of("message", "会话不存在: " + conversationId)));
             }
+            if (!userId.equals(conversation.getUserId())) {
+                log.warn("[chatStream] 会话归属校验失败: userId={}, conversation.userId={}, conversationId={}",
+                        userId, conversation.getUserId(), conversationId);
+                return Flux.just(SseEventBuilder.event("error", Map.of("message", "无权访问该会话")));
+            }
 
-            // 2. 存用户消息
+            // 3. 显式锁库鉴权:无权访问该库时短路返回(不存用户消息、不进路由与检索)
+            Long datasetId = request.getDatasetId();
+            if (datasetId != null && !datasetVisibleService.canAccessDataset(userId, datasetId)) {
+                log.info("[chatStream] 锁库越权拦截: userId={}, datasetId={}", userId, datasetId);
+                return Flux.just(SseEventBuilder.event("no_permission",
+                        Map.of("message", "您没有访问该知识库的权限")));
+            }
+
+            // 4. 存用户消息
             MessageEntity userMsg = MessageEntity.builder()
                     .conversationId(conversationId)
                     .role("user")
@@ -67,17 +93,16 @@ public class ChatServiceImpl implements ChatService {
                     .build();
             messageMapper.insert(userMsg);
 
-            // 3. 显式锁库(request 直传,历史会话不再回退绑定库,统一走智能路由) + 历史记忆 + 思考开关
-            Long datasetId = request.getDatasetId();
+            // 5. 历史记忆 + 思考开关(锁库语义:历史会话不再回退绑定库,统一走智能路由)
             boolean enableThinking = request.getEnableThinking() == null || request.getEnableThinking();
             List<MessageEntity> history = getRecentHistory(conversationId, 10);
 
-            // 4. 构建上下文 + 路由智能体(智能路由决策写入 ctx)
-            AgentContext ctx = new AgentContext(conversation, userContent, datasetId, enableThinking, history);
+            // 6. 构建上下文 + 路由智能体(智能路由决策写入 ctx)
+            AgentContext ctx = new AgentContext(conversation, userContent, datasetId, enableThinking, history, userId);
             Agent agent = agentRouter.route(ctx);
             log.info("[chatStream] 路由到智能体: {}, datasetId={}", agent.id(), datasetId);
 
-            // 5. 智能体流式 + 收尾(done + 持久化) + 取消/异常处理
+            // 7. 智能体流式 + 收尾(done + 持久化) + 取消/异常处理
             Flux<ServerSentEvent<String>> doneEvent = Flux.defer(() -> persistAndDone(ctx, conversation, conversationId, t0));
 
             return Flux.concat(agent.stream(ctx), doneEvent)

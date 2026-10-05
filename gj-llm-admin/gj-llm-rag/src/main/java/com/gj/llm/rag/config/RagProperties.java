@@ -53,6 +53,15 @@ public class RagProperties {
 
         /** 规划模型名（空则复用 rewrite-model） */
         private String plannerModel;
+
+        /** 检索意图下是否启用问题拆解（复合问题拆为多个子问题，逐个检索后合并；默认关，测评验证后再开） */
+        private boolean decompositionEnabled = false;
+
+        /** 单次拆解的最大子问题数（超过截断） */
+        private int maxSubQueries = 3;
+
+        /** 拆解后是否保留原始问题一路检索（安全网，防拆解质量差导致漏召回） */
+        private boolean includeOriginalQuery = true;
     }
 
     @Data

@@ -9,7 +9,7 @@ import java.util.Map;
 /**
  * SSE 事件构建工具 -- 统一所有智能体输出的 SSE 协议。
  *
- * <p>协议事件类型:thinking / references / content / no_result / error / done。
+ * <p>协议事件类型:thinking / references / content / no_result / no_permission / error / done。
  * 前端按 {@code type} 字段分发,故除 done 外的事件都用 {@link #event(String, Object)} 带上 type。</p>
  *
  * @author gj-llm
@@ -22,7 +22,7 @@ public final class SseEventBuilder {
     /**
      * 构建带 type 的 SSE 事件。
      *
-     * @param type 事件类型(thinking/references/content/no_result/error)
+     * @param type 事件类型(thinking/references/content/no_result/no_permission/error)
      * @param data 事件数据(POJO 或 Map),会被序列化进 payload
      */
     public static ServerSentEvent<String> event(String type, Object data) {

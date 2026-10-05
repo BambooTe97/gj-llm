@@ -8,8 +8,9 @@ import { evalApi } from '@/api/modules/eval'
 import type { Dataset, DatasetFile, RankedTestItem, EvalQuery, EvalResultItem, RetrievalEvalResult } from '@/api/types'
 import {
   UploadFilled, Refresh, Document, Loading, RefreshRight,
-  Delete, QuestionFilled, Search,
+  Delete, QuestionFilled, Search, Share,
 } from '@element-plus/icons-vue'
+import ShareDialog from './components/ShareDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,6 +19,9 @@ const datasetId = route.params.id as string
 // ---- 知识库信息 ----
 const dataset = ref<Dataset | null>(null)
 const loadingDataset = ref(false)
+
+// ---- 共享设置 ----
+const shareVisible = ref(false)
 
 // ---- 文档列表 ----
 const docList = ref<DatasetFile[]>([])
@@ -513,12 +517,26 @@ onUnmounted(() => {
           <div class="ds-sidebar__header">
             <div class="ds-sidebar__name">{{ dataset.name }}</div>
             <el-tag
+              v-if="dataset.visibility === 'RESTRICTED'"
+              type="warning"
+              size="small"
+              effect="light"
+            >
+              受限
+            </el-tag>
+            <el-tag
               :type="dataset.status === 'READY' ? 'success' : dataset.status === 'INDEXING' ? 'warning' : 'danger'"
               size="small"
               effect="light"
             >
               {{ dsStatusLabel(dataset.status) }}
             </el-tag>
+          </div>
+
+          <div class="ds-sidebar__share">
+            <el-button size="small" text type="primary" :icon="Share" @click="shareVisible = true">
+              共享设置
+            </el-button>
           </div>
 
           <div class="ds-sidebar__desc" v-if="dataset.description">
@@ -1008,6 +1026,13 @@ onUnmounted(() => {
         </el-tabs>
       </main>
     </div>
+
+    <!-- 共享设置（库级 RBAC：可见性 + 用户/角色授权） -->
+    <ShareDialog
+      v-model="shareVisible"
+      :dataset-id="dataset?.id || null"
+      :dataset-name="dataset?.name || undefined"
+    />
   </div>
 </template>
 
@@ -1053,6 +1078,15 @@ onUnmounted(() => {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 10px;
+  }
+
+  &__share {
+    margin-bottom: 10px;
+
+    .el-button {
+      margin-left: 0;
+      padding-left: 0;
+    }
   }
 
   &__name {

@@ -15,6 +15,7 @@
 11. [术语表](#11-术语表)
 12. [典型场景与案例](#12-典型场景与案例)
 13. [已知局限与改进方向](#13-已知局限与改进方向)
+14. [数据可见域与权限隔离](#14-数据可见域与权限隔离)
 
 ---
 
@@ -414,6 +415,67 @@ reader-Document
 **库清单缓存**：Redis key `rag:route:datasets`，TTL 60s 兜底 + 知识库 create/update/delete 主动失效；多实例共享一份，库变更即时生效。
 
 **职责边界**：QueryPlanner 只做路由（输出窄值域 intent + datasetIds），不吞并 QueryRewriter——查询改写属于检索管线，两者的延迟、失败模式、Prompt 形态都不同，市场主流项目（Dify/LangChain/LlamaIndex）均保持分离。
+
+#### 7.1.1 查询拆解检索（decomposition，默认关闭）
+
+复合问题（"A 怎么配置？另外 B 是什么意思"）整体拿去检索会噪音大、回答顾此失彼。拆解设计沿用业界成熟形态（LlamaIndex `SubQuestionQueryEngine` 拆分→并行检索→整合；AWS Bedrock KB query decomposition），并**并入现有规划调用**——零新增 LLM 调用点、不增加 SSE 首响延迟。
+
+- 开关：`gj.llm.rag.routing.decomposition-enabled`（默认 **false**，关 = 行为与旧版完全一致，subQueries 恒为空）
+- 决策载体：`RoutingDecision` 增加第 4 组件 `subQueries`（`decomposed()` = size ≥ 2 才算拆解）；`Reference` 增加可空 `subQueryIndex` / `subQueryText`，旧 metadata_json 经 Jackson 3 record 绑定自动得 null，无需迁移
+- 拆解生效条件：intent=RETRIEVE 且归一化后子问题 ≥ 2 条，走 `RetrievalService.retrievePerSubQueries`；否则走原单查询路径（字节级不变）
+
+#### 7.1.2 规划输出 JSON 契约与解析
+
+```
+{"intent": "chat|retrieve", "dataset_ids": ["id1", "id2"], "sub_queries": ["子问题1", "子问题2"]}
+```
+
+- 解析链（永不抛异常）：剥围栏/杂文（截取首 `{` 到末 `}`）→ Jackson `readTree` 主路径（`JacksonUtils.readTree` 抛 `UtilException`，须自吞）→ 正则兜底（`INTENT_RE`/`IDS_RE`/`SUB_QUERIES_RE`，意图匹配不分大小写）→ 全失败返回 null 走降级链
+- 兼容形态：`sub_queries` 元素容忍字符串与 `{"q": "..."}` 对象两种
+- 归一化 `normalizeSubQueries`：trim → 规范化去重（小写+去空白标点后互相包含即重复）→ 去与原题相同者（无信息增量）→ 截断 `max-sub-queries`(3) → **不足 2 条视为未拆解返回空**
+
+#### 7.1.3 双层并发模型
+
+拆解后每个检索单元独立跑完整管线（改写→多库粗排→精排→父子去重→阈值），两层线程池互不抢占：
+
+| 层 | 池 | 说明 |
+|----|----|------|
+| 外层：检索单元（原题 + 子问题，≤4 个） | `SUBQUERY_POOL` 虚拟线程（`rag-subquery-` 前缀，Java 25） | 单单元失败 `exceptionally` 吞掉留部分证据，无外层墙钟超时（与现状一致） |
+| 内层：单元内多库×多变体检索 | `SEARCH_POOL`（8 守护线程，不变） | 若外层复用 SEARCH_POOL 会导致内层任务排队互等，故必须分开 |
+
+跨单元合并：按 `parent_id` 去重保最高分（归属轮转序中首个命中单元）→ **轮转交错**（第 1 轮取各单元第 1 名、第 2 轮取第 2 名……防单主题挤占上下文预算）。合并发生在候选层，`buildCitedContext` 仍是唯一编号权威（`【片段n】`↔`Reference.rank` 1:1 不变），片段头追加 `｜子问题①: 文本` 标注。
+
+#### 7.1.4 安全网与降级矩阵
+
+- **原题安全网**：原问题始终作为第一检索单元（`decomposition-include-original: true`）——拆解质量差时召回不劣于现状；简单问题被"拆"成原题复制品时归一化自动坍缩回单查询
+- 降级：规划超时/解析失败/异常 → 现有降级扇出链（subQueries 置空）；单单元失败 → 跳过留部分证据；全部单元空 → 现有 `no_result` 分支；**任何路径不抛异常**
+- LLM 输出预算：开启拆解时 planner `numPredict` 320（上限非目标，短输出无成本），关闭时 128
+
+#### 7.1.5 显式锁库边界（Phase 1）
+
+request 直传 `datasetId` 时路由器跳过 planner，**不拆解**（`RagQaAgent.resolveSubQueries` 恒空）——保留 API 直连语义，拆解仅服务智能路由路径；Phase 2 视需求放开。
+
+拆解路径的 system prompt 为独立分支：逐条覆盖所有子问题、顺序与子问题一致；某子问题无对应片段时基于通用知识回答并注明"（未经知识库验证）"；`[n]` 引用规则不变（编号必须真实存在）。
+
+#### 7.1.6 拆解配置清单
+
+```yaml
+gj:
+  llm:
+    rag:
+      routing:
+        decomposition-enabled: false          # 拆解总开关(默认关)
+        max-sub-queries: 3                    # 归一化后子问题上限
+        decomposition-include-original: true  # 原题作为安全网检索单元
+```
+
+配套：前端 `ChatReference` 新增 `subQueryIndex`/`subQueryText`，引用面板在库名旁渲染"子问题n"标签；单测 `QueryPlannerParseTest` 覆盖 parse（合法/围栏/杂文/对象形态/正则兜底/大小写）与归一化（去重/去原题复述/截断/不足 2 条）共 11 例。
+
+#### 7.1.7 Phase 2 展望
+
+- 子问题级选库（当前所有子问题共用 `decision.datasetIds`，fanout 模式已覆盖多库场景）
+- 子问题间依赖串行（先答前序，再改写后续检索词）
+- 用测评体系验证拆解收益（复合用例 baseline/pipeline 对比 Recall@5）后再决定是否引入有界 agentic 循环（Spring AI tool calling）——拆分、逐子问题检索正是未来 agentic 要调用的"工具"，本设计即组件预铺
 
 ### 7.2 完整检索链路（多库统一管线）
 
@@ -929,6 +991,72 @@ chat 模块采用**智能体编排架构**：`ChatServiceImpl` 是瘦编排器�
 | P2 | 查询缓存 | 减少重复检索 | 中 |
 | P3 | Embedding 模型微调 | 领域适配，天花板整体上移 | 高（需标注数据） |
 | P3 | 图片/OCR 支持 | 多模态检索 | 高 |
+
+---
+
+## 14. 数据可见域与权限隔离
+
+### 14.1 定位与粒度
+
+库级 RBAC 隔离（对齐 Dify / FastGPT 的工业默认形态），v1 范围：
+
+| 层 | 状态 | 说明 |
+|----|------|------|
+| **库级（dataset）** | ✅ 已启用 | `visibility` + `owner_id` + `resource_acl` 授权，判定与执行见下 |
+| **文档级（file）** | 🔒 schema 预留 | `resource_acl.resource_type='file'` + `dataset_file.owner_id` 已建，逻辑不启用（对齐 Azure AI Search / M365 的查询期过滤机制，待真实需求触发） |
+| **租户（tenant_id）** | 🔒 休眠字段 | SaaS 多租户启用前恒 0 |
+
+老数据不迁移：`visibility` 为 NULL 或缺省的库按 **PUBLIC** 处理（SQL 中 `ne('RESTRICTED').or().isNull()` 双条件覆盖）。
+
+### 14.2 判定规则（决策集中）
+
+授权原语在独立叶子模块 **`gj-auth`**（gj-core 下，不依赖任何业务模块），可见性**组合**在 rag 的 `DatasetVisibleService` —— auth 不读 dataset 表，避免跨模块 SQL / 循环依赖：
+
+```
+GrantService（auth）                    DatasetVisibleService（rag）
+  ├─ userRoles(uid)                       ├─ visibleDatasetIds(uid)   ← Redis rag:visible:u{uid}
+  │    缓存 auth:roles:u{uid}              │    PUBLIC(含NULL) ∪ owner ∪ grants ∪ admin旁路
+  ├─ grantedResourceIds(uid,type)         ├─ canAccessDataset(uid,id)  ← 读/检索/聊天锁库
+  │    缓存 auth:grants:u{uid}:{type}     ├─ canManageDataset(uid,id)  ← 写操作，仅 owner+admin
+  └─ isAdmin(uid)（角色旁路）              └─ invalidateAll()           ← 按模式失效
+```
+
+判定优先级（RESTRICTED 库）：**owner → admin 角色 → 显式授权（user/role 主体）**；PUBLIC 库全员可访问但**不可管理**。默认新建库 `PUBLIC`（`gj.llm.auth.default-visibility` 可切 `RESTRICTED`）。
+
+### 14.3 执行点（执行分散）—— 4+1 处
+
+| # | 执行点 | 拦截内容 |
+|---|--------|---------|
+| 0 | `ChatServiceImpl.chatStream` | 会话归属校验（第零道门）+ 显式锁库 `datasetId` 越权 → `no_permission` 事件短路（不存消息不进路由） |
+| 1 | `QueryPlanner.plan(query, userId)` | 候选库与可见集**在路由源头求交集**——不可见的库既不进 LLM prompt 也不进检索 |
+| 2 | `RetrievalServiceImpl.loadDatasets(ids, userId)` | **门面终检**：所有检索路径（单库/多库/子问题拆解）经此一处与可见集求交集；未来 MCP 适配层自动继承 |
+| 3 | `DatasetController` / `DatasetAclController` | 读端点 `canAccessDataset`，写端点 `canManageDataset`，列表 `pageForUser` |
+| 4 | `DatasetServiceImpl` | create 盖章 ownerId/visibility；delete 级联清理 resource_acl；updateVisibility 切换 |
+
+`retrieveRanked`（检索测试）签名不变，由 `DatasetController.test` 前置 `canAccessDataset` 把关。
+
+### 14.4 两条红线
+
+1. **ThreadLocal 不进线程池**：`SecurityUtils.getCurrentUserId()` 只在调用方线程（Controller / ChatServiceImpl）解析，userId 经参数显式下传（AgentContext → Router → Agent → RetrievalService）；SEARCH_POOL / SUBQUERY_POOL 内一律凭参数判定。
+2. **fail-closed**：userId 为 null 或可见集为空 ⇒ 空结果 / 无权限，**绝不无过滤放行**。单测覆盖：`DatasetVisibleServiceTest`（判定矩阵）、`RetrievalServiceImplVisibilityTest`（空可见集 → empty 且 HybridSearcher 零调用）。
+
+### 14.5 缓存与失效
+
+| 缓存 | 键 | 失效时机 |
+|------|-----|---------|
+| 用户角色 | `auth:roles:u{uid}` | TTL 兜底（60s） |
+| 用户授权集 | `auth:grants:u{uid}:{type}` | TTL 兜底 + ACL 写后 `deleteByPattern("auth:grants:*")`（角色授权影响面不可知，全清） |
+| 用户可见集 | `rag:visible:u{uid}` | TTL 兜底 + 库增删改（`invalidateRouteCache` 一并失效）+ 共享设置变更 |
+
+授权写操作在 `ResourceAclService`（auth 内）自动失效 grants 缓存；rag 端点在写后追加失效 `rag:visible:*`。
+
+### 14.6 共享管理面
+
+`DatasetAclController`（`/api/v1/datasets/{id}/acl*`）：`GET /acl` 详情（含 `canManage`，前端据此禁用写控件，后端仍强校验）、`PUT /visibility`、`POST /acl`（user/role 主体，存在性校验）、`DELETE /acl/{aclId}`、主体选择器 `GET /acl/users?keyword=` 与 `GET /acl/roles`。前端入口：知识库卡片"共享"按钮 + 详情页"共享设置"。
+
+### 14.7 检索测试旁路说明
+
+检索测试端点（`POST /{id}/test`）走 `retrieveRanked`，同样受 `canAccessDataset` 把关；该端点面向调参场景，不返回对话引用，不属于"聚合不扩大"风险面。
 
 ---
 

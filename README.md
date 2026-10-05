@@ -29,7 +29,7 @@
 - 🎯 **精准检索** - 混合检索（BM25 + KNN + RRF）+ Cross-Encoder 精排 + 查询改写 / HyDE，口语化提问也能命中
 - 📊 **检索评测** - 评测集持久化 + Recall@5 / MRR / 阈值扫描，分块与阈值调优有数据依据
 - 📚 **知识库管理** - 多知识库独立隔离（ES 索引 + Milvus 集合），文档异步向量化
-- 🔐 **企业级权限** - 完整 RBAC 动态菜单 + 按钮级细粒度权限，JWT 双令牌 + 登出黑名单
+- 🔐 **企业级权限** - 完整 RBAC 动态菜单 + 按钮级细粒度权限，JWT 双令牌 + 登出黑名单；知识库级数据授权（PUBLIC / RESTRICTED 可见域 + 用户 / 角色共享）
 
 ## 🖼️ 项目截图
 
@@ -58,6 +58,7 @@ cd gj-llm
 
 # 2. 初始化数据库（执行 sql/ 目录下的脚本）
 mysql -u root -p gj_llm < sql/gj-base/auth-schema.sql
+mysql -u root -p gj_llm < sql/gj-auth/acl-schema.sql
 mysql -u root -p gj_llm < sql/gj-chat/chat-schema.sql
 mysql -u root -p gj_llm < sql/gj-file/file-schema.sql
 mysql -u root -p gj_llm < sql/gj-llm-admin/dataset-schema.sql
@@ -107,7 +108,7 @@ cd gj-llm-web && pnpm install && pnpm dev
 │   │  JWT 双令牌 · 登出黑名单 · 用户缓存                 │    │
 │   └─────────────────────────────────────────────────┘    │
 │   ┌─────────────────────────────────────────────────┐    │
-│   │  基础设施：Security · Redis · MyBatis · File       │    │
+│   │  基础设施：Security · Auth · Redis · MyBatis · File  │    │
 │   │            ES 混合检索 · Reranker 精排             │    │
 │   └─────────────────────────────────────────────────┘    │
 └──────┬──────────┬──────────┬──────────┬──────────┬───────┘
@@ -118,7 +119,7 @@ cd gj-llm-web && pnpm install && pnpm dev
   └─────────┘ └─────────┘ └────────┘ └────────┘ └──────────┘
 ```
 
-**对话流程：** 用户输入 → 智能路由（意图判定 + 自动选库）→ 查询改写 + HyDE → 多库并发混合检索（BM25 + KNN + RRF）→ 跨库合并 → Reranker 精排 → 父子召回 + 逐库阈值 → LLM 推理（带引用角标）→ SSE 流式返回
+**对话流程：** 用户输入 → 智能路由（意图判定 + 自动选库 + 可见域过滤）→ 查询改写 + HyDE → 多库并发混合检索（BM25 + KNN + RRF）→ 跨库合并 → Reranker 精排 → 父子召回 + 逐库阈值 → LLM 推理（带引用角标）→ SSE 流式返回
 
 **文档入库：** 文件上传 → 异步解析（PDF / Markdown / Office / 文本）→ 父子分块 + 上下文前缀注入 → 向量化 → ES 索引 + Milvus 集合
 
@@ -156,6 +157,7 @@ gj-llm/
 ├── gj-core/                     # 核心基础设施层
 │   ├── gj-common/               # 通用工具（JacksonUtils · SpringUtils）
 │   ├── gj-security/             # 安全认证（JWT · SecurityUser · 过滤器 · 黑名单接口）
+│   ├── gj-auth/                 # 数据授权原语（用户角色解析 · 授权判定 · 主体查询）
 │   ├── gj-mybatis/              # MyBatis-Plus 持久层配置
 │   ├── gj-redis/                # Redis 缓存（RedisService · 序列化 · Key 常量）
 │   ├── gj-file/                 # 文件存储（上传 / 下载 / 删除）
@@ -188,6 +190,8 @@ gj-llm/
 - 完整 RBAC：动态菜单 + 按钮级细粒度权限（接口拦截器 · 表记录驱动，替代 `@PreAuthorize`）
 - 用户 / 角色 / 菜单管理 + 接口自动扫描与权限关联
 - 用户登录信息 Redis 缓存 + 事件驱动失效（用户级精确 / 角色级全量）
+- 知识库级数据授权（PUBLIC / RESTRICTED 可见域 + owner / 管理员 / 显式授权判定 + 共享设置界面 + 可见集缓存与主动失效）
+- 聊天 / 检索越权拦截（路由源头与检索门面双重可见域求交，fail-closed + 会话越权短路）
 - SSE 流式对话（thinking / references / content / done 事件）
 - 会话管理（创建 / 重命名 / 删除 / 历史消息）
 - 知识库 CRUD + 多格式文档解析（PDF / Markdown / Office / 文本，Tika 集成）+ 异步向量化
@@ -206,8 +210,7 @@ gj-llm/
 
 ### 进行中 🔄
 
-- 语义分块探索（父子切分 + 上下文前缀注入已完成）
-- 动态 Top-K（逐库阈值过滤 + 「我不知道」分支已完成）
+- 语义分块探索
 - IK 自定义词典（领域专有名词匹配）
 - 对话导出 / 知识库导入导出
 - Prompt 模板管理与模型参数可视化配置
@@ -216,7 +219,7 @@ gj-llm/
 ### 规划中 📋
 
 - **MCP 集成** - MCP Server/Client，连接外部工具扩展模型能力
-- **多租户隔离** + 知识库级权限控制
+- **多租户隔离** - SaaS 租户级数据面隔离（`tenant_id` 字段已预留）
 - **多模型支持** - OpenAI / DeepSeek / 通义千问等动态切换
 - **企业特性** - 操作审计、用量统计、SSO/OAuth/LDAP
 - **容器化部署** - Docker Compose 一键启动

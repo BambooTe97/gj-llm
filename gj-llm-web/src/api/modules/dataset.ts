@@ -1,5 +1,13 @@
 import http from '@/api'
-import type { Dataset, DatasetFile, PageData, TestRankedResult } from '@/api/types'
+import type {
+  AclDetail,
+  AclGrant,
+  Dataset,
+  DatasetFile,
+  PageData,
+  PrincipalOption,
+  TestRankedResult,
+} from '@/api/types'
 
 export const datasetApi = {
   /** 分页获取知识库列表 */
@@ -69,5 +77,37 @@ export const datasetApi = {
   /** 检索测试(粗排 + reranker 精排,返回精排分/粗排分 + 阈值,预判线上是否采用) */
   testSearch(datasetId: string, query: string, topK = 3): Promise<ApiResponse<TestRankedResult>> {
     return http.post(`/v1/datasets/${datasetId}/test`, { query, topK })
+  },
+
+  // ==================== 共享设置（库级 RBAC） ====================
+
+  /** 获取共享设置详情（可见性 + 授权列表） */
+  getAcl(datasetId: string): Promise<ApiResponse<AclDetail>> {
+    return http.get(`/v1/datasets/${datasetId}/acl`)
+  },
+
+  /** 切换可见性（PUBLIC / RESTRICTED） */
+  updateVisibility(datasetId: string, visibility: 'PUBLIC' | 'RESTRICTED'): Promise<ApiResponse<null>> {
+    return http.put(`/v1/datasets/${datasetId}/visibility`, { visibility })
+  },
+
+  /** 新增授权（user / role 主体） */
+  grantAcl(datasetId: string, data: { principalType: 'user' | 'role'; principalId: string }): Promise<ApiResponse<AclGrant>> {
+    return http.post(`/v1/datasets/${datasetId}/acl`, data)
+  },
+
+  /** 移除授权（按 ACL 行 ID） */
+  revokeAcl(datasetId: string, aclId: string): Promise<ApiResponse<null>> {
+    return http.delete(`/v1/datasets/${datasetId}/acl/${aclId}`)
+  },
+
+  /** 按关键词搜索用户（主体选择器，挂具体库路径下） */
+  searchPrincipalUsers(datasetId: string, keyword: string): Promise<ApiResponse<PrincipalOption[]>> {
+    return http.get(`/v1/datasets/${datasetId}/acl/users`, { params: { keyword } })
+  },
+
+  /** 角色列表（主体选择器，挂具体库路径下） */
+  listPrincipalRoles(datasetId: string): Promise<ApiResponse<PrincipalOption[]>> {
+    return http.get(`/v1/datasets/${datasetId}/acl/roles`)
   },
 }

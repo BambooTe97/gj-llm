@@ -18,6 +18,8 @@ interface ChatSession {
   streamingMessageId: string
   /** 流式内部暂存量：done 事件返回的完整 thinking */
   streamingThinking: string
+  /** 无权限提示（no_permission 事件，如锁库越权；发送新消息时清空） */
+  permissionNotice: string | null
 }
 
 function createEmptySession(): ChatSession {
@@ -31,6 +33,7 @@ function createEmptySession(): ChatSession {
     abortController: null,
     streamingMessageId: '',
     streamingThinking: '',
+    permissionNotice: null,
   }
 }
 
@@ -65,6 +68,7 @@ export const useChatStore = defineStore('chat', () => {
   const currentAssistantMsg = computed(() => activeSession.value.currentAssistantMsg)
   const thinking = computed(() => activeSession.value.thinking)
   const references = computed(() => activeSession.value.references)
+  const permissionNotice = computed(() => activeSession.value.permissionNotice)
 
   /** 切换激活对话；null 表示进入新建对话空白态（不销毁其它桶） */
   function setActive(id: string | null) {
@@ -167,6 +171,7 @@ export const useChatStore = defineStore('chat', () => {
     s.streamingThinking = ''
     s.streamingMessageId = ''
     s.references = []
+    s.permissionNotice = null
     s.abortController = new AbortController()
 
     try {
@@ -242,6 +247,11 @@ export const useChatStore = defineStore('chat', () => {
                     s.streamingThinking = event.thinking
                   }
                   break
+                case 'no_permission':
+                  // 锁库越权：后端不持久化助手消息，直接展示提示行
+                  s.thinking = ''
+                  s.permissionNotice = event.message || '您没有访问该知识库的权限'
+                  break
                 case 'error':
                   console.error('SSE error:', event.message)
                   s.thinking = ''
@@ -301,6 +311,7 @@ export const useChatStore = defineStore('chat', () => {
     currentAssistantMsg,
     thinking,
     references,
+    permissionNotice,
     // 方法
     setActive,
     isLoaded,

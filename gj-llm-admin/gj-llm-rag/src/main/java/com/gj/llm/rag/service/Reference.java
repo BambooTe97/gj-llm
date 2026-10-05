@@ -14,8 +14,11 @@ package com.gj.llm.rag.service;
  * @param datasetName    所属知识库名称(单库检索时为常量,多库检索时逐条区分)
  * @param datasetId      所属知识库 ID
  * @param datasetFileId  所属知识库文件 ID
+ * @param subQueryIndex  命中该片段的子问题序号(1 起始;null=未拆解的单查询路径/历史数据)
+ * @param subQueryText   命中该片段的子问题文本(null=未拆解)
  * @author gj-llm
  */
 public record Reference(int rank, String content, double score, String source,
-                        String datasetName, Long datasetId, Object datasetFileId) {
+                        String datasetName, Long datasetId, Object datasetFileId,
+                        Integer subQueryIndex, String subQueryText) {
 }

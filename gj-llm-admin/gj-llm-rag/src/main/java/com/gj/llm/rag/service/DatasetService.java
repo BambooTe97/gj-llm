@@ -12,11 +12,22 @@ public interface DatasetService extends IService<DatasetEntity> {
 
     IPage<DatasetEntity> page(int page, int pageSize);
 
+    /**
+     * 按用户可见域分页查询：PUBLIC（含老数据 NULL）+ 本人创建 + 被授权的库；
+     * 管理员角色不受限。
+     */
+    IPage<DatasetEntity> pageForUser(Long userId, int page, int pageSize);
+
     List<DatasetEntity> listAll();
 
     DatasetEntity create(DatasetCreateRequest request);
 
     DatasetEntity update(Long id, DatasetUpdateRequest request);
+
+    /**
+     * 切换库可见性（PUBLIC / RESTRICTED），值非法抛异常，成功后失效可见域缓存。
+     */
+    void updateVisibility(Long id, String visibility);
 
     /**
      * 原子调整知识库计数（数据库端自增/自减，避免并发"读-改-写"丢失更新）。

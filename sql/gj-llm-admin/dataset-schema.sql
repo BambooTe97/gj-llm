@@ -16,11 +16,14 @@ CREATE TABLE IF NOT EXISTS dataset (
     chunk_overlap    INT           DEFAULT 100 COMMENT '切片重叠（字符数）',
     rerank_score_threshold DECIMAL(3,2) DEFAULT 0.30 COMMENT 'rerank 精排采纳阈值（默认0.3，评测后可采纳推荐值）',
     status           VARCHAR(20)   DEFAULT 'READY' COMMENT '状态：READY=就绪, INDEXING=索引中, ERROR=异常',
+    owner_id         BIGINT        NULL COMMENT '创建者用户 ID（数据可见域判定用）',
+    visibility       VARCHAR(16)   NOT NULL DEFAULT 'PUBLIC' COMMENT '可见性：PUBLIC=全员可见, RESTRICTED=仅 owner+授权',
     doc_count        INT           DEFAULT 0 COMMENT '文档数量',
     segment_count    INT           DEFAULT 0 COMMENT '向量数量（切片总数）',
     created_at       DATETIME      DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at       DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id)
+    PRIMARY KEY (id),
+    INDEX idx_dataset_owner (owner_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='知识库配置表';
 
 -- 知识库-文件关联中间表
@@ -29,6 +32,7 @@ CREATE TABLE IF NOT EXISTS dataset_file (
     id               BIGINT        COMMENT '主键（雪花算法 ID）',
     dataset_id       BIGINT        NOT NULL COMMENT '关联的知识库 ID',
     file_id          BIGINT        NOT NULL COMMENT '关联的文件记录 ID（file_record.id）',
+    owner_id         BIGINT        NULL COMMENT '上传者用户 ID（数据可见域判定用）',
     status           VARCHAR(20)   DEFAULT 'PENDING' COMMENT '处理状态：PENDING=排队中, PROCESSING=向量化中, COMPLETED=完成, FAILED=失败',
     error_message    VARCHAR(1000) NULL COMMENT '失败原因',
     segment_count    INT           DEFAULT 0 COMMENT '生成的切片数量',
@@ -65,6 +69,14 @@ CREATE TABLE IF NOT EXISTS document_segment (
 -- （新建库由上面的建表语句直接包含；存量库执行下方语句）
 -- ============================================================
 -- ALTER TABLE dataset ADD COLUMN rerank_score_threshold DECIMAL(3,2) DEFAULT 0.30 COMMENT 'rerank 精排采纳阈值';
+
+-- ============================================================
+-- 存量库迁移：数据可见域字段（新建库由建表语句直接包含；存量库执行下方语句）
+-- ============================================================
+-- ALTER TABLE dataset ADD COLUMN owner_id BIGINT NULL COMMENT '创建者用户 ID' AFTER status;
+-- ALTER TABLE dataset ADD COLUMN visibility VARCHAR(16) NOT NULL DEFAULT 'PUBLIC' COMMENT '可见性：PUBLIC=全员可见, RESTRICTED=仅 owner+授权' AFTER owner_id;
+-- ALTER TABLE dataset ADD INDEX idx_dataset_owner (owner_id);
+-- ALTER TABLE dataset_file ADD COLUMN owner_id BIGINT NULL COMMENT '上传者用户 ID' AFTER file_id;
 
 -- 检索评测用例表（按知识库持久化 评测 query + 期望命中依据，供离线评测 Recall@K / MRR）
 CREATE TABLE IF NOT EXISTS dataset_retrieval_eval_query (

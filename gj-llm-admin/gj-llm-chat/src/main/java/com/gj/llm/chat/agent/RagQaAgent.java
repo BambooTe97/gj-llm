@@ -44,12 +44,17 @@ public class RagQaAgent extends AbstractLlmAgent {
     protected PreparedPrompt prepare(AgentContext ctx) {
         // 检索目标三级取值:显式锁库 > 智能路由决策 > 空(交由检索服务返回空结果)
         List<Long> targetDatasetIds = resolveTargetDatasets(ctx);
-        RetrievalResult rr = retrievalService.retrieve(ctx.getUserContent(), targetDatasetIds);
+        // 拆解子问题:仅智能路由决策携带且 ≥2 条时生效;显式锁库路径恒为空(边界:锁库不拆解)
+        List<String> subQueries = resolveSubQueries(ctx);
+        RetrievalResult rr = subQueries.size() >= 2
+                ? retrievalService.retrievePerSubQueries(ctx.getUserContent(), subQueries, targetDatasetIds, ctx.getUserId())
+                : retrievalService.retrieve(ctx.getUserContent(), targetDatasetIds, ctx.getUserId());
         // 引用暂存到上下文,编排器流结束后随消息持久化(前端历史消息可还原角标与参考来源)
         ctx.setReferences(rr.references());
 
+        boolean decomposed = !rr.noConfidentResult() && subQueries.size() >= 2;
         List<ServerSentEvent<String>> preEvents = new ArrayList<>();
-        preEvents.add(SseEventBuilder.event("thinking", Map.of("content", searchingHint(ctx))));
+        preEvents.add(SseEventBuilder.event("thinking", Map.of("content", searchingHint(ctx, subQueries))));
         if (rr.noConfidentResult()) {
             preEvents.add(SseEventBuilder.event("no_result",
                     Map.of("message", "知识库中未找到与该问题相关的内容")));
@@ -58,7 +63,9 @@ public class RagQaAgent extends AbstractLlmAgent {
             preEvents.add(SseEventBuilder.event("references", Map.of("items", rr.references())));
         }
 
-        String systemPrompt = rr.noConfidentResult() ? buildNoResultPrompt() : buildSystemPrompt(rr.context());
+        String systemPrompt = rr.noConfidentResult()
+                ? buildNoResultPrompt()
+                : buildSystemPrompt(rr.context(), decomposed);
         String userPrompt = buildUserPrompt(ctx.getUserContent(), rr.context());
         return new PreparedPrompt(preEvents, buildMessageList(systemPrompt, userPrompt, ctx));
     }
@@ -72,19 +79,63 @@ public class RagQaAgent extends AbstractLlmAgent {
         return (decision != null && decision.datasetIds() != null) ? decision.datasetIds() : List.of();
     }
 
-    /** 检索提示:带目标库名,让用户看到系统正在查哪些库(无库时退化为通用提示) */
-    private String searchingHint(AgentContext ctx) {
+    /** 拆解子问题:仅智能路由决策携带且 ≥2 条时生效;显式锁库/旧路径返回空列表(锁库不拆解) */
+    private List<String> resolveSubQueries(AgentContext ctx) {
+        if (ctx.getDatasetId() != null) {
+            return List.of();
+        }
+        RoutingDecision decision = ctx.getRoutingDecision();
+        return (decision != null && decision.decomposed()) ? decision.subQueries() : List.of();
+    }
+
+    /** 检索提示:拆解时先展示子问题,再带目标库名,让用户看到系统的检索计划(无库时退化为通用提示) */
+    private String searchingHint(AgentContext ctx, List<String> subQueries) {
+        String datasets;
         RoutingDecision decision = ctx.getRoutingDecision();
         if (decision != null && !decision.datasetNames().isEmpty()) {
-            return "正在检索知识库: " + String.join("、", decision.datasetNames()) + "...";
+            datasets = "正在检索知识库: " + String.join("、", decision.datasetNames()) + "...";
+        } else {
+            datasets = "正在检索知识库...";
         }
-        return "正在检索知识库...";
+        if (subQueries.size() >= 2) {
+            return "已拆分子问题: " + circledList(subQueries) + ";" + datasets;
+        }
+        return datasets;
+    }
+
+    /** 子问题带圈编号列表:①xxx ②yyy(超出带圈表回退普通数字) */
+    private String circledList(List<String> subQueries) {
+        char[] circled = {'①', '②', '③', '④', '⑤'};
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < subQueries.size(); i++) {
+            String label = i < circled.length ? String.valueOf(circled[i]) : String.valueOf(i + 1);
+            if (i > 0) {
+                sb.append(" ");
+            }
+            sb.append(label).append(subQueries.get(i));
+        }
+        return sb.toString();
     }
 
     // ==================== RAG Prompt 构建(本智能体私有) ====================
 
-    private String buildSystemPrompt(String context) {
+    private String buildSystemPrompt(String context, boolean decomposed) {
         if (context != null && !context.isBlank()) {
+            if (decomposed) {
+                // 拆解检索:上下文按子问题组织(片段头带子问题标注),要求逐子问题覆盖、缺口如实声明
+                return """
+                        你是一个智能知识库助手。参考上下文按子问题组织，每个片段标注了它对应的子问题（子问题①②…）。
+                        回答要求：
+                        1. 逐条覆盖所有子问题，不要遗漏，回答顺序与子问题顺序一致。
+                        2. 某个子问题在参考上下文中没有对应片段时，该部分基于你的通用知识回答，并在该部分末尾注明"（未经知识库验证）"。
+                        3. 引用标注要求不变：引用了参考上下文的句子末尾标注片段编号，无依据内容不标注。
+
+                        引用标注要求：
+                        1. 回答中凡引用了参考上下文的知识，请在对应句子末尾标注片段编号，格式如 [1]，多个片段可连写如 [1][3]。
+                        2. 编号必须使用参考上下文中真实存在的【片段n】编号，严禁编造不存在的编号。
+                        3. 上下文中没有依据的内容不要标注编号。
+                        """;
+            }
             return """
                     你是一个智能知识库助手。请根据【参考上下文】回答用户的问题。
                     如果上下文中没有答案或信息不足，请诚实地告诉用户你不知道，不要编造。

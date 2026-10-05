@@ -59,6 +59,13 @@ public class DatasetEntity {
     @Builder.Default
     private String status = "READY";
 
+    /** 创建者用户 ID（数据可见域判定用；老数据为 NULL，按 PUBLIC 处理） */
+    private Long ownerId;
+
+    /** 可见性：PUBLIC=全员可见 / RESTRICTED=仅 owner+授权主体可见 */
+    @Builder.Default
+    private String visibility = "PUBLIC";
+
     /** 文档数量 */
     @Builder.Default
     private Integer docCount = 0;

@@ -5,7 +5,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { datasetApi } from '@/api/modules/dataset'
 import type { Dataset } from '@/api/types'
-import { Plus, Setting, Delete, FolderOpened } from '@element-plus/icons-vue'
+import { Plus, Setting, Delete, FolderOpened, Share } from '@element-plus/icons-vue'
+import ShareDialog from './components/ShareDialog.vue'
 
 const router = useRouter()
 
@@ -197,6 +198,15 @@ function handleEnterDetail(row: Dataset) {
   router.push(`/datasets/${row.id}`)
 }
 
+// ---- 共享设置 ----
+const shareVisible = ref(false)
+const shareDataset = ref<Dataset | null>(null)
+
+function handleShare(row: Dataset) {
+  shareDataset.value = row
+  shareVisible.value = true
+}
+
 onMounted(() => { loadList() })
 </script>
 
@@ -230,6 +240,14 @@ onMounted(() => { loadList() })
       >
         <div class="ds-card__header">
           <span class="ds-card__name">{{ row.name }}</span>
+          <el-tag
+            v-if="row.visibility === 'RESTRICTED'"
+            type="warning"
+            size="small"
+            effect="light"
+          >
+            受限
+          </el-tag>
           <el-tag :type="statusType(row.status)" size="small" effect="light">
             {{ statusLabel(row.status) }}
           </el-tag>
@@ -266,6 +284,10 @@ onMounted(() => { loadList() })
         </div>
 
         <div class="ds-card__actions" @click.stop>
+          <el-button text size="small" type="primary" @click="handleShare(row)">
+            <el-icon><Share /></el-icon>
+            共享
+          </el-button>
           <el-button text size="small" type="primary" @click="handleEdit(row)">
             <el-icon><Setting /></el-icon>
             配置
@@ -383,6 +405,14 @@ onMounted(() => { loadList() })
         </div>
       </template>
     </el-drawer>
+
+    <!-- 共享设置（库级 RBAC：可见性 + 用户/角色授权） -->
+    <ShareDialog
+      v-model="shareVisible"
+      :dataset-id="shareDataset?.id || null"
+      :dataset-name="shareDataset?.name"
+      @changed="loadList"
+    />
   </div>
 </template>
 

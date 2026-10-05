@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.gj.llm</groupId>
+        <artifactId>gj-core</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>gj-auth</artifactId>
+    <name>gj-auth</name>
+    <description>数据授权模块 —— 资源 ACL 原语（用户角色解析 / 授权判定 / 主体查询），不依赖任何业务模块</description>
+
+    <dependencies>
+        <!-- 通用基础：SecurityUtils / R / 通用工具 -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-common</artifactId>
+        </dependency>
+
+        <!-- 持久层：MyBatis-Plus 基座（含 mapper 扫描与审计填充配置） -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-mybatis</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- 缓存：授权判定原语的 Redis 短缓存 -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-redis</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+</project>

@@ -4,6 +4,11 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.gj.llm.auth.config.AuthProperties;
+import com.gj.llm.auth.entity.ResourceAclEntity;
+import com.gj.llm.auth.service.GrantService;
+import com.gj.llm.auth.service.ResourceAclService;
+import com.gj.llm.common.util.SecurityUtils;
 import com.gj.llm.es.service.EsSearchService;
 import com.gj.llm.file.service.FileStorageService;
 import com.gj.llm.rag.entity.DatasetEntity;
@@ -16,6 +21,7 @@ import com.gj.llm.rag.model.DatasetCreateRequest;
 import com.gj.llm.rag.model.DatasetUpdateRequest;
 import com.gj.llm.rag.constant.VectorStoreConstants;
 import com.gj.llm.rag.service.DatasetService;
+import com.gj.llm.rag.service.DatasetVisibleService;
 import com.gj.llm.rag.service.QueryPlanner;
 import com.gj.llm.rag.vector.DynamicVectorStoreManager;
 import com.gj.llm.redis.service.RedisService;
@@ -24,6 +30,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -36,27 +43,37 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
     private final DocumentSegmentMapper segmentMapper;
     private final FileStorageService fileStorageService;
     private final RedisService redisService;
+    private final AuthProperties authProperties;
+    private final GrantService grantService;
+    private final ResourceAclService resourceAclService;
 
     public DatasetServiceImpl(DynamicVectorStoreManager storeManager,
                               EsSearchService esSearchService,
                               DatasetFileMapper datasetFileMapper,
                               DocumentSegmentMapper segmentMapper,
                               FileStorageService fileStorageService,
-                              RedisService redisService) {
+                              RedisService redisService,
+                              AuthProperties authProperties,
+                              GrantService grantService,
+                              ResourceAclService resourceAclService) {
         this.storeManager = storeManager;
         this.esSearchService = esSearchService;
         this.datasetFileMapper = datasetFileMapper;
         this.segmentMapper = segmentMapper;
         this.fileStorageService = fileStorageService;
         this.redisService = redisService;
+        this.authProperties = authProperties;
+        this.grantService = grantService;
+        this.resourceAclService = resourceAclService;
     }
 
-    /** 库增删改后失效智能路由的库清单缓存(60s TTL 只是兜底,主动失效保新) */
+    /** 库增删改后失效智能路由的库清单缓存与用户可见域缓存(60s TTL 只是兜底,主动失效保新) */
     private void invalidateRouteCache() {
         try {
             redisService.delete(QueryPlanner.DATASET_CACHE_KEY);
+            redisService.deleteByPattern(DatasetVisibleService.VISIBLE_CACHE_PATTERN);
         } catch (Exception e) {
-            log.warn("失效路由库清单缓存失败(60s TTL 兜底): {}", e.getMessage());
+            log.warn("失效路由/可见域缓存失败(60s TTL 兜底): {}", e.getMessage());
         }
     }
 
@@ -65,6 +82,29 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
         return baseMapper.selectPage(
                 new Page<>(page, pageSize),
                 new LambdaQueryWrapper<DatasetEntity>().orderByDesc(DatasetEntity::getCreatedAt));
+    }
+
+    @Override
+    public IPage<DatasetEntity> pageForUser(Long userId, int page, int pageSize) {
+        // 管理员不受限
+        if (userId != null && grantService.isAdmin(userId)) {
+            return page(page, pageSize);
+        }
+        LambdaQueryWrapper<DatasetEntity> wrapper = new LambdaQueryWrapper<DatasetEntity>()
+                // PUBLIC（老数据 NULL 视同 PUBLIC）
+                .and(v -> v.ne(DatasetEntity::getVisibility, AuthProperties.VISIBILITY_RESTRICTED)
+                        .or().isNull(DatasetEntity::getVisibility))
+                // 本人创建
+                .or(v -> v.eq(DatasetEntity::getOwnerId, userId));
+        if (userId != null) {
+            Set<Long> grants = grantService.grantedResourceIds(userId, ResourceAclEntity.RESOURCE_TYPE_DATASET);
+            if (!grants.isEmpty()) {
+                wrapper.or(v -> v.in(DatasetEntity::getId, grants));
+            }
+        }
+        return baseMapper.selectPage(
+                new Page<>(page, pageSize),
+                wrapper.orderByDesc(DatasetEntity::getCreatedAt));
     }
 
     @Override
@@ -102,6 +142,8 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
                 .collectionName(finalTypeName)
                 .chunkSize(request.getChunkSize() != null ? request.getChunkSize() : 600)
                 .chunkOverlap(request.getChunkOverlap() != null ? request.getChunkOverlap() : 150)
+                .ownerId(SecurityUtils.getCurrentUserId())
+                .visibility(authProperties.getDefaultVisibility())
                 .build();
         save(entity);
 
@@ -157,6 +199,22 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
     }
 
     @Override
+    public void updateVisibility(Long id, String visibility) {
+        if (!AuthProperties.VISIBILITY_PUBLIC.equals(visibility)
+                && !AuthProperties.VISIBILITY_RESTRICTED.equals(visibility)) {
+            throw new RuntimeException("非法可见性取值: " + visibility + "（仅支持 PUBLIC/RESTRICTED）");
+        }
+        DatasetEntity entity = getById(id);
+        if (entity == null) {
+            throw new RuntimeException("知识库不存在: id=" + id);
+        }
+        entity.setVisibility(visibility);
+        updateById(entity);
+        invalidateRouteCache();
+        log.info("切换知识库可见性成功: id={}, visibility={}", id, visibility);
+    }
+
+    @Override
     @Transactional
     public void delete(Long id) {
         DatasetEntity entity = getById(id);
@@ -208,8 +266,9 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
             log.warn("删除ES索引失败（可能不存在）: collectionName={}", entity.getCollectionName());
         }
 
-        // 4. 删除知识库记录
+        // 4. 删除知识库记录与授权关系
         removeById(id);
+        resourceAclService.deleteByResource(ResourceAclEntity.RESOURCE_TYPE_DATASET, id);
         invalidateRouteCache();
 
         log.info("删除知识库成功: id={}, collectionName={}, 清理文件数={}", id, entity.getCollectionName(), files.size());

@@ -15,6 +15,13 @@
     <description>gj-llm 启动模块 —— Spring Boot 可运行入口</description>
 
     <dependencies>
+        <!-- Auth 模块：数据授权原语（资源 ACL / 可见域判定） -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-auth</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Chat 模块：AI 对话能力 -->
         <dependency>
             <groupId>com.gj.llm</groupId>

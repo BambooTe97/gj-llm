@@ -27,6 +27,14 @@ spring:
 # ==================== ES 配置（主要检索引擎） ====================
 gj:
   llm:
+    # 数据授权(库级可见域隔离):原语在 gj-auth,组合判定在 rag 的 DatasetVisibleService
+    auth:
+      # 授权/角色/可见集 Redis 缓存 TTL(秒,兜底;授权与库变更走主动失效)
+      cache-ttl-seconds: 60
+      # 新建知识库默认可见性:PUBLIC=全员可见(保现状) / RESTRICTED=仅 owner+授权主体
+      default-visibility: PUBLIC
+      # 管理员角色编码(命中即全库可见可管),大小写不敏感
+      admin-roles: [ADMIN]
     es:
 #      host: 192.168.40.130
       host: 192.168.50.109
@@ -57,6 +65,13 @@ gj:
         dataset-cache-ttl-seconds: 60
         # 规划模型,空则复用 rewrite-model
         planner-model: gemma2:2b
+        # 问题拆解:检索意图下让规划器把复合问题拆成多个子问题,逐子问题检索后合并
+        # (默认关,先经测评对比验证有正收益再开;开启后 numPredict 上限自动放宽)
+        decomposition-enabled: false
+        # 拆解的最大子问题数(超过截断)
+        max-sub-queries: 3
+        # 拆解后是否仍对原始问题做一路检索(安全网:拆解质量差时召回不劣于单查询路径)
+        decomposition-include-original: true
     # chat 智能体编排平台:声明智能体 + 路由规则
     # 加内部智能体=加 bean;加外部/市面智能体=在此声明 type:remote + endpoint
     chat:
