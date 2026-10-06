@@ -12,7 +12,7 @@
 
     <artifactId>gj-llm-mcp</artifactId>
     <name>gj-llm-mcp</name>
-    <description>MCP 模块 —— Model Context Protocol 能力</description>
+    <description>MCP 模块 —— Model Context Protocol 能力（Server 工具暴露 / Client 工具接入 / 认证 / 审计）</description>
 
     <dependencies>
         <dependency>
@@ -20,9 +20,28 @@
             <artifactId>gj-common</artifactId>
         </dependency>
 
+        <!-- 检索能力通过 rag 门面获取（KnowledgeSearchTool / DatasetListTool），不直接依赖 gj-es / gj-reranker -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-llm-rag</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+
+        <!-- MCP Server 端：starter 自动装配（Streamable HTTP 端点 + 工具暴露） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+        </dependency>
+
+        <!-- MCP Client 端：自建连接管理（动态 CRUD/启停/健康检查），不走 starter 自动装配 -->
+        <dependency>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp-core</artifactId>
         </dependency>
 
         <dependency>

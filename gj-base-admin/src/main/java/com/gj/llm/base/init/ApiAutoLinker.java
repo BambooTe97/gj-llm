@@ -11,6 +11,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import org.springframework.util.AntPathMatcher;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,6 +57,18 @@ public class ApiAutoLinker implements ApplicationRunner {
                     "POST", "dataset:create",
                     "PUT", "dataset:edit",
                     "DELETE", "dataset:delete"),
+            "McpApiKeyController", Map.of(
+                    "GET", "mcp:key:list",
+                    "POST", "mcp:key:create",
+                    "PUT", "mcp:key:edit",
+                    "DELETE", "mcp:key:remove"),
+            "McpServerConfigController", Map.of(
+                    "GET", "mcp:server:list",
+                    "POST", "mcp:server:create",
+                    "PUT", "mcp:server:edit",
+                    "DELETE", "mcp:server:remove"),
+            "McpAuditController", Map.of(
+                    "GET", "mcp:audit:view"),
             "UserController", Map.of(
                     "GET", "system:user:list",
                     "POST", "system:user:add",
@@ -72,6 +85,31 @@ public class ApiAutoLinker implements ApplicationRunner {
                     "PUT", "system:menu:edit",
                     "DELETE", "system:menu:remove")
     );
+
+    /**
+     * 精确路径规则 -- 优先于 {@link #RULES} 粗映射匹配。
+     *
+     * <p>用于把"页面纵深功能"从页面级 CRUD 大类中拆出独立权限点：路径模式为
+     * AntPathMatcher 语义（{@code *}/{@code **} 通配，{var} 占位符段按普通文本匹配），
+     * 需含 /api 前缀（ApiScanner 入库的是 Spring 完整模式值）。</p>
+     */
+    private record PathRule(String controller, String httpMethod, String pathPattern, String perms) {
+    }
+
+    private static final List<PathRule> PATH_RULES = List.of(
+            // ---- 知识库详情页功能（权限点见 sql/gj-base/dataset-detail-perms.sql） ----
+            new PathRule("DatasetController", "POST", "/api/v1/datasets/*/documents/upload", "dataset:doc:upload"),
+            new PathRule("DatasetController", "DELETE", "/api/v1/datasets/*/documents/*", "dataset:doc:delete"),
+            new PathRule("DatasetController", "POST", "/api/v1/datasets/*/documents/*/reparse", "dataset:doc:reparse"),
+            new PathRule("DatasetController", "POST", "/api/v1/datasets/*/test", "dataset:test"),
+            // 共享设置整体（可见性切换 / 授权增删 / 主体选择器）收敛到一个权限点
+            new PathRule("DatasetController", "PUT", "/api/v1/datasets/*/visibility", "dataset:acl"),
+            new PathRule("DatasetController", "POST", "/api/v1/datasets/*/acl", "dataset:acl"),
+            new PathRule("DatasetController", "DELETE", "/api/v1/datasets/*/acl/*", "dataset:acl"),
+            new PathRule("DatasetController", "GET", "/api/v1/datasets/*/acl/**", "dataset:acl")
+    );
+
+    private final AntPathMatcher pathMatcher = new AntPathMatcher();
 
     @Override
     public void run(ApplicationArguments args) {
@@ -93,9 +131,22 @@ public class ApiAutoLinker implements ApplicationRunner {
                 continue;
             }
             String httpMethod = api.getHttpMethod();
-            String perms = methodPerms.containsKey(httpMethod)
-                    ? methodPerms.get(httpMethod)
-                    : methodPerms.get("*");
+
+            // 先按精确路径规则匹配（内页功能权限点），未命中再退回方法粗映射
+            String perms = null;
+            for (PathRule rule : PATH_RULES) {
+                if (rule.controller().equals(simpleName)
+                        && rule.httpMethod().equals(httpMethod)
+                        && pathMatcher.match(rule.pathPattern(), api.getPath())) {
+                    perms = rule.perms();
+                    break;
+                }
+            }
+            if (perms == null) {
+                perms = methodPerms.containsKey(httpMethod)
+                        ? methodPerms.get(httpMethod)
+                        : methodPerms.get("*");
+            }
             if (perms == null) {
                 continue;
             }

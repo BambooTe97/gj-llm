@@ -9,11 +9,19 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
-/** 系统管理目录下的子菜单（菜单类型） */
-const subMenus = computed<Menu[]>(() => {
-  const sys = userStore.menus.find((m) => m.path === '/system')
-  return (sys?.children || []).filter((c) => c.type === 'C')
-})
+/**
+ * 当前所在的顶层目录（M 型）：按路径前缀匹配，而非写死 /system——
+ * 该布局被所有目录类菜单复用（系统管理 /system、MCP管理 /mcp 等），
+ * 子菜单与标题随目录动态切换。
+ */
+const currentDir = computed<Menu | undefined>(() =>
+  userStore.menus.find((m) => m.type === 'M' && !!m.path && route.path.startsWith(m.path)),
+)
+
+/** 当前目录下的子菜单（菜单类型） */
+const subMenus = computed<Menu[]>(() =>
+  (currentDir.value?.children || []).filter((c) => c.type === 'C'),
+)
 
 const activePath = computed(() => route.path)
 
@@ -26,9 +34,10 @@ function handleSub(menu: Menu) {
   if (menu.path) router.push(menu.path)
 }
 
-// 直接访问 /system 时重定向到首个子菜单
+// 直接访问目录根路径（如 /system、/mcp）时重定向到首个子菜单
 onMounted(() => {
-  if (route.path === '/system' && subMenus.value.length) {
+  const dir = currentDir.value
+  if (dir && route.path === dir.path && subMenus.value.length) {
     router.replace(subMenus.value[0].path as string)
   }
 })
@@ -37,7 +46,7 @@ onMounted(() => {
 <template>
   <div class="system-layout">
     <aside class="system-sidebar">
-      <div class="system-sidebar__title">系统管理</div>
+      <div class="system-sidebar__title">{{ currentDir?.name || '' }}</div>
       <div
         v-for="m in subMenus"
         :key="m.id"

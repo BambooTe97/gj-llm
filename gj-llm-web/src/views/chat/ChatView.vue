@@ -60,13 +60,14 @@ watch(
   () => scrollToBottom(),
 )
 
-/** 流式输出内容/引用/权限提示到达 → 仅当用户处于底部时才跟随 */
+/** 流式输出内容/引用/权限提示/工具事件到达 → 仅当用户处于底部时才跟随 */
 watch(
   () => [
     chatStore.currentAssistantMsg,
     chatStore.thinking,
     chatStore.references.length,
     chatStore.permissionNotice,
+    chatStore.toolEvents.length,
   ],
   () => {
     const el = document.querySelector('.chat-messages')
@@ -136,6 +137,7 @@ async function handleSend(content: string, controls: { enableThinking: boolean }
         :streaming="true"
         :streaming-thinking="chatStore.thinking"
         :streaming-references="chatStore.references"
+        :streaming-tools="chatStore.toolEvents"
       />
 
       <!-- 无权限提示（no_permission 事件：锁库越权等；后端不生成助手消息，发送新消息时清空） -->

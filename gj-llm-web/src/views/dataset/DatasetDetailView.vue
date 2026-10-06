@@ -11,10 +11,23 @@ import {
   Delete, QuestionFilled, Search, Share,
 } from '@element-plus/icons-vue'
 import ShareDialog from './components/ShareDialog.vue'
+import { useUserStore } from '@/stores/modules/user'
 
 const route = useRoute()
 const router = useRouter()
 const datasetId = route.params.id as string
+
+// ---- 页面内功能权限（v-if 显隐,与后端权限点一一对应;后端拦截器默认拒绝兜底） ----
+// 用 v-if 而非 v-permission:检索测试/评测是 el-tab-pane,指令的 mounted 移除
+// DOM 无法同步移除 tabs 的页签头,必须让组件不创建
+const userStore = useUserStore()
+const canUpload = computed(() => userStore.hasPermission('dataset:doc:upload'))
+const canDeleteDoc = computed(() => userStore.hasPermission('dataset:doc:delete'))
+const canReparse = computed(() => userStore.hasPermission('dataset:doc:reparse'))
+const canTest = computed(() => userStore.hasPermission('dataset:test'))
+const canAcl = computed(() => userStore.hasPermission('dataset:acl'))
+/** 评测功能暂无独立权限点,后端对非 admin 默认拒绝,先按角色隐藏(补点后改 hasPermission) */
+const canEval = computed(() => userStore.hasRole('ADMIN'))
 
 // ---- 知识库信息 ----
 const dataset = ref<Dataset | null>(null)
@@ -533,7 +546,7 @@ onUnmounted(() => {
             </el-tag>
           </div>
 
-          <div class="ds-sidebar__share">
+          <div class="ds-sidebar__share" v-if="canAcl">
             <el-button size="small" text type="primary" :icon="Share" @click="shareVisible = true">
               共享设置
             </el-button>
@@ -600,8 +613,8 @@ onUnmounted(() => {
         <!-- Tab 切换 -->
         <el-tabs v-model="activeTab" class="ds-tabs">
           <el-tab-pane label="文件管理" name="files">
-            <!-- 上传区 -->
-            <div class="glass-card ds-upload-card">
+            <!-- 上传区（无 dataset:doc:upload 权限隐藏,后端拦截器默认拒绝兜底） -->
+            <div class="glass-card ds-upload-card" v-if="canUpload">
               <div class="glass-card__body">
                 <el-upload
                   ref="uploadRef"
@@ -713,7 +726,7 @@ onUnmounted(() => {
                     <template #default="{ row }">
                       <div class="action-btns">
                         <el-button
-                          v-if="row.status === 'FAILED' || row.status === 'COMPLETED'"
+                          v-if="canReparse && (row.status === 'FAILED' || row.status === 'COMPLETED')"
                           text size="small" type="primary"
                           @click="handleReParse(row)"
                         >
@@ -721,6 +734,7 @@ onUnmounted(() => {
                           重新解析
                         </el-button>
                         <el-popconfirm
+                          v-if="canDeleteDoc"
                           title="确定要删除该文件吗？将同时移除向量数据。"
                           confirm-button-text="删除"
                           cancel-button-text="取消"
@@ -756,7 +770,7 @@ onUnmounted(() => {
           </el-tab-pane>
 
           <!-- 检索测试 -->
-          <el-tab-pane label="检索测试" name="search">
+          <el-tab-pane label="检索测试" name="search" v-if="canTest">
             <div class="glass-card ds-search-card">
               <div class="glass-card__body">
                 <div class="ds-search__input-row">
@@ -844,7 +858,7 @@ onUnmounted(() => {
           </el-tab-pane>
 
           <!-- 检索评测 -->
-          <el-tab-pane label="检索评测" name="eval">
+          <el-tab-pane label="检索评测" name="eval" v-if="canEval">
             <div class="glass-card ds-eval-card">
               <div class="glass-card__header">
                 <span>测评用例（{{ evalQueries.length }}）</span>

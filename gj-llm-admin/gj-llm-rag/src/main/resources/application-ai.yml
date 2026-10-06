@@ -9,6 +9,17 @@ spring:
         model: gemma2:2b
       embedding:
         model: bge-m3:latest
+    # MCP Server 端点(Starter 装配):Streamable HTTP,挂 /open/mcp
+    # 认证走 mcp 模块的 API Key 拦截器(/open/** 双层放行后的唯一闸门),不走 JWT
+    mcp:
+      server:
+        enabled: true
+        name: gj-llm-knowledge
+        version: 1.0.0
+        protocol: STREAMABLE
+        streamable-http:
+          # 端点必须落在 /open/** 下:Security permitAll + 权限拦截器排除,认证完全由 API Key 承担
+          mcp-endpoint: /open/mcp
     vectorstore:
       milvus:
         initialize-schema: false
@@ -78,6 +89,9 @@ gj:
       agents:
         rag-qa:   { type: internal, model: gemma2:2b, thinking: true, num-predict: 4096 }
         chitchat: { type: internal, model: gemma2:2b, thinking: true, num-predict: 4096 }
+        # 工具循环智能体:模型自主调用知识库检索/外部MCP工具,须用支持 function calling 的模型
+        # (gemma2 不支持工具调用;切换 qwen3:8b 等后,把 default-agent 改为 tool-call 即可实验)
+        tool-call: { type: internal, model: gemma2:2b, thinking: false, num-predict: 4096 }
         # 外部智能体示例(默认注释,启用即接入):
         # dify-cs: { type: remote, endpoint: http://dify.local/v1/chat-messages, auth-header: "Bearer ${DIFY_KEY}" }
       routing:
@@ -85,3 +99,21 @@ gj:
         rules:
           - agent: rag-qa
             has-dataset: true
+
+    # ==================== MCP 配置 ====================
+    mcp:
+      server:
+        # 平台侧总开关(与 spring.ai.mcp.server.enabled 双闸):false 时不暴露知识库工具
+        enabled: true
+        name: gj-llm-knowledge
+      client:
+        # 全局外部工具总开关(false 时工具循环智能体只用内置检索工具)
+        enabled: true
+        request-timeout-ms: 30000
+        health-check-interval-ms: 60000
+        init-timeout-ms: 10000
+      crypto:
+        # 外部服务凭据加密密钥(Base64 32字节);空=开发派生密钥+WARN,生产必须配置: ${MCP_CRYPTO_SECRET}
+        secret: ""
+      audit:
+        params-max-length: 512

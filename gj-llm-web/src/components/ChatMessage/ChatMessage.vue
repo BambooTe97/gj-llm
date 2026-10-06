@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
-import type { ChatMessage, ChatReference } from '@/api/types'
+import type { ChatMessage, ChatReference, ChatToolEvent } from '@/api/types'
 import { renderMarkdown } from '@/utils/markdown'
 
 const props = defineProps<{
@@ -10,9 +10,12 @@ const props = defineProps<{
   streamingThinking?: string
   /** 流式传输中的引用片段（仅在 streaming 模式下使用，done 提交后改由 message.references 携带） */
   streamingReferences?: ChatReference[]
+  /** 流式传输中的工具调用事件（仅在 streaming 模式下使用，done 提交后改由 message.tools 携带） */
+  streamingTools?: ChatToolEvent[]
 }>()
 
 const thinkingExpanded = ref(false)
+const toolsExpanded = ref(false)
 
 /** 有效的思考内容：优先来自 message.thinking（历史消息），其次来自 streamingThinking（流式中） */
 const thinkingText = computed(() =>
@@ -28,12 +31,32 @@ const refsList = computed<ChatReference[]>(() =>
       : []
 )
 
+/** 当前消息的工具事件列表：历史/终态消息取 message.tools，流式中取 streamingTools */
+const toolsList = computed<ChatToolEvent[]>(() =>
+  props.message.tools && props.message.tools.length
+    ? props.message.tools
+    : props.streaming && props.streamingTools
+      ? props.streamingTools
+      : []
+)
+
+/** 是否仍有工具在执行（最后一个事件是 call 且没有同名的后续 result） */
+const hasRunningTool = computed(() => {
+  const evts = toolsList.value
+  if (!props.streaming || !evts.length) return false
+  const last = evts[evts.length - 1]
+  if (last.phase !== 'call') return false
+  // 连续同名 call/result 对较难精确配对（同名工具可多次调用），
+  // 展示层近似处理：存在任意 result 即认为不在等待态
+  return !evts.some((e) => e.phase === 'result')
+})
+
 /** 是否有正文内容 */
 const hasContent = computed(() => !!props.message.content?.trim())
 
-/** 等待阶段：流式已开始，但还没收到任何 thinking / content（展示跳动三点，避免空白） */
+/** 等待阶段：流式已开始，但还没收到任何 thinking / tool / content（展示跳动三点，避免空白） */
 const isWaitingPhase = computed(
-  () => !!props.streaming && !hasContent.value && !thinkingText.value
+  () => !!props.streaming && !hasContent.value && !thinkingText.value && !toolsList.value.length
 )
 
 /**
@@ -41,7 +64,12 @@ const isWaitingPhase = computed(
  * 此时只展示思考框（自动展开），不展示空的白色正文框。
  */
 const isThinkingPhase = computed(
-  () => !!props.streaming && !!thinkingText.value && !hasContent.value
+  () =>
+    !!props.streaming &&
+    !!thinkingText.value &&
+    !hasContent.value &&
+    // 工具执行期间优先展示工具面板，思考框降级为折叠
+    !toolsList.value.length
 )
 
 /** 思考阶段自动展开；正文一到就收起 */
@@ -50,6 +78,15 @@ watch(isThinkingPhase, (val) => {
     thinkingExpanded.value = true
   } else if (hasContent.value) {
     thinkingExpanded.value = false
+  }
+})
+
+/** 工具执行中自动展开面板；正文到达后收起 */
+watch(hasRunningTool, (val) => {
+  if (val) {
+    toolsExpanded.value = true
+  } else if (hasContent.value) {
+    toolsExpanded.value = false
   }
 })
 
@@ -181,6 +218,46 @@ function locateReference(cite: HTMLElement) {
           <span class="chat-message__think-toggle">{{ thinkingExpanded ? '收起 ▲' : '展开 ▼' }}</span>
         </div>
         <div class="chat-message__think-body">{{ thinkingText }}</div>
+      </div>
+
+      <!-- 工具调用面板（工具循环智能体；执行中自动展开，正文到达后收起） -->
+      <div
+        v-if="toolsList.length"
+        class="chat-message__tools"
+        :class="{ expanded: toolsExpanded, pulsing: hasRunningTool }"
+        @click="toolsExpanded = !toolsExpanded"
+      >
+        <div class="chat-message__tools-header">
+          <span>
+            {{ hasRunningTool ? '🔧 正在调用工具…' : `🔧 工具调用（${toolsList.length}）` }}
+          </span>
+          <span class="chat-message__tools-toggle">{{ toolsExpanded ? '收起 ▲' : '展开 ▼' }}</span>
+        </div>
+        <div class="chat-message__tools-body">
+          <div
+            v-for="(evt, idx) in toolsList"
+            :key="idx"
+            class="chat-message__tool-item"
+            :class="{ running: evt.phase === 'call' && idx === toolsList.length - 1 && hasRunningTool }"
+          >
+            <template v-if="evt.phase === 'call'">
+              <span class="chat-message__tool-icon">▶</span>
+              <code class="chat-message__tool-name">{{ evt.name }}</code>
+              <span class="chat-message__tool-args" :title="evt.args">{{ evt.args }}</span>
+            </template>
+            <template v-else>
+              <span class="chat-message__tool-icon" :class="evt.ok ? 'ok' : 'fail'">
+                {{ evt.ok ? '✓' : '✗' }}
+              </span>
+              <code class="chat-message__tool-name">{{ evt.name }}</code>
+              <span class="chat-message__tool-cost">{{ evt.costMs ?? '-' }}ms</span>
+              <span v-if="evt.error" class="chat-message__tool-error" :title="evt.error">
+                {{ evt.error }}
+              </span>
+              <span v-else class="chat-message__tool-result" :title="evt.result">{{ evt.result }}</span>
+            </template>
+          </div>
+        </div>
       </div>
 
       <!-- 等待阶段：流式已开始但还没收到任何 token，展示跳动三点避免空白 -->
@@ -382,6 +459,115 @@ function locateReference(cite: HTMLElement) {
   }
 }
 
+/* ====== 工具调用面板 ====== */
+.chat-message__tools {
+  background: #f5f5f7;
+  border: 1px solid #e5e5ea;
+  border-radius: 10px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  overflow: hidden;
+  transition: background 0.15s;
+
+  &:hover {
+    background: #eeeef0;
+  }
+
+  /* 工具执行中：边框呼吸效果 */
+  &.pulsing {
+    border-color: #0071e3;
+    animation: thinkPulse 2s ease-in-out infinite;
+  }
+}
+
+.chat-message__tools-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  color: #86868b;
+  font-weight: 500;
+}
+
+.chat-message__tools-toggle {
+  font-size: 11px;
+  color: #0071e3;
+  opacity: 0.7;
+}
+
+.chat-message__tools-body {
+  display: none;
+  padding: 0 8px 8px 10px;
+  cursor: default;
+
+  .chat-message__tools.expanded & {
+    display: block;
+  }
+}
+
+.chat-message__tool-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  line-height: 1.5;
+  min-width: 0;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.03);
+  }
+
+  &.running {
+    .chat-message__tool-icon {
+      animation: blink 1s infinite;
+    }
+  }
+}
+
+.chat-message__tool-icon {
+  flex-shrink: 0;
+  color: #aeaeb2;
+
+  &.ok {
+    color: #248a3d;
+  }
+  &.fail {
+    color: #d70015;
+  }
+}
+
+.chat-message__tool-name {
+  flex-shrink: 0;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #0071e3;
+}
+
+.chat-message__tool-args,
+.chat-message__tool-result {
+  color: #86868b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.chat-message__tool-cost {
+  flex-shrink: 0;
+  color: #aeaeb2;
+  font-size: 11px;
+}
+
+.chat-message__tool-error {
+  color: #d70015;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 /* ====== 正文 ====== */
 .chat-message__content {
   padding: 12px 16px;
@@ -548,6 +734,47 @@ html.dark {
 
   .chat-message__think-body {
     color: #a5b4c8;
+  }
+
+  .chat-message__tools {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  .chat-message__tools-header {
+    color: #9aa4b2;
+  }
+
+  .chat-message__tool-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .chat-message__tool-icon.ok {
+    color: #3fb950;
+  }
+  .chat-message__tool-icon.fail {
+    color: #f85149;
+  }
+
+  .chat-message__tool-name {
+    color: #58a6ff;
+  }
+
+  .chat-message__tool-args,
+  .chat-message__tool-result {
+    color: #9aa4b2;
+  }
+
+  .chat-message__tool-cost {
+    color: #6e7681;
+  }
+
+  .chat-message__tool-error {
+    color: #f85149;
   }
 
   .chat-message__content.streaming .md-body > :last-child::after {

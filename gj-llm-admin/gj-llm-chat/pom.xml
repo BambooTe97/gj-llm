@@ -27,6 +27,13 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- MCP 能力:工具循环智能体复用 mcp 的工具注册表与内置知识库工具(chat → mcp → rag,无环) -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-llm-mcp</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>

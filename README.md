@@ -30,6 +30,7 @@
 - 📊 **检索评测** - 评测集持久化 + Recall@5 / MRR / 阈值扫描，分块与阈值调优有数据依据
 - 📚 **知识库管理** - 多知识库独立隔离（ES 索引 + Milvus 集合），文档异步向量化
 - 🔐 **企业级权限** - 完整 RBAC 动态菜单 + 按钮级细粒度权限，JWT 双令牌 + 登出黑名单；知识库级数据授权（PUBLIC / RESTRICTED 可见域 + 用户 / 角色共享）
+- 🔌 **MCP 工具扩展** - 内置 MCP Server 对外暴露知识检索等工具（Streamable HTTP + API Key 认证），同时作为 MCP Client 接入外部工具服务器；对话中实时展示工具调用过程，全程审计留痕
 
 ## 🖼️ 项目截图
 
@@ -62,6 +63,7 @@ mysql -u root -p gj_llm < sql/gj-base/acl-schema.sql
 mysql -u root -p gj_llm < sql/gj-chat/chat-schema.sql
 mysql -u root -p gj_llm < sql/gj-file/file-schema.sql
 mysql -u root -p gj_llm < sql/gj-llm-admin/dataset-schema.sql
+mysql -u root -p gj_llm < sql/gj-llm-admin/mcp-schema.sql
 
 # 3. 修改各 profile 配置中的连接信息（默认指向本机/内网）
 #    application-mybatis.yml   -> MySQL
@@ -101,7 +103,7 @@ cd gj-llm-web && pnpm install && pnpm dev
 │                                                          │
 │   ┌───────────┐  ┌─────────────┐  ┌───────────┐           │
 │   │  对话服务   │  │  RAG 服务   │  │  MCP 服务  │           │
-│   │ 智能体·流式 │  │ 路由+检索+评测 │  │  (规划中)   │           │
+│   │ 智能体·流式 │  │ 路由+检索+评测 │  │ 工具扩展·审计 │           │
 │   └───────────┘  └─────────────┘  └───────────┘           │
 │   ┌─────────────────────────────────────────────────┐    │
 │   │  基础管理（RBAC：用户 · 角色 · 菜单 · 接口权限）      │    │
@@ -144,6 +146,7 @@ cd gj-llm-web && pnpm install && pnpm dev
 | 模型服务 | Ollama（gemma2:2b 对话 / BGE-M3 嵌入，可切换 DeepSeek-R1 等） |
 | 认证 | JWT 双令牌（Access + Refresh）+ Redis 登出黑名单 |
 | 权限 | RBAC 动态菜单 + 按钮级细粒度（接口拦截器 · 表记录驱动） |
+| 工具协议 | MCP（Streamable HTTP · Server / Client 双向 · API Key 认证） |
 | 前端框架 | Vue 3.5 · TypeScript · Vite 6 |
 | UI 组件 | Element Plus |
 | 状态管理 | Pinia |
@@ -166,7 +169,7 @@ gj-llm/
 ├── gj-llm-admin/                # 业务模块层
 │   ├── gj-llm-chat/             # 对话（智能体编排 + SSE 流式 + 引用溯源）
 │   ├── gj-llm-rag/              # RAG（知识库 · 文档管道 · 查询改写 · 分块 · 智能路由 · 检索评测）
-│   └── gj-llm-mcp/              # MCP（规划中）
+│   └── gj-llm-mcp/              # MCP（Server / Client · API Key 认证 · 调用审计）
 ├── gj-llm-start/                # 启动入口（Spring Boot 聚合）
 └── gj-llm-web/                  # 前端 Vue 3 SPA
 ```
@@ -176,6 +179,7 @@ gj-llm/
 | 文档 | 说明 |
 |------|------|
 | [RAG 系统架构](gj-llm-admin/gj-llm-rag/RAG_SYSTEM_ARCHITECTURE.md) | 智能路由、检索管道、分块策略、精排原理、查询改写、引用溯源、评测、术语表 |
+| [MCP 系统架构](gj-llm-admin/gj-llm-mcp/MCP_SYSTEM_ARCHITECTURE.md) | MCP Server / Client 双向架构、API Key 认证、外部工具接入、调用审计 |
 | [Elasticsearch 安装指南](gj-core/gj-es/ES_INSTALL.md) | ES 9.x + IK 中文分词器部署（Docker） |
 | [Reranker 安装指南](gj-core/gj-reranker/RERANKER_INSTALL.md) | TEI + BGE-Reranker 精排服务部署 |
 
@@ -206,6 +210,9 @@ gj-llm/
 - Markdown 富文本渲染（代码高亮 + 一键复制）
 - 文件管理服务（上传 / 下载 / 类型控制）
 - 前端动态路由 + v-permission 指令 + 深色 / 浅色主题
+- MCP Server（Streamable HTTP 端点 + API Key 认证，对外暴露知识检索 / 知识库列表工具，密钥 AES-GCM 加密存储）
+- MCP Client 接入外部工具服务器（连接管理 + 健康检查 + 动态工具注册），对话中实时展示工具调用过程（参数 / 结果 / 耗时）
+- MCP 管理后台（API Key 管理 / 服务配置 / 调用审计日志三个管理页 + 独立菜单与按钮级权限）
 
 ### 进行中 🔄
 
@@ -217,8 +224,7 @@ gj-llm/
 
 ### 规划中 📋
 
-- **MCP 集成** - MCP Server/Client，连接外部工具扩展模型能力
-- **多租户隔离** - SaaS 租户级数据面隔离（`tenant_id` 字段已预留）
+- **多租户隔离** - 在现有知识库级数据授权（可见域 / 共享）之上叠加 SaaS 租户级硬隔离：租户间数据面互不可见、租户内独立用户与配额（`resource_acl.tenant_id` 休眠字段已预留）
 - **多模型支持** - OpenAI / DeepSeek / 通义千问等动态切换
 - **企业特性** - 操作审计、用量统计、SSO/OAuth/LDAP
 - **容器化部署** - Docker Compose 一键启动

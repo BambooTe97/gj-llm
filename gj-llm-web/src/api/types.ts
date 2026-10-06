@@ -44,7 +44,26 @@ export interface ChatMessage {
   thinking?: string
   /** RAG 检索引用片段（流式 done 后挂载；历史消息由 metadata 还原） */
   references?: ChatReference[]
+  /** 本条回答期间的工具调用事件（流式提交时随消息暂存，仅前端展示） */
+  tools?: ChatToolEvent[]
   createdAt: string
+}
+
+/** 流式中的工具调用事件（tool_call / tool_result SSE，工具循环智能体专用） */
+export interface ChatToolEvent {
+  /** 工具名 */
+  name: string
+  /** call: 参数预览 / result: 结果预览 */
+  args?: string
+  result?: string
+  /** 仅 result 携带：是否成功 */
+  ok?: boolean
+  /** 结果耗时（毫秒） */
+  costMs?: number
+  /** 失败信息（ok=false 时） */
+  error?: string
+  /** 事件方向（内部标识，非 SSE 字段） */
+  phase: 'call' | 'result'
 }
 
 /** 发送消息请求 */
@@ -318,4 +337,95 @@ export interface ApiItem {
   httpMethod: string
   path: string
   summary?: string | null
+}
+
+// ==================== MCP 管理 ====================
+
+/** MCP API Key（库内只存哈希，fullKey 仅发放响应返回一次） */
+export interface McpApiKey {
+  id: string
+  userId: string
+  username: string
+  /** Key 用途名称 */
+  name: string
+  /** 前缀明文（辨识用） */
+  keyPrefix: string
+  /** 1=启用 0=停用 */
+  status: number
+  expiresAt: string | null
+  lastUsedAt: string | null
+  createdAt: string
+  /** 完整明文 key —— 仅创建响应携带，丢失只能吊销重发 */
+  fullKey?: string | null
+}
+
+/** 创建 API Key 请求体 */
+export interface McpApiKeyCreate {
+  name: string
+  /** 有效天数（不传 = 永不过期） */
+  expiresInDays?: number
+}
+
+/** 外部 MCP Server 配置 */
+export interface McpServerConfig {
+  id: string
+  name: string
+  /** STREAMABLE_HTTP / SSE */
+  transport: 'STREAMABLE_HTTP' | 'SSE'
+  /** 完整 URL（如 http://host:port/mcp） */
+  endpoint: string
+  authHeaderName: string | null
+  /** 是否已配置认证凭据（值不回显） */
+  hasAuth: boolean
+  /** 1=启用 0=停用 */
+  enabled: number
+  /** UP / DOWN / UNKNOWN */
+  healthStatus: 'UP' | 'DOWN' | 'UNKNOWN'
+  lastHealthyAt: string | null
+  /** 最近一次发现的工具数量 */
+  toolCount: number | null
+  remark: string | null
+  createdAt: string
+}
+
+/** 创建/更新外部服务请求体（authHeaderValue 传掩码或空 = 保留原值） */
+export interface McpServerConfigWrite {
+  name: string
+  transport: 'STREAMABLE_HTTP' | 'SSE'
+  endpoint: string
+  authHeaderName?: string
+  authHeaderValue?: string
+  enabled?: boolean
+  remark?: string
+}
+
+/** MCP 工具清单项 */
+export interface McpTool {
+  name: string
+  description: string
+}
+
+/** 连接测试结果 */
+export interface McpConnectionTestResult {
+  ok: boolean
+  message: string
+  toolCount: number
+}
+
+/** MCP 审计日志（双向：SERVER_CALLED=平台工具被外部调用 / CLIENT_CALL=平台调用外部工具） */
+export interface McpAuditLog {
+  id: string
+  direction: 'SERVER_CALLED' | 'CLIENT_CALL'
+  userId: string | null
+  username: string | null
+  apiKeyId: string | null
+  serverName: string | null
+  toolName: string
+  paramsDigest: string | null
+  /** SUCCESS / ERROR / TIMEOUT */
+  resultStatus: 'SUCCESS' | 'ERROR' | 'TIMEOUT'
+  errorMessage: string | null
+  costMs: number
+  clientIp: string | null
+  createdAt: string
 }

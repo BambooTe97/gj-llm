@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatMessage, ChatReference } from '@/api/types'
+import type { ChatMessage, ChatReference, ChatToolEvent } from '@/api/types'
 import { chatApi } from '@/api/modules/chat'
 
 /** 单个对话的运行时状态（按 conversationId 分桶，互不干扰） */
@@ -20,6 +20,8 @@ interface ChatSession {
   streamingThinking: string
   /** 无权限提示（no_permission 事件，如锁库越权；发送新消息时清空） */
   permissionNotice: string | null
+  /** 流式中的工具调用事件（tool_call/tool_result，工具循环智能体专用） */
+  toolEvents: ChatToolEvent[]
 }
 
 function createEmptySession(): ChatSession {
@@ -34,6 +36,7 @@ function createEmptySession(): ChatSession {
     streamingMessageId: '',
     streamingThinking: '',
     permissionNotice: null,
+    toolEvents: [],
   }
 }
 
@@ -69,6 +72,7 @@ export const useChatStore = defineStore('chat', () => {
   const thinking = computed(() => activeSession.value.thinking)
   const references = computed(() => activeSession.value.references)
   const permissionNotice = computed(() => activeSession.value.permissionNotice)
+  const toolEvents = computed(() => activeSession.value.toolEvents)
 
   /** 切换激活对话；null 表示进入新建对话空白态（不销毁其它桶） */
   function setActive(id: string | null) {
@@ -125,6 +129,7 @@ export const useChatStore = defineStore('chat', () => {
       content: s.currentAssistantMsg,
       thinking: s.streamingThinking || s.thinking || undefined,
       references: s.references.length ? s.references : undefined,
+      tools: s.toolEvents.length ? [...s.toolEvents] : undefined,
       createdAt: new Date().toISOString(),
     }
     s.messages.push(msg)
@@ -133,6 +138,7 @@ export const useChatStore = defineStore('chat', () => {
     s.streamingThinking = ''
     s.streamingMessageId = ''
     s.references = []
+    s.toolEvents = []
   }
 
   /** 中止流式请求（默认中止激活对话；可指定 convId 中止后台对话） */
@@ -172,6 +178,7 @@ export const useChatStore = defineStore('chat', () => {
     s.streamingMessageId = ''
     s.references = []
     s.permissionNotice = null
+    s.toolEvents = []
     s.abortController = new AbortController()
 
     try {
@@ -252,6 +259,21 @@ export const useChatStore = defineStore('chat', () => {
                   s.thinking = ''
                   s.permissionNotice = event.message || '您没有访问该知识库的权限'
                   break
+                case 'tool_call':
+                  // 工具循环智能体：模型发起工具调用
+                  s.toolEvents.push({ phase: 'call', name: event.name, args: event.args })
+                  break
+                case 'tool_result':
+                  // 工具执行完成（失败时工具不中断对话，结果以错误 JSON 回给模型）
+                  s.toolEvents.push({
+                    phase: 'result',
+                    name: event.name,
+                    result: event.result,
+                    ok: event.ok,
+                    costMs: event.costMs,
+                    error: event.error,
+                  })
+                  break
                 case 'error':
                   console.error('SSE error:', event.message)
                   s.thinking = ''
@@ -312,6 +334,7 @@ export const useChatStore = defineStore('chat', () => {
     thinking,
     references,
     permissionNotice,
+    toolEvents,
     // 方法
     setActive,
     isLoaded,

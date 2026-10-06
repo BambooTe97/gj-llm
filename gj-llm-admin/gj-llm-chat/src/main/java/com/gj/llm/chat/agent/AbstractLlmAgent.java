@@ -49,8 +49,20 @@ public abstract class AbstractLlmAgent implements Agent {
             ChatProperties.AgentConfig cfg = chatProperties.getAgents().get(id());
             boolean think = ctx.isEnableThinking() && (cfg == null || cfg.isThinking());
             Flux<ServerSentEvent<String>> llm = streamLlm(ctx, pp.messages(), cfg, think);
-            return Flux.concat(Flux.fromIterable(pp.preEvents()), llm);
+            // 旁路事件(tool_call/tool_result 等)与 LLM 流并行;结束时闭合旁路通道保证 merge 终止
+            return Flux.concat(Flux.fromIterable(pp.preEvents()),
+                    Flux.merge(llm, sideChannel(ctx)).doFinally(sig -> ctx.completeToolEvents()));
         });
+    }
+
+    /** 钩子:子类向请求注入扩展(工具回调等),默认原样返回 */
+    protected ChatClient.ChatClientRequestSpec customizeRequest(ChatClient.ChatClientRequestSpec spec, AgentContext ctx) {
+        return spec;
+    }
+
+    /** 钩子:旁路事件流,与 LLM 流 merge 输出(如工具调用事件),默认空 */
+    protected Flux<ServerSentEvent<String>> sideChannel(AgentContext ctx) {
+        return Flux.empty();
     }
 
     /** 流式调用 LLM,提取 content/thinking 并发 SSE,同时累积到 ctx 缓冲 */
@@ -69,9 +81,9 @@ public abstract class AbstractLlmAgent implements Agent {
             options.disableThinking();
         }
 
-        return chatClient.prompt()
-                .messages(messages)
-                .options(options)
+        ChatClient.ChatClientRequestSpec spec = customizeRequest(
+                chatClient.prompt().messages(messages).options(options), ctx);
+        return spec
                 .stream()
                 .chatResponse()
                 .concatMap(resp -> {

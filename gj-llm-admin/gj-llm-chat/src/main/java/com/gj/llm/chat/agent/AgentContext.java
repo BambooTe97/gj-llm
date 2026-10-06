@@ -6,6 +6,8 @@ import com.gj.llm.rag.model.RoutingDecision;
 import com.gj.llm.rag.service.Reference;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.codec.ServerSentEvent;
+import reactor.core.publisher.Sinks;
 
 import java.util.List;
 
@@ -55,11 +57,29 @@ public class AgentContext {
     /** 智能路由决策(路由器在 route 阶段写入,检索型智能体读取) */
     private RoutingDecision routingDecision;
 
+    /** 工具调用旁路事件通道(ToolCallAgent 专用,懒创建;tool_call/tool_result 与 LLM 流并行 merge) */
+    private Sinks.Many<ServerSentEvent<String>> toolEventSink;
+
     public void setReferences(List<Reference> references) {
         this.references = references == null ? List.of() : references;
     }
 
     public void setRoutingDecision(RoutingDecision routingDecision) {
         this.routingDecision = routingDecision;
+    }
+
+    /** 工具事件通道(懒创建:sideChannel 组装期与工具执行线程都会访问) */
+    public Sinks.Many<ServerSentEvent<String>> toolEventSink() {
+        if (toolEventSink == null) {
+            toolEventSink = Sinks.many().unicast().onBackpressureBuffer();
+        }
+        return toolEventSink;
+    }
+
+    /** LLM 流结束时闭合旁路通道,保证 merge 终止、done 事件可达(未用过则为空操作) */
+    public void completeToolEvents() {
+        if (toolEventSink != null) {
+            toolEventSink.tryEmitComplete();
+        }
     }
 }

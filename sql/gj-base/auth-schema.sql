@@ -192,3 +192,30 @@ CREATE TABLE IF NOT EXISTS sys_menu_api (
     PRIMARY KEY (menu_id, api_id),
     KEY idx_api_id (api_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='菜单按钮接口关联表';
+
+-- ============================================================
+-- 知识库详情页功能权限点细化（增量脚本，幂等可重跑）
+--
+-- 背景：详情页内功能（上传文档/删除文档/重新解析/检索测试/共享设置）原先按
+-- HTTP 方法粗挂在 dataset:view/create/edit/delete 四类权限点上（ApiAutoLinker
+-- 通用规则），无法精细授权（如"能上传但不能删文档"）。
+-- 本脚本为各功能建立独立 B 型权限点，ApiAutoLinker 按路径模式精确关联。
+--
+-- 注意：细分后原 dataset:create 等页面级权限点不再自动包含子功能权限，
+-- 存量角色需在「系统管理-角色管理」重新勾选；本脚本为 USER 角色预授全部
+-- 新点以保持细分前的实际行为，不需要的权限可在角色管理页收回。
+-- ============================================================
+
+-- 按钮权限点（挂在「知识库」C 菜单 1001 下；B 型不产生导航，仅作权限标识）
+INSERT IGNORE INTO sys_menu (id, parent_id, name, type, perms, sort, visible, status, create_by) VALUES
+    (1104, 1001, '上传文档', 'B', 'dataset:doc:upload',   4, 0, 1, 'system'),
+    (1105, 1001, '删除文档', 'B', 'dataset:doc:delete',   5, 0, 1, 'system'),
+    (1106, 1001, '重新解析', 'B', 'dataset:doc:reparse', 6, 0, 1, 'system'),
+    (1107, 1001, '检索测试', 'B', 'dataset:test',         7, 0, 1, 'system'),
+    (1108, 1001, '共享设置', 'B', 'dataset:acl',          8, 0, 1, 'system');
+
+-- 角色授权：ADMIN(1) 全量；USER(2) 预授全部新点（保持细分前的实际能力）
+INSERT IGNORE INTO sys_role_menu (role_id, menu_id)
+SELECT 1, id FROM sys_menu WHERE id BETWEEN 1104 AND 1108;
+INSERT IGNORE INTO sys_role_menu (role_id, menu_id)
+SELECT 2, id FROM sys_menu WHERE id BETWEEN 1104 AND 1108;
