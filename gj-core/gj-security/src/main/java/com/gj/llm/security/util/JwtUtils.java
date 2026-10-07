@@ -168,6 +168,19 @@ public class JwtUtils {
     }
 
     /**
+     * 从 Token 中提取 jti（签发时生成的唯一标识）。
+     *
+     * <p>用于在线会话注册表等按 Token 唯一定位会话的场景。</p>
+     *
+     * @param token JWT 令牌字符串
+     * @return jti 唯一标识
+     * @throws JwtException 若 Token 无效
+     */
+    public String getJti(String token) {
+        return parseClaims(token).getId();
+    }
+
+    /**
      * 获取 Token 的剩余有效时长（至 exp），用于登出黑名单 TTL。
      *
      * <p>Token 无效或已过期时返回 {@link Duration#ZERO}。</p>

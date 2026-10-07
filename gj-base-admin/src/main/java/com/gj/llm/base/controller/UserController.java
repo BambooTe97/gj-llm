@@ -1,6 +1,7 @@
 package com.gj.llm.base.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.gj.llm.base.annotation.OperLog;
 import com.gj.llm.base.entity.UserEntity;
 import com.gj.llm.base.model.ResetPasswordRequest;
 import com.gj.llm.base.model.UserCreateRequest;
@@ -33,13 +34,14 @@ public class UserController {
 
     private final UserService userService;
 
-    /** 分页查询用户（支持用户名/昵称模糊搜索） */
+    /** 分页查询用户（支持用户名/昵称模糊搜索、按部门含下级过滤） */
     @GetMapping
     public R<IPage<UserEntity>> page(
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size,
-            @RequestParam(required = false) String keyword) {
-        return R.ok(userService.page(page, size, keyword));
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Long deptId) {
+        return R.ok(userService.page(page, size, keyword, deptId));
     }
 
     /** 获取用户详情 */
@@ -49,12 +51,14 @@ public class UserController {
     }
 
     /** 创建用户 */
+    @OperLog(module = "用户管理", type = "新增")
     @PostMapping
     public R<UserEntity> create(@Valid @RequestBody UserCreateRequest request) {
         return R.ok(userService.create(request), "用户创建成功");
     }
 
     /** 更新用户 */
+    @OperLog(module = "用户管理", type = "更新")
     @PutMapping("/{id}")
     public R<UserEntity> update(@PathVariable Long id,
                                 @Valid @RequestBody UserUpdateRequest request) {
@@ -62,6 +66,7 @@ public class UserController {
     }
 
     /** 重置密码 */
+    @OperLog(module = "用户管理", type = "重置密码")
     @PutMapping("/{id}/password")
     public R<Void> resetPassword(@PathVariable Long id,
                                  @Valid @RequestBody ResetPasswordRequest request) {
@@ -70,6 +75,7 @@ public class UserController {
     }
 
     /** 删除用户 */
+    @OperLog(module = "用户管理", type = "删除")
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {
         userService.delete(id);

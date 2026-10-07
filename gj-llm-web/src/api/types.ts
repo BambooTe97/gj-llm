@@ -289,6 +289,10 @@ export interface SysUser {
   avatar?: string | null
   email?: string | null
   status: number
+  /** 所属部门（雪花 ID，全局 Long→String 序列化） */
+  deptId?: string | null
+  /** 部门名称（后端分页时回填，仅展示用） */
+  deptName?: string | null
   createdAt?: string
   updatedAt?: string
   roles?: Role[]
@@ -301,6 +305,7 @@ export interface SysUserWrite {
   nickname?: string
   email?: string
   status?: number
+  deptId?: string | null
   roleIds?: number[]
 }
 

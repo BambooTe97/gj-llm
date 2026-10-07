@@ -1,6 +1,7 @@
 package com.gj.llm.base.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.gj.llm.base.annotation.OperLog;
 import com.gj.llm.base.model.NotifyAdminVO;
 import com.gj.llm.base.model.NotifyVO;
 import com.gj.llm.base.service.NotifyService;
@@ -41,6 +42,7 @@ public class NotifyAdminController {
     /**
      * 定向发送通知给指定用户 —— 管理端的发送入口（先落库后推送）。
      */
+    @OperLog(module = "通知管理", type = "发送")
     @PostMapping("/send")
     public R<NotifyVO> send(@RequestBody Map<String, String> body) {
         Long userId = Long.valueOf(body.get("userId"));
@@ -54,6 +56,7 @@ public class NotifyAdminController {
     }
 
     /** 删除通知（物理删除） */
+    @OperLog(module = "通知管理", type = "删除")
     @DeleteMapping("/{id}")
     public R<Void> remove(@PathVariable Long id) {
         notifyService.removeById(id);

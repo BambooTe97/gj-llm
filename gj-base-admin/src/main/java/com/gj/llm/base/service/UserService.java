@@ -18,8 +18,8 @@ public interface UserService extends IService<UserEntity> {
     /** 用户列表（含角色） */
     List<UserEntity> listAll();
 
-    /** 分页查询用户（含角色，支持用户名/昵称模糊搜索） */
-    IPage<UserEntity> page(long pageNum, long size, String keyword);
+    /** 分页查询用户（含角色，支持用户名/昵称模糊搜索、按部门含下级过滤） */
+    IPage<UserEntity> page(long pageNum, long size, String keyword, Long deptId);
 
     /** 用户详情（含角色） */
     UserEntity getById(Long id);

@@ -85,7 +85,33 @@ public class ApiAutoLinker implements ApplicationRunner {
                     "GET", "system:menu:list",
                     "POST", "system:menu:add",
                     "PUT", "system:menu:edit",
-                    "DELETE", "system:menu:remove"))
+                    "DELETE", "system:menu:remove")),
+            Map.entry("SysDeptController", Map.of(
+                    "GET", "system:dept:list",
+                    "POST", "system:dept:add",
+                    "PUT", "system:dept:edit",
+                    "DELETE", "system:dept:remove")),
+            Map.entry("DictTypeController", Map.of(
+                    "GET", "system:dict:list",
+                    "POST", "system:dict:add",
+                    "PUT", "system:dict:edit",
+                    "DELETE", "system:dict:remove")),
+            Map.entry("DictDataController", Map.of(
+                    "GET", "system:dict:list",
+                    "POST", "system:dict:add",
+                    "PUT", "system:dict:edit",
+                    "DELETE", "system:dict:remove")),
+            Map.entry("SysConfigController", Map.of(
+                    "GET", "system:config:list",
+                    "POST", "system:config:add",
+                    "PUT", "system:config:edit",
+                    "DELETE", "system:config:remove")),
+            Map.entry("OperLogController", Map.of(
+                    "GET", "system:log:list",
+                    "DELETE", "system:log:clear")),
+            Map.entry("OnlineUserController", Map.of(
+                    "GET", "system:online:list",
+                    "DELETE", "system:online:forceLogout"))
     );
 
     /**
@@ -108,7 +134,10 @@ public class ApiAutoLinker implements ApplicationRunner {
             new PathRule("DatasetController", "PUT", "/api/v1/datasets/*/visibility", "dataset:acl"),
             new PathRule("DatasetController", "POST", "/api/v1/datasets/*/acl", "dataset:acl"),
             new PathRule("DatasetController", "DELETE", "/api/v1/datasets/*/acl/*", "dataset:acl"),
-            new PathRule("DatasetController", "GET", "/api/v1/datasets/*/acl/**", "dataset:acl")
+            new PathRule("DatasetController", "GET", "/api/v1/datasets/*/acl/**", "dataset:acl"),
+            // ---- 字典/参数 全员消费端点（独立权限点授予 USER 角色，见 sql/gj-base/system-schema.sql） ----
+            new PathRule("DictDataController", "GET", "/api/dicts/datas/type/{type}", "system:dict:data"),
+            new PathRule("SysConfigController", "GET", "/api/configs/key/{key}", "system:config:key")
     );
 
     private final AntPathMatcher pathMatcher = new AntPathMatcher();

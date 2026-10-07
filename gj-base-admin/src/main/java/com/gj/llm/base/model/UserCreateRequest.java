@@ -32,6 +32,9 @@ public class UserCreateRequest {
     @Size(max = 100, message = "邮箱最长 100 个字符")
     private String email;
 
+    /** 所属部门 ID（可空） */
+    private Long deptId;
+
     /** 角色 ID 集合 */
     private Set<Long> roleIds;
 }

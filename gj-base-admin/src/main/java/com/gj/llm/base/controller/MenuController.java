@@ -1,5 +1,6 @@
 package com.gj.llm.base.controller;
 
+import com.gj.llm.base.annotation.OperLog;
 import com.gj.llm.base.entity.MenuEntity;
 import com.gj.llm.base.model.MenuApiAssignRequest;
 import com.gj.llm.base.model.MenuCreateRequest;
@@ -41,12 +42,14 @@ public class MenuController {
     }
 
     /** 创建菜单 */
+    @OperLog(module = "菜单管理", type = "新增")
     @PostMapping
     public R<MenuEntity> create(@Valid @RequestBody MenuCreateRequest request) {
         return R.ok(menuService.create(request), "菜单创建成功");
     }
 
     /** 更新菜单 */
+    @OperLog(module = "菜单管理", type = "更新")
     @PutMapping("/{id}")
     public R<MenuEntity> update(@PathVariable Long id,
                                 @Valid @RequestBody MenuUpdateRequest request) {
@@ -54,6 +57,7 @@ public class MenuController {
     }
 
     /** 删除菜单 */
+    @OperLog(module = "菜单管理", type = "删除")
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {
         menuService.delete(id);
@@ -67,6 +71,7 @@ public class MenuController {
     }
 
     /** 为菜单按钮分配接口（全量替换） */
+    @OperLog(module = "菜单管理", type = "接口分配")
     @PutMapping("/{id}/apis")
     public R<Void> assignApis(@PathVariable Long id,
                               @Valid @RequestBody MenuApiAssignRequest request) {

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.gj.llm.base.entity.RoleEntity;
+import com.gj.llm.base.entity.SysDeptEntity;
 import com.gj.llm.base.entity.UserEntity;
 import com.gj.llm.base.entity.UserRoleEntity;
 import com.gj.llm.base.event.UserChangedEvent;
@@ -13,6 +14,7 @@ import com.gj.llm.base.mapper.UserRoleMapper;
 import com.gj.llm.base.model.UserCreateRequest;
 import com.gj.llm.base.model.UserUpdateRequest;
 import com.gj.llm.base.service.RoleService;
+import com.gj.llm.base.service.SysDeptService;
 import com.gj.llm.base.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -22,7 +24,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 用户服务实现 -- 通过 {@link UserMapper}、{@link UserRoleMapper} 管理用户与用户-角色关联；
@@ -38,13 +44,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
     private final UserRoleMapper userRoleMapper;
     private final RoleService roleService;
+    private final SysDeptService sysDeptService;
     private final PasswordEncoder passwordEncoder;
     private final ApplicationEventPublisher eventPublisher;
 
     public UserServiceImpl(UserRoleMapper userRoleMapper, RoleService roleService,
-                           PasswordEncoder passwordEncoder, ApplicationEventPublisher eventPublisher) {
+                           SysDeptService sysDeptService, PasswordEncoder passwordEncoder,
+                           ApplicationEventPublisher eventPublisher) {
         this.userRoleMapper = userRoleMapper;
         this.roleService = roleService;
+        this.sysDeptService = sysDeptService;
         this.passwordEncoder = passwordEncoder;
         this.eventPublisher = eventPublisher;
     }
@@ -56,17 +65,23 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
             user.setRoles(new HashSet<>(findRolesByUserId(user.getId())));
             user.setPassword(null);   // 不向外暴露密码密文
         });
+        fillDeptNames(users);
         return users;
     }
 
     @Override
-    public IPage<UserEntity> page(long pageNum, long size, String keyword) {
+    public IPage<UserEntity> page(long pageNum, long size, String keyword, Long deptId) {
         Page<UserEntity> page = new Page<>(pageNum, size);
         LambdaQueryWrapper<UserEntity> wrapper = new LambdaQueryWrapper<>();
+        // 按部门（含下级）过滤 —— 须在关键字 OR 组之前，避免 OR 优先级破坏部门条件
+        if (deptId != null) {
+            wrapper.in(UserEntity::getDeptId, sysDeptService.listSubtreeIds(deptId));
+        }
+        // 关键字 OR 组用 and 包裹：in AND (like OR like)
         if (keyword != null && !keyword.isBlank()) {
             String kw = keyword.trim();
-            wrapper.like(UserEntity::getUsername, kw)
-                    .or().like(UserEntity::getNickname, kw);
+            wrapper.and(w -> w.like(UserEntity::getUsername, kw)
+                    .or().like(UserEntity::getNickname, kw));
         }
         wrapper.orderByDesc(UserEntity::getCreatedAt);
 
@@ -75,6 +90,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
             user.setRoles(new HashSet<>(findRolesByUserId(user.getId())));
             user.setPassword(null);   // 不向外暴露密码密文
         });
+        fillDeptNames(result.getRecords());
         return result;
     }
 
@@ -86,6 +102,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         }
         user.setRoles(new HashSet<>(findRolesByUserId(id)));
         user.setPassword(null);   // 不向外暴露密码密文
+        fillDeptNames(List.of(user));
         return user;
     }
 
@@ -102,6 +119,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
                 .password(passwordEncoder.encode(request.getPassword()))
                 .nickname(request.getNickname())
                 .email(request.getEmail())
+                .deptId(request.getDeptId())
                 .status(1)
                 .build();
 
@@ -139,6 +157,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         }
         if (request.getStatus() != null) {
             user.setStatus(request.getStatus());
+        }
+        if (request.getDeptId() != null) {
+            user.setDeptId(request.getDeptId());
         }
 
         updateById(user);
@@ -207,5 +228,25 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
             return List.of();
         }
         return roleService.listByIds(roleIds);
+    }
+
+    /** 批量填充部门名称（@TableField(exist=false)） */
+    private void fillDeptNames(List<UserEntity> users) {
+        List<Long> deptIds = users.stream()
+                .map(UserEntity::getDeptId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (deptIds.isEmpty()) {
+            return;
+        }
+        Map<Long, SysDeptEntity> deptMap = sysDeptService.listByIds(deptIds).stream()
+                .collect(Collectors.toMap(SysDeptEntity::getId, Function.identity()));
+        users.forEach(user -> {
+            if (user.getDeptId() != null) {
+                SysDeptEntity dept = deptMap.get(user.getDeptId());
+                user.setDeptName(dept == null ? null : dept.getName());
+            }
+        });
     }
 }

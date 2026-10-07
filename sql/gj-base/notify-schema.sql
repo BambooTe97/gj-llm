@@ -42,7 +42,7 @@ SELECT 1, id FROM sys_menu WHERE id = 4001;
 -- ============================================================
 
 INSERT IGNORE INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_by) VALUES
-    (2004, 2000, '通知管理', 'C', '/system/notify', 'system/notify/NotifyManage', 'notify:manage', 'Bell', 4, 1, 1, 'system');
+    (2004, 2000, '通知管理', 'C', '/system/notify', 'system/notify/NotifyManage', 'notify:manage', 'Bell', 7, 1, 1, 'system');
 
 -- 授予 ADMIN 角色（固定 id=1）
 INSERT IGNORE INTO sys_role_menu (role_id, menu_id)

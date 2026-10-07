@@ -127,7 +127,7 @@ public class DatasetAclController {
         if (keyword == null || keyword.isBlank()) {
             return R.ok(List.of());
         }
-        List<PrincipalOptionVO> options = userService.page(1, 20, keyword.trim()).getRecords().stream()
+        List<PrincipalOptionVO> options = userService.page(1, 20, keyword.trim(), null).getRecords().stream()
                 .filter(u -> u.getStatus() != null && u.getStatus() == 1)
                 .map(u -> new PrincipalOptionVO(u.getId(), u.getNickname() + " (" + u.getUsername() + ")"))
                 .toList();

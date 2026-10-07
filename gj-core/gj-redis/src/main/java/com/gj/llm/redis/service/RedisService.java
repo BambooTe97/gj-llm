@@ -158,6 +158,23 @@ public class RedisService {
     }
 
     /**
+     * 按通配符扫描 key 列表（SCAN，避免 KEYS 阻塞）。
+     *
+     * <p>用于在线会话注册表等"按前缀枚举"场景；SCAN 期间过期/新增的 key
+     * 可能多返回或少返回，调用方需容忍（如逐个 get 后过滤 null）。</p>
+     */
+    public List<String> scanKeys(String pattern) {
+        List<String> keys = new ArrayList<>();
+        ScanOptions options = ScanOptions.scanOptions().match(pattern).count(100).build();
+        try (Cursor<String> cursor = stringRedisTemplate.scan(options)) {
+            while (cursor.hasNext()) {
+                keys.add(cursor.next());
+            }
+        }
+        return keys;
+    }
+
+    /**
      * 是否存在。
      */
     public boolean hasKey(String key) {

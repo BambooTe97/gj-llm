@@ -24,6 +24,9 @@ public class UserUpdateRequest {
     /** 账户状态：1=启用，0=禁用 */
     private Integer status;
 
+    /** 所属部门 ID（null=不修改） */
+    private Long deptId;
+
     /** 新角色 ID 集合（全量替换） */
     private Set<Long> roleIds;
 }

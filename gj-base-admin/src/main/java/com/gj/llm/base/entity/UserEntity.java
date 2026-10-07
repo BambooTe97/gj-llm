@@ -43,6 +43,9 @@ public class UserEntity {
     /** 邮箱 */
     private String email;
 
+    /** 所属部门 ID（可空） */
+    private Long deptId;
+
     /**
      * 账户状态。
      * 1 = 启用，0 = 禁用。
@@ -63,4 +66,10 @@ public class UserEntity {
      */
     @TableField(exist = false)
     private Set<RoleEntity> roles;
+
+    /**
+     * 部门名称 —— 不映射数据库字段，由 Service 批量填充。
+     */
+    @TableField(exist = false)
+    private String deptName;
 }

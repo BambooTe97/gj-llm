@@ -125,7 +125,7 @@ INSERT IGNORE INTO sys_menu (id, parent_id, name, type, path, component, perms, 
 
 -- ---- 用户管理 ----
 INSERT IGNORE INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_by) VALUES
-    (2001, 2000, '用户管理', 'C', '/system/user', 'system/user/UserManage', 'system:user:list', 'User', 1, 1, 1, 'system');
+    (2001, 2000, '用户管理', 'C', '/system/user', 'system/user/UserManage', 'system:user:list', 'User', 2, 1, 1, 'system');
 INSERT IGNORE INTO sys_menu (id, parent_id, name, type, perms, sort, visible, status, create_by) VALUES
     (2101, 2001, '用户新增',     'B', 'system:user:add',       1, 0, 1, 'system'),
     (2102, 2001, '用户编辑',     'B', 'system:user:edit',      2, 0, 1, 'system'),
@@ -134,7 +134,7 @@ INSERT IGNORE INTO sys_menu (id, parent_id, name, type, perms, sort, visible, st
 
 -- ---- 角色管理 ----
 INSERT IGNORE INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_by) VALUES
-    (2002, 2000, '角色管理', 'C', '/system/role', 'system/role/RoleManage', 'system:role:list', 'UserFilled', 2, 1, 1, 'system');
+    (2002, 2000, '角色管理', 'C', '/system/role', 'system/role/RoleManage', 'system:role:list', 'UserFilled', 3, 1, 1, 'system');
 INSERT IGNORE INTO sys_menu (id, parent_id, name, type, perms, sort, visible, status, create_by) VALUES
     (2201, 2002, '角色新增', 'B', 'system:role:add',    1, 0, 1, 'system'),
     (2202, 2002, '角色编辑', 'B', 'system:role:edit',   2, 0, 1, 'system'),
@@ -142,7 +142,7 @@ INSERT IGNORE INTO sys_menu (id, parent_id, name, type, perms, sort, visible, st
 
 -- ---- 菜单管理 ----
 INSERT IGNORE INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_by) VALUES
-    (2003, 2000, '菜单管理', 'C', '/system/menu', 'system/menu/MenuManage', 'system:menu:list', 'Menu', 3, 1, 1, 'system');
+    (2003, 2000, '菜单管理', 'C', '/system/menu', 'system/menu/MenuManage', 'system:menu:list', 'Menu', 4, 1, 1, 'system');
 INSERT IGNORE INTO sys_menu (id, parent_id, name, type, perms, sort, visible, status, create_by) VALUES
     (2301, 2003, '菜单新增', 'B', 'system:menu:add',    1, 0, 1, 'system'),
     (2302, 2003, '菜单编辑', 'B', 'system:menu:edit',   2, 0, 1, 'system'),

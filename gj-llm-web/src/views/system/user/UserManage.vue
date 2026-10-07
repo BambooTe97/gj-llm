@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { Plus, Search, Delete, EditPen, Key } from '@element-plus/icons-vue'
 import { userApi, roleApi } from '@/api/modules/system'
+import { deptApi, type SysDept } from '@/api/modules/dept'
 import type { Role, SysUser } from '@/api/types'
 
 const list = ref<SysUser[]>([])
@@ -13,6 +14,9 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const keyword = ref('')
+/** 部门过滤（选中即含其全部子部门，后端子树查询） */
+const deptId = ref('')
+const deptTree = ref<SysDept[]>([])
 
 const drawerVisible = ref(false)
 const drawerTitle = ref('')
@@ -27,6 +31,7 @@ const form = ref({
   nickname: '',
   email: '',
   status: 1,
+  deptId: '',
   roleIds: [] as number[],
 })
 
@@ -46,12 +51,25 @@ const rules = computed<FormRules>(() => ({
 async function loadList() {
   loading.value = true
   try {
-    const res = await userApi.getList(currentPage.value, pageSize.value, keyword.value || undefined)
+    const res = await userApi.getList(
+      currentPage.value,
+      pageSize.value,
+      keyword.value || undefined,
+      deptId.value || undefined,
+    )
     const d = res.data.data
     list.value = d?.records || []
     total.value = d?.total || 0
   } finally {
     loading.value = false
+  }
+}
+
+async function loadDepts() {
+  try {
+    deptTree.value = await deptApi.tree()
+  } catch {
+    /* 拦截器统一处理 */
   }
 }
 
@@ -78,7 +96,7 @@ function handleCreate() {
   isEdit.value = false
   editId.value = null
   drawerTitle.value = '新增用户'
-  form.value = { username: '', password: '', nickname: '', email: '', status: 1, roleIds: [] }
+  form.value = { username: '', password: '', nickname: '', email: '', status: 1, deptId: '', roleIds: [] }
   drawerVisible.value = true
 }
 
@@ -92,6 +110,7 @@ function handleEdit(row: any) {
     nickname: row.nickname || '',
     email: row.email || '',
     status: row.status,
+    deptId: row.deptId ? String(row.deptId) : '',
     roleIds: ((row.roles || []) as Role[]).map((r) => r.id),
   }
   drawerVisible.value = true
@@ -107,6 +126,7 @@ async function handleSubmit() {
         nickname: form.value.nickname,
         email: form.value.email,
         status: form.value.status,
+        deptId: form.value.deptId || null,
         roleIds: form.value.roleIds,
       })
       ElMessage.success('更新成功')
@@ -116,6 +136,7 @@ async function handleSubmit() {
         password: form.value.password,
         nickname: form.value.nickname,
         email: form.value.email,
+        deptId: form.value.deptId || null,
         roleIds: form.value.roleIds,
       })
       ElMessage.success('创建成功')
@@ -174,6 +195,7 @@ function formatTime(s?: string): string {
 onMounted(() => {
   loadList()
   loadRoles()
+  loadDepts()
 })
 </script>
 
@@ -182,6 +204,19 @@ onMounted(() => {
     <div class="page-header">
       <h2>用户管理</h2>
       <div class="page-header__actions">
+        <el-tree-select
+          v-model="deptId"
+          :data="deptTree"
+          node-key="id"
+          :props="{ label: 'name', children: 'children' }"
+          check-strictly
+          clearable
+          default-expand-all
+          placeholder="按部门过滤"
+          style="width: 200px"
+          @change="handleSearch"
+          @clear="handleSearch"
+        />
         <el-input
           v-model="keyword"
           placeholder="搜索用户名/昵称"
@@ -200,6 +235,9 @@ onMounted(() => {
     <el-table :data="list" v-loading="loading" border stripe class="page-table">
       <el-table-column prop="username" label="用户名" min-width="120" />
       <el-table-column prop="nickname" label="昵称" min-width="120" />
+      <el-table-column label="部门" min-width="120">
+        <template #default="{ row }">{{ row.deptName || '-' }}</template>
+      </el-table-column>
       <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
       <el-table-column label="角色" min-width="160">
         <template #default="{ row }">{{ roleNames(row) }}</template>
@@ -265,6 +303,19 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="邮箱">
           <el-input v-model="form.email" placeholder="选填" />
+        </el-form-item>
+        <el-form-item label="所属部门">
+          <el-tree-select
+            v-model="form.deptId"
+            :data="deptTree"
+            node-key="id"
+            :props="{ label: 'name', children: 'children' }"
+            check-strictly
+            clearable
+            default-expand-all
+            placeholder="不选则无部门"
+            style="width: 100%"
+          />
         </el-form-item>
         <el-form-item v-if="isEdit" label="状态">
           <el-switch v-model="form.status" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" />

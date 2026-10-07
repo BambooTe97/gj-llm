@@ -48,6 +48,12 @@ app:
 # 设计文档：gj-core/gj-netty/GJ_NETTY_GUIDE.md；默认关闭，需要长连接能力的部署再开启
 # 当前开启用于验证消息通知功能（gj-llm-notify）—— 验证后可回退为 false
 gj:
+  llm:
+    auth:
+      # 登录失败次数上限（滑动窗口内累计，达到即锁定；0=不启用）
+      # max-login-failures: 5
+      # 失败计数滑动窗口与账号锁定时长（分钟）
+      # lock-duration-minutes: 30
   netty:
     enabled: true
     # port: 9090

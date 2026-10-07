@@ -1,10 +1,12 @@
 package com.gj.llm.base.controller;
 
+import com.gj.llm.base.annotation.OperLog;
 import com.gj.llm.base.model.LoginRequest;
 import com.gj.llm.base.model.LoginResponse;
 import com.gj.llm.base.model.UserInfoResponse;
 import com.gj.llm.base.service.AuthService;
 import com.gj.llm.common.web.R;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -36,11 +38,13 @@ public class AuthController {
      * 用户登录。
      *
      * @param request {username, password}
+     * @param httpRequest 当前请求（采集登录 IP / User-Agent，用于在线会话）
      * @return {accessToken, refreshToken, username, nickname, avatar}
      */
+    @OperLog(module = "认证管理", type = "登录")
     @PostMapping("/login")
-    public R<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        LoginResponse response = authService.login(request);
+    public R<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+        LoginResponse response = authService.login(request, httpRequest);
         return R.ok(response, "登录成功");
     }
 
@@ -53,6 +57,7 @@ public class AuthController {
      * @param authHeader Authorization 头（Bearer <refreshToken>）
      * @return 新的 accessToken
      */
+    @OperLog(module = "认证管理", type = "刷新Token")
     @PostMapping("/refresh")
     public R<LoginResponse> refresh(@RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader) {
         // 提取 Refresh Token
@@ -71,11 +76,12 @@ public class AuthController {
     /**
      * 用户登出。
      *
-     * <p>当前为无状态 JWT 模式，服务端仅记录日志，客户端需自行清除 Token。</p>
+     * <p>Access Token 加入黑名单并移除在线会话条目，客户端需自行清除 Token。</p>
      *
      * @param authHeader Authorization 头
      * @return 成功响应
      */
+    @OperLog(module = "认证管理", type = "登出")
     @PostMapping("/logout")
     public R<Void> logout(@RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader) {
         if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {

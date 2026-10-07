@@ -1,5 +1,6 @@
 package com.gj.llm.base.controller;
 
+import com.gj.llm.base.annotation.OperLog;
 import com.gj.llm.base.entity.RoleEntity;
 import com.gj.llm.base.model.RoleCreateRequest;
 import com.gj.llm.base.model.RoleMenuAssignRequest;
@@ -41,12 +42,14 @@ public class RoleController {
     }
 
     /** 创建角色 */
+    @OperLog(module = "角色管理", type = "新增")
     @PostMapping
     public R<RoleEntity> create(@Valid @RequestBody RoleCreateRequest request) {
         return R.ok(roleService.create(request), "角色创建成功");
     }
 
     /** 更新角色 */
+    @OperLog(module = "角色管理", type = "更新")
     @PutMapping("/{id}")
     public R<RoleEntity> update(@PathVariable Long id,
                                 @Valid @RequestBody RoleUpdateRequest request) {
@@ -54,6 +57,7 @@ public class RoleController {
     }
 
     /** 删除角色 */
+    @OperLog(module = "角色管理", type = "删除")
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {
         roleService.delete(id);
@@ -67,6 +71,7 @@ public class RoleController {
     }
 
     /** 为角色分配菜单（全量替换） */
+    @OperLog(module = "角色管理", type = "菜单分配")
     @PutMapping("/{id}/menus")
     public R<Void> assignMenus(@PathVariable Long id,
                                @Valid @RequestBody RoleMenuAssignRequest request) {

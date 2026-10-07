@@ -40,6 +40,12 @@ public class AuthProperties {
     /** 新建知识库默认可见性：PUBLIC（全员可见，商用化时可切 RESTRICTED） */
     private String defaultVisibility = VISIBILITY_PUBLIC;
 
+    /** 登录失败次数上限（滑动窗口内累计，达到即锁定），0=不启用锁定 */
+    private int maxLoginFailures = 5;
+
+    /** 登录失败计数滑动窗口与账号锁定时长（分钟） */
+    private int lockDurationMinutes = 30;
+
     /** 管理员角色编码（命中即全库可见可管），大小写不敏感 */
     private List<String> adminRoles = new ArrayList<>(List.of("ADMIN"));
 

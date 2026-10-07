@@ -7,9 +7,9 @@ type ApiResult<T> = AxiosResponse<ApiResponse<T>>
 
 /** 用户管理 API */
 export const userApi = {
-  /** 分页查询用户（支持用户名/昵称模糊搜索） */
-  getList(page = 1, size = 10, keyword?: string): Promise<ApiResult<PageData<SysUser>>> {
-    return http.get('/users', { params: { page, size, keyword } })
+  /** 分页查询用户（支持用户名/昵称模糊搜索 + 部门子树过滤） */
+  getList(page = 1, size = 10, keyword?: string, deptId?: string): Promise<ApiResult<PageData<SysUser>>> {
+    return http.get('/users', { params: { page, size, keyword, deptId } })
   },
 
   /** 用户详情 */

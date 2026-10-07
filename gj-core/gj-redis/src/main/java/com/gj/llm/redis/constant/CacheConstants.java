@@ -28,4 +28,17 @@ public final class CacheConstants {
     /** 登出 Token 黑名单 key 前缀，完整 key = {@code auth:blacklist:{token}} */
     public static final String TOKEN_BLACKLIST_KEY = "auth:blacklist:";
 
+    // ==================== 登录防暴力破解 ====================
+
+    /** 登录失败计数 key 前缀，完整 key = {@code login:fail:{username}}，value = 失败次数 */
+    public static final String LOGIN_FAIL_KEY = "login:fail:";
+
+    /** 账号锁定 key 前缀，完整 key = {@code login:lock:{username}}，存在即锁定 */
+    public static final String LOGIN_LOCK_KEY = "login:lock:";
+
+    // ==================== 在线会话注册表 ====================
+
+    /** 在线会话注册表 key 前缀，完整 key = {@code online:token:{refreshTokenJti}} */
+    public static final String ONLINE_USER_KEY = "online:token:";
+
 }
