@@ -67,6 +67,14 @@
             <groupId>com.gj.llm</groupId>
             <artifactId>gj-common</artifactId>
         </dependency>
+
+        <!-- gj-netty：提供 WebSocket 握手鉴权 SPI 的 JWT 实现（JwtHandshakeAuthenticator）。
+             依赖方向：gj-security → gj-netty，gj-netty 编译期不认识 JWT -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-netty</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
 </project>

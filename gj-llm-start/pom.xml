@@ -35,6 +35,13 @@
             <artifactId>gj-llm-rag</artifactId>
             <version>${project.version}</version>
         </dependency>
+
+        <!-- Netty 基座模块：长连接基础设施（默认关闭，gj.netty.enabled=true 激活） -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-netty</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

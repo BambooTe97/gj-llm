@@ -7,6 +7,7 @@ import type { App } from 'vue'
 // （例如 ElMessageBox 确认框会丢失 .el-overlay-message-box 的居中定位，贴在视口顶部）
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
+import 'element-plus/es/components/notification/style/css'
 
 export function setupElementPlus(app: App) {
   // 如需全局配置 Element Plus，可在此设置

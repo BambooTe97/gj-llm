@@ -1,13 +1,36 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/modules/user'
+import { useNotificationStore } from '@/stores/modules/notification'
+import { notifyApi } from '@/api/modules/notify'
 import * as Icons from '@element-plus/icons-vue'
 import type { Menu } from '@/api/types'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const notificationStore = useNotificationStore()
+
+/** 测试通知发送中 */
+const sending = ref(false)
+
+/** 发送测试通知：在线经 WS 实时弹 toast；离线落库后刷新列表可见（两种路径都能验证） */
+async function handleSendTest() {
+  sending.value = true
+  try {
+    await notifyApi.sendTest({
+      title: '手动测试通知',
+      content: `${new Date().toLocaleTimeString()} 来自 ${userStore.username || '当前用户'} 的长连接推送测试`,
+      level: 'success',
+    })
+    if (!notificationStore.connected) {
+      await notificationStore.refresh()
+    }
+  } finally {
+    sending.value = false
+  }
+}
 
 /** 顶层导航菜单（由后端菜单树驱动） */
 const navItems = computed<Menu[]>(() => userStore.menus)
@@ -45,6 +68,7 @@ function handleNav(menu: Menu) {
 }
 
 function handleLogout() {
+  notificationStore.disconnect()
   userStore.logout()
 }
 </script>
@@ -84,8 +108,64 @@ function handleLogout() {
       </div>
     </nav>
 
-    <!-- ===== 用户 ===== -->
+
+    <!-- ===== 用户区（通知铃铛 + 账号） ===== -->
     <div class="header-user">
+      <!-- 消息通知（gj-netty 长连接） -->
+      <div v-permission="'notify:view'" class="header-bell">
+        <el-popover placement="bottom-end" :width="380" trigger="click" :teleported="false">
+          <template #reference>
+            <el-badge
+              :value="notificationStore.unreadCount"
+              :hidden="notificationStore.unreadCount === 0"
+              :max="99"
+            >
+              <el-icon :size="20" class="header-bell__icon"><component :is="Icons.Bell" /></el-icon>
+            </el-badge>
+          </template>
+
+          <div class="notify-panel">
+            <div class="notify-panel__header">
+              <span class="notify-panel__title">消息通知</span>
+              <el-button
+                v-if="notificationStore.unreadCount > 0"
+                link
+                type="primary"
+                size="small"
+                @click="notificationStore.markAllRead()"
+              >
+                全部已读
+              </el-button>
+            </div>
+            <el-scrollbar max-height="360px">
+              <template v-if="notificationStore.list.length">
+                <div
+                  v-for="item in notificationStore.list"
+                  :key="item.id"
+                  class="notify-item"
+                  :class="{ 'notify-item--unread': item.readFlag === 0 }"
+                  @click="notificationStore.markRead(item)"
+                >
+                  <div class="notify-item__row">
+                    <span class="notify-item__title">{{ item.title }}</span>
+                    <span v-if="item.readFlag === 0" class="notify-item__dot" />
+                  </div>
+                  <div class="notify-item__content">{{ item.content }}</div>
+                  <div class="notify-item__time">{{ item.createdAt }}</div>
+                </div>
+              </template>
+              <el-empty v-else description="暂无通知" :image-size="60" />
+            </el-scrollbar>
+            <div class="notify-panel__footer">
+              <el-button size="small" :loading="sending" @click="handleSendTest">发一条测试通知</el-button>
+              <span class="notify-panel__status" :class="{ 'is-online': notificationStore.connected }">
+                {{ notificationStore.connected ? '已连接' : '未连接' }}
+              </span>
+            </div>
+          </div>
+        </el-popover>
+      </div>
+
       <el-dropdown trigger="click" placement="bottom-end" :teleported="false">
         <div class="header-user__trigger">
           <el-avatar :size="32" icon="UserFilled" />
@@ -218,10 +298,121 @@ function handleLogout() {
   white-space: nowrap;
 }
 
+// ========================= 消息通知 =========================
+.header-bell {
+  display: flex;
+  align-items: center;
+
+  &__icon {
+    color: #9ca3af;
+    cursor: pointer;
+    transition: color 0.25s ease;
+    padding: 6px;
+    border-radius: 8px;
+
+    &:hover {
+      color: #e5e7eb;
+      background: rgba(255, 255, 255, 0.06);
+    }
+  }
+}
+
+// 铃铛面板（深色头部的浅色弹层）
+.notify-panel {
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px 10px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+
+  &__title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #303133;
+  }
+
+  &__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 4px 2px;
+    border-top: 1px solid #f0f0f0;
+  }
+
+  &__status {
+    font-size: 11px;
+    color: #c0c4cc;
+
+    &.is-online {
+      color: #67c23a;
+    }
+  }
+}
+
+.notify-item {
+  padding: 10px 4px;
+  border-bottom: 1px solid #f5f5f5;
+  cursor: pointer;
+  transition: background 0.2s ease;
+
+  &:hover {
+    background: #f7f8fa;
+  }
+
+  &--unread {
+    .notify-item__title {
+      color: #303133;
+      font-weight: 600;
+    }
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  &__title {
+    font-size: 13px;
+    color: #606266;
+  }
+
+  &__dot {
+    flex-shrink: 0;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #f56c6c;
+  }
+
+  &__content {
+    margin-top: 3px;
+    font-size: 12px;
+    color: #909399;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  &__time {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #c0c4cc;
+  }
+}
+
 // ========================= 用户 =========================
 .header-user {
   flex-shrink: 0;
   margin-left: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 
   &__trigger {
     display: flex;

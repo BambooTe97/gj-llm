@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader/AppHeader.vue'
 import ChatSubPanel from '@/components/ChatSubPanel/ChatSubPanel.vue'
+import { useNotificationStore } from '@/stores/modules/notification'
 
 const route = useRoute()
 const showChatSubPanel = computed(() => route.path.startsWith('/chat'))
+
+// 登录态下建立 gj-netty 长连接并拉取通知（store 内部幂等）
+const notificationStore = useNotificationStore()
+onMounted(() => {
+  void notificationStore.init()
+})
 </script>
 
 <template>

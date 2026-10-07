@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.gj.llm</groupId>
+        <artifactId>gj-core</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>gj-netty</artifactId>
+    <name>gj-netty</name>
+    <description>
+        Netty 长连接基础设施模块 —— 业务无关的 WebSocket 传输底座：连接管理、身份抽象、
+        topic 路由与推送门面。设计文档见 GJ_NETTY_GUIDE.md，默认关闭（gj.netty.enabled=false）。
+    </description>
+
+    <dependencies>
+        <!-- Netty：WS 编解码 + IdleStateHandler。版本由 Spring Boot 父 BOM 管理（netty-bom），
+             不得手写版本号，避免与 reactor-netty 传递依赖冲突 -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-codec-http</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-handler</artifactId>
+        </dependency>
+
+        <!-- gj-common：JSON 统一走 JacksonUtils（生产用 Spring 容器 JsonMapper，
+             与全局 Long→String、日期序列化行为一致，不自持 mapper） -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-common</artifactId>
+        </dependency>
+
+        <!-- Micrometer：连接/消息/拒绝指标（Spring Boot 父 BOM 管理版本），无 Registry 时自动降级 Noop -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+
+        <!-- Spring Boot 自动配置基座：@Configuration/@ConfigurationProperties/@ConditionalOnProperty -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- Lombok：简化样板代码 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- 测试：JUnit 5 + EmbeddedChannel handler 单测 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>

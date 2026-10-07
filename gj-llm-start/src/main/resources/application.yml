@@ -43,3 +43,23 @@ app:
       - /api/auth/login
       - /api/auth/refresh
       - /open/**
+
+# ==================== Netty 长连接基座（gj-netty） ====================
+# 设计文档：gj-core/gj-netty/GJ_NETTY_GUIDE.md；默认关闭，需要长连接能力的部署再开启
+# 当前开启用于验证消息通知功能（gj-llm-notify）—— 验证后可回退为 false
+gj:
+  netty:
+    enabled: true
+    # port: 9090
+    # path: /ws
+    # heartbeat:
+    #   read-idle-seconds: 60
+    #   write-idle-seconds: 30
+    # limits:
+    #   max-frame-bytes: 65536
+    #   max-connections-per-ip: 128      # 内网 NAT / 反代场景按部署形态调大（GUIDE 第七节）
+    #   max-connections-per-principal: 8
+    # dispatch:
+    #   mode: virtual                    # 每会话顺序虚拟线程（JDK 25）
+    # shutdown:
+    #   grace-seconds: 10

@@ -48,42 +48,44 @@ public class ApiAutoLinker implements ApplicationRunner {
     private final ApiService apiService;
     private final MenuService menuService;
 
-    /** Controller 简单类名 -> (HTTP 方法 -> 权限点 perms) */
-    private static final Map<String, Map<String, String>> RULES = Map.of(
-            "ChatController", Map.of("*", "chat:view"),
-            "ConversationController", Map.of("*", "chat:view"),
-            "DatasetController", Map.of(
+    /** Controller 简单类名 -> (HTTP 方法 -> 权限点 perms)；条目超过 10 组，用 ofEntries */
+    private static final Map<String, Map<String, String>> RULES = Map.ofEntries(
+            Map.entry("ChatController", Map.of("*", "chat:view")),
+            Map.entry("ConversationController", Map.of("*", "chat:view")),
+            Map.entry("DatasetController", Map.of(
                     "GET", "dataset:view",
                     "POST", "dataset:create",
                     "PUT", "dataset:edit",
-                    "DELETE", "dataset:delete"),
-            "McpApiKeyController", Map.of(
+                    "DELETE", "dataset:delete")),
+            Map.entry("McpApiKeyController", Map.of(
                     "GET", "mcp:key:list",
                     "POST", "mcp:key:create",
                     "PUT", "mcp:key:edit",
-                    "DELETE", "mcp:key:remove"),
-            "McpServerConfigController", Map.of(
+                    "DELETE", "mcp:key:remove")),
+            Map.entry("McpServerConfigController", Map.of(
                     "GET", "mcp:server:list",
                     "POST", "mcp:server:create",
                     "PUT", "mcp:server:edit",
-                    "DELETE", "mcp:server:remove"),
-            "McpAuditController", Map.of(
-                    "GET", "mcp:audit:view"),
-            "UserController", Map.of(
+                    "DELETE", "mcp:server:remove")),
+            Map.entry("McpAuditController", Map.of(
+                    "GET", "mcp:audit:view")),
+            Map.entry("NotifyController", Map.of("*", "notify:view")),
+            Map.entry("NotifyAdminController", Map.of("*", "notify:manage")),
+            Map.entry("UserController", Map.of(
                     "GET", "system:user:list",
                     "POST", "system:user:add",
                     "PUT", "system:user:edit",
-                    "DELETE", "system:user:remove"),
-            "RoleController", Map.of(
+                    "DELETE", "system:user:remove")),
+            Map.entry("RoleController", Map.of(
                     "GET", "system:role:list",
                     "POST", "system:role:add",
                     "PUT", "system:role:edit",
-                    "DELETE", "system:role:remove"),
-            "MenuController", Map.of(
+                    "DELETE", "system:role:remove")),
+            Map.entry("MenuController", Map.of(
                     "GET", "system:menu:list",
                     "POST", "system:menu:add",
                     "PUT", "system:menu:edit",
-                    "DELETE", "system:menu:remove")
+                    "DELETE", "system:menu:remove"))
     );
 
     /**

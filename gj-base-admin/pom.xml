@@ -25,6 +25,14 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- 长连接基座：消息通知（NotifyController/NotifyReadListener）直接使用
+             PushService / MessageListener SPI；虽可经 gj-security 传递获得，显式声明以自明 -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-netty</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Web MVC：REST Controller 支持 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

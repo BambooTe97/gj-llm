@@ -27,6 +27,7 @@
         <module>gj-es</module>
         <module>gj-reranker</module>
         <module>gj-redis</module>
+        <module>gj-netty</module>
     </modules>
 
 </project>
