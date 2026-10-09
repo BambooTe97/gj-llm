@@ -41,4 +41,26 @@ public final class CacheConstants {
     /** 在线会话注册表 key 前缀，完整 key = {@code online:token:{refreshTokenJti}} */
     public static final String ONLINE_USER_KEY = "online:token:";
 
+    // ==================== 字典/参数读缓存 ====================
+
+    /** 字典数据读缓存 key 前缀，完整 key = {@code sys:dict:data:{dictType}}，value = 启用态字典数据列表 */
+    public static final String SYS_DICT_DATA_KEY = "sys:dict:data:";
+
+    /** 参数读缓存 key 前缀，完整 key = {@code sys:config:key:{configKey}}，value = 参数实体 */
+    public static final String SYS_CONFIG_KEY = "sys:config:key:";
+
+    /** 字典/参数读缓存默认有效期（30 分钟，变更事件失效的兜底 TTL） */
+    public static final long SYS_CACHE_TTL_MINUTES = 30;
+
+    // ==================== 滑动验证码 ====================
+
+    /** 滑动验证码 key 前缀，完整 key = {@code captcha:slide:{captchaToken}}，value = 缺口 x 坐标 */
+    public static final String CAPTCHA_SLIDE_KEY = "captcha:slide:";
+
+    /** 滑动验证码失败尝试计数 key 前缀，完整 key = {@code captcha:fail:{captchaToken}} */
+    public static final String CAPTCHA_FAIL_KEY = "captcha:fail:";
+
+    /** 滑动验证码生成限流 key 前缀，完整 key = {@code captcha:gen:{ip}}，value = 次数 */
+    public static final String CAPTCHA_GEN_KEY = "captcha:gen:";
+
 }

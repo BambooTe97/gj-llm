@@ -15,14 +15,14 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.security.SecureRandom;
 import java.time.Duration;
-import java.util.Base64;
 import java.util.Date;
 import java.util.UUID;
 
 /**
  * JWT 令牌工具类 —— 负责 Access Token 和 Refresh Token 的签发、校验与解析。
  *
- * <p>使用 HMAC-SHA256 签名算法，密钥可通过配置指定或由系统自动生成。
+ * <p>使用 HMAC-SHA256 签名算法，密钥通过配置指定（{@code app.security.jwt.secret}），
+ * 未配置时自动生成临时密钥（重启失效）。多实例部署必须配置统一密钥。
  * Token Payload 中携带 {@code userId}、{@code username} 和 {@code type} 等声明，
  * 供过滤器与业务层使用。</p>
  *
@@ -72,11 +72,11 @@ public class JwtUtils {
     // ==================== 初始化 ====================
 
     /**
-     * Bean 初始化后执行：加载或自动生成 JWT 签名密钥。
+     * Bean 初始化后执行：加载 JWT 签名密钥。
      *
-     * <p>若配置了 {@code app.security.jwt.secret} 则使用配置值（Base64 解码）；
-     * 否则使用 {@link SecureRandom} 生成 256-bit 随机密钥。
-     * <b>注意：</b>自动生成的密钥在服务重启后失效，所有已签发 Token 将不可校验。</p>
+     * <p>若配置了 {@code app.security.jwt.secret} 则使用配置值（Base64 解码，多实例部署必须
+     * 统一配置）；否则使用 {@link SecureRandom} 生成 256-bit 临时随机密钥。
+     * <b>注意：</b>临时密钥在服务重启后失效，所有已签发 Token 将不可校验。</p>
      */
     @PostConstruct
     public void init() {
@@ -84,15 +84,15 @@ public class JwtUtils {
         if (configuredSecret != null && !configuredSecret.isBlank()) {
             byte[] keyBytes = Decoders.BASE64.decode(configuredSecret);
             this.secretKey = Keys.hmacShaKeyFor(keyBytes);
-            log.info("JWT 签名密钥已从配置加载");
-        } else {
-            byte[] keyBytes = new byte[32]; // 256 bits
-            SECURE_RANDOM.nextBytes(keyBytes);
-            this.secretKey = Keys.hmacShaKeyFor(keyBytes);
-            String generatedSecret = Base64.getEncoder().encodeToString(keyBytes);
-            log.warn("未配置 app.security.jwt.secret，已自动生成随机密钥。" +
-                     "服务重启后所有 Token 将失效。生成值: {}", generatedSecret);
+            log.info("JWT 签名密钥已从配置（app.security.jwt.secret）加载");
+            return;
         }
+
+        byte[] keyBytes = new byte[32]; // 256 bits
+        SECURE_RANDOM.nextBytes(keyBytes);
+        this.secretKey = Keys.hmacShaKeyFor(keyBytes);
+        log.warn("未配置 app.security.jwt.secret，已自动生成临时密钥。" +
+                 "服务重启后所有 Token 将失效；多实例部署必须配置统一密钥。");
     }
 
     // ==================== Token 签发 ====================

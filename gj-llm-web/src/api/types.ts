@@ -2,6 +2,27 @@
 export interface LoginRequest {
   username: string
   password: string
+  /** 滑动验证码令牌（后端开关开启时必填） */
+  captchaToken?: string
+  /** 滑块位置：拼图块画布左缘 x 坐标（后端开关开启时必填） */
+  slideX?: number
+}
+
+/** 滑动验证码生成响应 */
+export interface CaptchaResponse {
+  /** 验证码开关是否开启（false 时其余字段为空，前端隐藏滑块） */
+  enabled: boolean
+  captchaToken?: string
+  /** 背景图（Base64 PNG，不含 data URI 前缀） */
+  bgImage?: string
+  /** 拼图块（Base64 PNG，透明背景） */
+  puzzleImage?: string
+  /** 拼图块画布固定 y 坐标（像素） */
+  puzzleY?: number
+  /** 背景图宽度（像素） */
+  width?: number
+  /** 背景图高度（像素） */
+  height?: number
 }
 
 /** 登录响应 */
@@ -278,6 +299,8 @@ export interface Role {
   name: string
   code: string
   description?: string | null
+  /** 数据权限域：1=全部 2=自定义部门 3=本部门 4=本部门及以下 5=仅本人 */
+  dataScope?: number
   createdAt?: string
 }
 

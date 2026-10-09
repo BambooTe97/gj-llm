@@ -5,6 +5,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { Plus, Search, Delete, EditPen, Key } from '@element-plus/icons-vue'
 import { userApi, roleApi } from '@/api/modules/system'
 import { deptApi, type SysDept } from '@/api/modules/dept'
+import { passwordStrengthRule, isStrongPassword } from '@/utils/password'
 import type { Role, SysUser } from '@/api/types'
 
 const list = ref<SysUser[]>([])
@@ -44,7 +45,7 @@ const rules = computed<FormRules>(() => ({
     ? []
     : [
         { required: true, message: '请输入密码', trigger: 'blur' },
-        { min: 6, message: '密码长度至少 6 位', trigger: 'blur' },
+        passwordStrengthRule(form.value.username),
       ],
 }))
 
@@ -168,9 +169,11 @@ async function handleDelete(row: any) {
 
 async function handleResetPwd(row: any) {
   try {
-    const { value } = await ElMessageBox.prompt('请输入新密码（至少 6 位）', `重置 "${row.username}" 的密码`, {
-      inputPattern: /^.{6,}$/,
-      inputErrorMessage: '密码至少 6 位',
+    const { value } = await ElMessageBox.prompt('请输入新密码', `重置 "${row.username}" 的密码`, {
+      inputValidator: (v: string) =>
+        v && isStrongPassword(v) && !v.toLowerCase().includes(row.username.toLowerCase())
+          ? true
+          : '至少 8 位，需包含大写字母、小写字母、数字、特殊字符中的 3 类，且不能包含用户名',
       confirmButtonText: '重置',
       cancelButtonText: '取消',
     })

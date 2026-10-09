@@ -113,7 +113,7 @@ ADMIN 角色 ──全放行(硬编码)
 
 ### 路径 B：种子 SQL（新功能随代码交付）
 
-参考 `sql/gj-base/dataset-detail-perms.sql`、`sql/gj-llm-admin/mcp-schema.sql`：
+参考 `sql/gj-base/auth-schema.sql`（文末"知识库详情页功能权限点细化"段）、`sql/gj-llm-admin/mcp-schema.sql`：
 
 ```sql
 -- 1) 菜单/按钮行(INSERT IGNORE 幂等)

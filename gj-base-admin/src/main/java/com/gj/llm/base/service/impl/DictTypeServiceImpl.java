@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.gj.llm.base.entity.DictDataEntity;
 import com.gj.llm.base.entity.DictTypeEntity;
+import com.gj.llm.base.event.DictChangedEvent;
 import com.gj.llm.base.mapper.DictTypeMapper;
 import com.gj.llm.base.model.DictTypeCreateRequest;
 import com.gj.llm.base.model.DictTypeUpdateRequest;
@@ -15,6 +16,7 @@ import com.gj.llm.base.service.DictTypeService;
 import com.gj.llm.common.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,7 +26,8 @@ import java.util.Objects;
  * 字典类型服务实现。
  *
  * <p>type 编码改名校验唯一后级联更新字典数据（{@code sys_dict_data.dict_type} 冗余存储）；
- * 类型下存在数据时拒绝删除。</p>
+ * 类型下存在数据时拒绝删除。改名/删除会发布 {@link DictChangedEvent}（dictType=null 全量），
+ * 因数据行的 type 编码已随级联变化，按旧类型失效无法覆盖。</p>
  *
  * @author gj-llm
  */
@@ -34,6 +37,7 @@ import java.util.Objects;
 public class DictTypeServiceImpl extends ServiceImpl<DictTypeMapper, DictTypeEntity> implements DictTypeService {
 
     private final DictDataService dictDataService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public IPage<DictTypeEntity> page(long page, long size, String keyword, Integer status) {
@@ -78,6 +82,7 @@ public class DictTypeServiceImpl extends ServiceImpl<DictTypeMapper, DictTypeEnt
             dictDataService.update(new LambdaUpdateWrapper<DictDataEntity>()
                     .eq(DictDataEntity::getDictType, oldType)
                     .set(DictDataEntity::getDictType, request.getType()));
+            eventPublisher.publishEvent(new DictChangedEvent(null));
             log.info("字典类型改名: {} -> {}（级联更新数据）", oldType, request.getType());
         }
         entity.setName(request.getName());
@@ -103,6 +108,7 @@ public class DictTypeServiceImpl extends ServiceImpl<DictTypeMapper, DictTypeEnt
             throw new RuntimeException("该类型下存在 " + dataCount + " 条字典数据，请先删除数据");
         }
         removeById(id);
+        eventPublisher.publishEvent(new DictChangedEvent(null));
         log.info("删除字典类型: {}", entity.getType());
     }
 }

@@ -49,8 +49,36 @@ public class AuthProperties {
     /** 管理员角色编码（命中即全库可见可管），大小写不敏感 */
     private List<String> adminRoles = new ArrayList<>(List.of("ADMIN"));
 
+    /** 密码复杂度策略（创建用户/管理员重置/自助修改密码统一校验） */
+    private PasswordPolicy passwordPolicy = new PasswordPolicy();
+
     /** 判定角色编码是否为管理员角色 */
     public boolean isAdminRole(String roleCode) {
         return roleCode != null && adminRoles.stream().anyMatch(r -> r.equalsIgnoreCase(roleCode));
+    }
+
+    /**
+     * 密码复杂度策略配置。
+     *
+     * <p>规则：长度区间 + 大写/小写/数字/特殊字符四类中至少 N 类 + 可选禁止包含用户名。
+     * 校验入口统一在 {@code PasswordPolicyValidator}。</p>
+     */
+    @Data
+    public static class PasswordPolicy {
+
+        /** 是否启用复杂度校验（关闭后仅保留 DTO 层长度兜底） */
+        private boolean enabled = true;
+
+        /** 最小长度 */
+        private int minLength = 8;
+
+        /** 最大长度 */
+        private int maxLength = 100;
+
+        /** 大写/小写/数字/特殊字符四类中至少包含的类别数（1-4） */
+        private int minCategories = 3;
+
+        /** 是否禁止密码包含用户名（忽略大小写） */
+        private boolean forbidUsername = true;
     }
 }

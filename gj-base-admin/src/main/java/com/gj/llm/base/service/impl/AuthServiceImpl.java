@@ -2,13 +2,18 @@ package com.gj.llm.base.service.impl;
 
 import com.gj.llm.base.config.AuthProperties;
 import com.gj.llm.base.entity.MenuEntity;
+import com.gj.llm.base.entity.UserEntity;
+import com.gj.llm.base.event.LogininforEvent;
+import com.gj.llm.base.model.ChangePasswordRequest;
 import com.gj.llm.base.model.LoginRequest;
 import com.gj.llm.base.model.LoginResponse;
 import com.gj.llm.base.model.OnlineUserRecord;
 import com.gj.llm.base.model.UserInfoResponse;
 import com.gj.llm.base.service.AuthService;
+import com.gj.llm.base.service.CaptchaService;
 import com.gj.llm.base.service.MenuService;
 import com.gj.llm.base.service.OnlineUserService;
+import com.gj.llm.base.service.UserService;
 import com.gj.llm.base.util.WebUtils;
 import com.gj.llm.common.http.UserAgentUtils;
 import com.gj.llm.redis.constant.CacheConstants;
@@ -19,6 +24,7 @@ import com.gj.llm.security.util.JwtUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -26,6 +32,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -58,6 +65,10 @@ public class AuthServiceImpl implements AuthService {
     private final RedisService redisService;
     private final AuthProperties authProperties;
     private final OnlineUserService onlineUserService;
+    private final UserService userService;
+    private final PasswordEncoder passwordEncoder;
+    private final CaptchaService captchaService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 用户登录：校验凭据（含防暴力破解）并签发双 Token。
@@ -71,8 +82,11 @@ public class AuthServiceImpl implements AuthService {
     public LoginResponse login(LoginRequest request, HttpServletRequest httpRequest) {
         String username = request.getUsername();
 
+        // 0. 滑动验证码校验（开关关闭时内部直接跳过；验证成功即消费令牌）
+        captchaService.verify(request.getCaptchaToken(), request.getSlideX());
+
         // 1. 失败锁定前置检查：锁定期内直接拒绝（普通 RuntimeException → 400 + 自定义文案）
-        checkLocked(username);
+        checkLocked(username, httpRequest);
 
         // 2. 构造认证令牌并委托 Spring Security 认证
         //    → DaoAuthenticationProvider → UserDetailsService.loadUserByUsername()
@@ -83,7 +97,7 @@ public class AuthServiceImpl implements AuthService {
         try {
             authentication = authenticationManager.authenticate(authToken);
         } catch (AuthenticationException e) {
-            handleLoginFailure(username);
+            handleLoginFailure(username, httpRequest);
             throw e;
         }
 
@@ -97,6 +111,10 @@ public class AuthServiceImpl implements AuthService {
 
         // 5. 注册在线会话（key = refresh token 的 jti，TTL = refresh 剩余有效期）
         registerOnlineSession(securityUser, accessToken, refreshToken, httpRequest);
+
+        // 6. 登录日志（异步落库）
+        publishLogininfor(securityUser.getUsername(), securityUser.getUserId(),
+                "登录成功", LogininforEvent.STATUS_SUCCESS, httpRequest);
 
         log.info("用户登录成功: {}", securityUser.getUsername());
 
@@ -194,17 +212,39 @@ public class AuthServiceImpl implements AuthService {
                 .build();
     }
 
+    /**
+     * 自助修改密码：原密码确认 → 新密码复杂度策略校验 → 更新并失效安全用户缓存。
+     *
+     * <p>复用 {@code UserService#resetPassword}（内部已走 {@code PasswordPolicyValidator}
+     * 校验与 UserChangedEvent 缓存失效）。当前 Access Token 不强制下线，保留至自然过期。</p>
+     */
+    @Override
+    public void changePassword(String username, ChangePasswordRequest request) {
+        UserEntity user = userService.findByUsername(username);
+        if (user == null) {
+            throw new RuntimeException("用户不存在: " + username);
+        }
+        // 原密码确认（失败文案与登录失败口径一致，不暴露额外信息）
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
+            throw new BadCredentialsException("原密码错误");
+        }
+        userService.resetPassword(user.getId(), request.getNewPassword());
+        log.info("用户自助修改密码成功: {}", username);
+    }
+
     // ==================== 登录防暴力破解 ====================
 
     /**
      * 锁定前置检查：锁定期内直接拒绝并提示剩余时间。
      */
-    private void checkLocked(String username) {
+    private void checkLocked(String username, HttpServletRequest request) {
         String lockKey = CacheConstants.LOGIN_LOCK_KEY + username;
         if (redisService.hasKey(lockKey)) {
             long ttlSeconds = Math.max(redisService.getExpire(lockKey), 0);
             long minutes = (ttlSeconds + 59) / 60;
-            throw new RuntimeException("登录失败次数过多，账号已锁定，请 " + minutes + " 分钟后再试");
+            String msg = "登录失败次数过多，账号已锁定，请 " + minutes + " 分钟后再试";
+            publishLogininfor(username, null, "账号锁定中", LogininforEvent.STATUS_FAILURE, request);
+            throw new RuntimeException(msg);
         }
     }
 
@@ -214,10 +254,11 @@ public class AuthServiceImpl implements AuthService {
      * <p>计数窗口滑动刷新：每次失败都重置 TTL，避免进程在 increment 后
      * 崩溃留下永久无 TTL 的计数 key。</p>
      */
-    private void handleLoginFailure(String username) {
+    private void handleLoginFailure(String username, HttpServletRequest request) {
         int maxFailures = authProperties.getMaxLoginFailures();
         // 0=不启用锁定
         if (maxFailures <= 0) {
+            publishLogininfor(username, null, "用户名或密码错误", LogininforEvent.STATUS_FAILURE, request);
             return;
         }
         Duration window = Duration.ofMinutes(authProperties.getLockDurationMinutes());
@@ -227,9 +268,29 @@ public class AuthServiceImpl implements AuthService {
         if (fails >= maxFailures) {
             redisService.set(CacheConstants.LOGIN_LOCK_KEY + username, "1", window);
             redisService.delete(failKey);
-            throw new RuntimeException("密码错误次数已达 " + maxFailures + " 次，账号锁定 "
-                    + authProperties.getLockDurationMinutes() + " 分钟");
+            String msg = "密码错误次数已达 " + maxFailures + " 次，账号锁定 "
+                    + authProperties.getLockDurationMinutes() + " 分钟";
+            publishLogininfor(username, null, msg, LogininforEvent.STATUS_FAILURE, request);
+            throw new RuntimeException(msg);
         }
+        publishLogininfor(username, null, "用户名或密码错误", LogininforEvent.STATUS_FAILURE, request);
+    }
+
+    /**
+     * 发布登录日志事件：IP / UA 在请求线程快照进事件（异步线程无请求上下文）。
+     */
+    private void publishLogininfor(String username, Long userId, String msg,
+                                   int status, HttpServletRequest request) {
+        String userAgent = request.getHeader("User-Agent");
+        eventPublisher.publishEvent(new LogininforEvent(
+                username,
+                userId,
+                WebUtils.getClientIp(request),
+                UserAgentUtils.getBrowser(userAgent),
+                UserAgentUtils.getOperatingSystem(userAgent),
+                status,
+                msg,
+                LocalDateTime.now()));
     }
 
     // ==================== 在线会话注册表 ====================

@@ -1,5 +1,6 @@
 package com.gj.llm.base.service;
 
+import com.gj.llm.base.model.ChangePasswordRequest;
 import com.gj.llm.base.model.LoginRequest;
 import com.gj.llm.base.model.LoginResponse;
 import com.gj.llm.base.model.UserInfoResponse;
@@ -44,4 +45,15 @@ public interface AuthService {
      * @return 用户信息响应
      */
     UserInfoResponse getCurrentUserInfo();
+
+    /**
+     * 自助修改密码：校验原密码 + 新密码复杂度策略，通过后更新并失效安全用户缓存。
+     *
+     * <p>本人自服务接口（登录即可调用，无需权限点）。当前已签发的 Access Token
+     * 不强制下线，保留至自然过期。</p>
+     *
+     * @param username 当前登录用户名
+     * @param request  原密码 + 新密码
+     */
+    void changePassword(String username, ChangePasswordRequest request);
 }

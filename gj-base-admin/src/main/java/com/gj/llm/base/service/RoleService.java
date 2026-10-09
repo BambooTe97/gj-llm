@@ -36,6 +36,9 @@ public interface RoleService extends IService<RoleEntity> {
     /** 查询角色已分配的菜单 ID 列表 */
     List<Long> getRoleMenuIds(Long roleId);
 
+    /** 查询角色数据权限已分配的部门 ID 列表（dataScope=2 自定义档） */
+    List<Long> getRoleDeptIds(Long roleId);
+
     /** 删除菜单时，清理所有角色与该菜单的关联（供 MenuService 调用） */
     void removeMenuFromAllRoles(Long menuId);
 }

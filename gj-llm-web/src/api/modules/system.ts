@@ -46,12 +46,12 @@ export const roleApi = {
   },
 
   /** 创建角色 */
-  create(data: { name: string; code: string; description?: string }): Promise<ApiResult<Role>> {
+  create(data: { name: string; code: string; description?: string; dataScope?: number; deptIds?: number[] }): Promise<ApiResult<Role>> {
     return http.post('/roles', data)
   },
 
   /** 更新角色（code 不可改） */
-  update(id: number, data: { name?: string; description?: string }): Promise<ApiResult<Role>> {
+  update(id: number, data: { name?: string; description?: string; dataScope?: number; deptIds?: number[] }): Promise<ApiResult<Role>> {
     return http.put(`/roles/${id}`, data)
   },
 
@@ -63,6 +63,11 @@ export const roleApi = {
   /** 查询角色已分配的菜单 ID 列表 */
   getMenuIds(id: number): Promise<ApiResult<number[]>> {
     return http.get(`/roles/${id}/menu-ids`)
+  },
+
+  /** 查询角色数据权限已分配的部门 ID 列表（dataScope=2 自定义档） */
+  getDeptIds(id: number): Promise<ApiResult<number[]>> {
+    return http.get(`/roles/${id}/dept-ids`)
   },
 
   /** 为角色分配菜单（全量替换） */

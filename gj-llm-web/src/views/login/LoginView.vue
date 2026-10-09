@@ -3,6 +3,7 @@ import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/modules/user'
 import { HOME_PATH } from '@/constants'
+import SlideCaptcha from '@/components/SlideCaptcha/SlideCaptcha.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const route = useRoute()
@@ -10,6 +11,7 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const formRef = ref<FormInstance>()
+const captchaRef = ref<InstanceType<typeof SlideCaptcha>>()
 const loading = ref(false)
 const errorMessage = ref('')
 
@@ -30,12 +32,16 @@ async function handleLogin() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
   loading.value = true
-  const result = await userStore.login(form)
+  // 滑动验证码参数：开关关闭/未就绪时为 undefined，展开后安全跳过
+  const captchaPayload = captchaRef.value?.getData()
+  const result = await userStore.login({ ...form, ...captchaPayload })
   loading.value = false
   if (result.success) {
     router.push((route.query.redirect as string) || HOME_PATH)
   } else {
     errorMessage.value = result.message || '用户名或密码错误'
+    // 验证码一次性消费：无论失败原因，刷新拼图与滑块位置
+    captchaRef.value?.refresh()
   }
 }
 
@@ -422,6 +428,7 @@ onUnmounted(() => {
             show-password @keyup.enter="handleLogin"
           />
         </el-form-item>
+        <SlideCaptcha ref="captchaRef" />
         <el-form-item>
           <el-button type="primary" :loading="loading" style="width: 100%" @click="handleLogin">
             {{ loading ? '登录中...' : '登 录' }}

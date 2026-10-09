@@ -13,9 +13,11 @@ import com.gj.llm.base.mapper.UserMapper;
 import com.gj.llm.base.mapper.UserRoleMapper;
 import com.gj.llm.base.model.UserCreateRequest;
 import com.gj.llm.base.model.UserUpdateRequest;
+import com.gj.llm.base.service.DataScopeService;
 import com.gj.llm.base.service.RoleService;
 import com.gj.llm.base.service.SysDeptService;
 import com.gj.llm.base.service.UserService;
+import com.gj.llm.base.util.PasswordPolicyValidator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -45,16 +47,22 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     private final UserRoleMapper userRoleMapper;
     private final RoleService roleService;
     private final SysDeptService sysDeptService;
+    private final DataScopeService dataScopeService;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordPolicyValidator passwordPolicyValidator;
     private final ApplicationEventPublisher eventPublisher;
 
     public UserServiceImpl(UserRoleMapper userRoleMapper, RoleService roleService,
-                           SysDeptService sysDeptService, PasswordEncoder passwordEncoder,
+                           SysDeptService sysDeptService, DataScopeService dataScopeService,
+                           PasswordEncoder passwordEncoder,
+                           PasswordPolicyValidator passwordPolicyValidator,
                            ApplicationEventPublisher eventPublisher) {
         this.userRoleMapper = userRoleMapper;
         this.roleService = roleService;
         this.sysDeptService = sysDeptService;
+        this.dataScopeService = dataScopeService;
         this.passwordEncoder = passwordEncoder;
+        this.passwordPolicyValidator = passwordPolicyValidator;
         this.eventPublisher = eventPublisher;
     }
 
@@ -73,6 +81,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     public IPage<UserEntity> page(long pageNum, long size, String keyword, Long deptId) {
         Page<UserEntity> page = new Page<>(pageNum, size);
         LambdaQueryWrapper<UserEntity> wrapper = new LambdaQueryWrapper<>();
+        // 数据权限域过滤（AND 交集）—— 须在最前，所有后续条件都在域内收窄
+        dataScopeService.applyUserScope(wrapper);
         // 按部门（含下级）过滤 —— 须在关键字 OR 组之前，避免 OR 优先级破坏部门条件
         if (deptId != null) {
             wrapper.in(UserEntity::getDeptId, sysDeptService.listSubtreeIds(deptId));
@@ -109,6 +119,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     @Override
     @Transactional
     public UserEntity create(UserCreateRequest request) {
+        // 密码复杂度策略统一校验（失败 → 400 + 可读文案）
+        passwordPolicyValidator.validate(request.getPassword(), request.getUsername());
+
         long count = count(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getUsername, request.getUsername()));
         if (count > 0) {
             throw new RuntimeException("用户名已存在: " + request.getUsername());
@@ -184,6 +197,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         if (user == null) {
             throw new RuntimeException("用户不存在: id=" + id);
         }
+        // 管理员重置同样走复杂度策略（自助改密也复用本方法）
+        passwordPolicyValidator.validate(newPassword, user.getUsername());
         user.setPassword(passwordEncoder.encode(newPassword));
         updateById(user);
         log.info("重置密码成功: {}", user.getUsername());

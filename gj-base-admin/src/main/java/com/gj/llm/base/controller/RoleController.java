@@ -23,6 +23,7 @@ import java.util.List;
  *   <li>PUT    /api/roles/{id}         - 更新角色</li>
  *   <li>DELETE /api/roles/{id}         - 删除角色</li>
  *   <li>GET    /api/roles/{id}/menu-ids - 角色已分配菜单 ID</li>
+ *   <li>GET    /api/roles/{id}/dept-ids - 角色数据权限已分配部门 ID（dataScope=2）</li>
  *   <li>PUT    /api/roles/{id}/menus   - 为角色分配菜单</li>
  * </ul>
  *
@@ -68,6 +69,12 @@ public class RoleController {
     @GetMapping("/{id}/menu-ids")
     public R<List<Long>> roleMenuIds(@PathVariable Long id) {
         return R.ok(roleService.getRoleMenuIds(id));
+    }
+
+    /** 查询角色数据权限已分配的部门 ID 列表（自定义部门档编辑回显用） */
+    @GetMapping("/{id}/dept-ids")
+    public R<List<Long>> roleDeptIds(@PathVariable Long id) {
+        return R.ok(roleService.getRoleDeptIds(id));
     }
 
     /** 为角色分配菜单（全量替换） */

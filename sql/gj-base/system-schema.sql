@@ -1,9 +1,9 @@
 -- ============================================================
 -- gj-base-admin 系统增强四件套 Schema
--- 部门管理 / 字典管理 / 参数配置 / 操作日志
+-- 部门管理 / 字典管理 / 参数配置 / 操作日志 / 登录日志 / 角色数据域
 --
 -- 幂等脚本：可重复执行（CREATE TABLE IF NOT EXISTS + INSERT IGNORE）
--- 菜单 ID 分配：C 行 2005-2009，B 行 25xx/26xx/27xx/2801/2901，全局 B 行 4100/4101
+-- 菜单 ID 分配：C 行 2005-2010，B 行 25xx/26xx/27xx/2801/2901/3001，全局 B 行 4100/4101
 -- 注意：本脚本需在应用启动【之前】执行 —— ApiAutoLinker 启动时按
 --       sys_menu.perms 建立 sys_menu_api 权限链接。
 -- ============================================================
@@ -183,3 +183,55 @@ WHERE id BETWEEN 2005 AND 2009
 INSERT IGNORE INTO sys_role_menu (role_id, menu_id) VALUES
 (2, 4100),
 (2, 4101);
+
+-- ----------------------------
+-- 11. 登录日志表（异步落库，记录每次登录尝试的成功/失败；userId 可空——失败尝试的用户可能不存在）
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS sys_logininfor (
+    id         BIGINT       NOT NULL                COMMENT '主键（应用侧雪花ID）',
+    username   VARCHAR(50)  NOT NULL DEFAULT ''     COMMENT '登录账号（尝试值，可能不存在）',
+    user_id    BIGINT       NULL                    COMMENT '用户ID（可空：失败尝试的用户可能不存在）',
+    ip         VARCHAR(64)  NOT NULL DEFAULT ''     COMMENT '客户端 IP',
+    browser    VARCHAR(50)  NOT NULL DEFAULT ''     COMMENT '浏览器',
+    os         VARCHAR(50)  NOT NULL DEFAULT ''     COMMENT '操作系统',
+    status     TINYINT      NOT NULL DEFAULT 0      COMMENT '登录状态（1=成功 0=失败）',
+    msg        VARCHAR(255) NOT NULL DEFAULT ''     COMMENT '提示消息（登录成功/用户名或密码错误/账号锁定中...）',
+    login_time DATETIME     NOT NULL                COMMENT '登录时间（应用侧写入）',
+    PRIMARY KEY (id),
+    KEY idx_login_time (login_time),
+    KEY idx_login_username (username),
+    KEY idx_login_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='登录日志表';
+
+-- ----------------------------
+-- 12. 菜单种子：登录日志 C 行（2010）+ 日志清空 B 行（3001）
+-- ----------------------------
+INSERT IGNORE INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_by) VALUES
+(2010, 2000, '登录日志', 'C', '/system/login-log', 'system/log/LoginLogManage', 'system:loginlog:list', 'Key', 10, 1, 1, 'system');
+
+INSERT IGNORE INTO sys_menu (id, parent_id, name, type, perms, sort, visible, status, create_by) VALUES
+(3001, 2010, '日志清空', 'B', 'system:loginlog:clear', 1, 0, 1, 'system');
+
+INSERT IGNORE INTO sys_role_menu (role_id, menu_id) VALUES
+(1, 2010),
+(1, 3001);
+
+-- ----------------------------
+-- 13. 数据权限：sys_role 增加数据范围列（幂等 ALTER）+ 角色自定义部门关联表
+--     data_scope 默认 1=全部，存量角色行为不变；2=自定义（生效范围见 sys_role_dept）
+-- ----------------------------
+SET @scope_col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sys_role' AND COLUMN_NAME = 'data_scope');
+SET @scope_ddl = IF(@scope_col_exists = 0,
+    'ALTER TABLE sys_role ADD COLUMN data_scope TINYINT NOT NULL DEFAULT 1 COMMENT ''数据范围（1=全部 2=自定义 3=本部门 4=本部门及以下 5=仅本人）''',
+    'SELECT 1');
+PREPARE scope_stmt FROM @scope_ddl;
+EXECUTE scope_stmt;
+DEALLOCATE PREPARE scope_stmt;
+
+CREATE TABLE IF NOT EXISTS sys_role_dept (
+    role_id BIGINT NOT NULL COMMENT '角色ID',
+    dept_id BIGINT NOT NULL COMMENT '部门ID（data_scope=2 自定义范围生效）',
+    PRIMARY KEY (role_id, dept_id),
+    KEY idx_role_dept_dept (dept_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色自定义数据域-部门关联表';

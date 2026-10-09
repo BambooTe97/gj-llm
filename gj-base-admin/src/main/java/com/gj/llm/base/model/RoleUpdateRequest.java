@@ -3,6 +3,8 @@ package com.gj.llm.base.model;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * 更新角色请求 DTO。
  *
@@ -20,4 +22,10 @@ public class RoleUpdateRequest {
     /** 角色描述 */
     @Size(max = 200, message = "描述最长 200 个字符")
     private String description;
+
+    /** 数据权限域（五档）：1=全部 2=自定义部门 3=本部门 4=本部门及以下 5=仅本人；null 不变更 */
+    private Integer dataScope;
+
+    /** 自定义部门 ID 集合（仅 dataScope=2 生效；≠2 时清空已有部门关联） */
+    private List<Long> deptIds;
 }

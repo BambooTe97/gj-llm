@@ -31,9 +31,12 @@ app:
   security:
     jwt:
       # JWT 签名密钥（Base64 编码，至少 256 bit）
-      # 留空时应用自动生成随机密钥（仅开发环境，重启后所有 Token 失效）
-      # 生产环境务必配置固定密钥：secret: ${JWT_SECRET}
-      secret: ""
+      # 生产环境必须配置固定密钥（多实例部署所有实例必须一致）：
+      #   方式一：直接写 Base64 值    secret: <base64-key>
+      #   方式二：环境变量注入        secret: ${JWT_SECRET}
+      # 生成方式示例：openssl rand -base64 32
+      # 留空时自动生成临时密钥（仅限开发，服务重启后所有 Token 失效）
+      secret: QKVU5zsJYDzdi0V4aah27uVDAZTVLrpzpZGa8FRrLTk=
       # Access Token 有效期（毫秒），默认 24 小时
       access-token-expiration: 86400000
       # Refresh Token 有效期（毫秒），默认 7 天
@@ -42,6 +45,7 @@ app:
     ignore-paths:
       - /api/auth/login
       - /api/auth/refresh
+      - /api/captcha/**
       - /open/**
 
 # ==================== Netty 长连接基座（gj-netty） ====================
@@ -54,6 +58,24 @@ gj:
       # max-login-failures: 5
       # 失败计数滑动窗口与账号锁定时长（分钟）
       # lock-duration-minutes: 30
+      # 密码复杂度策略（创建用户/管理员重置/自助改密统一校验）
+      # password-policy:
+      #   enabled: true          # 是否启用复杂度校验
+      #   min-length: 8          # 最小长度
+      #   max-length: 100        # 最大长度
+      #   min-categories: 3      # 大写/小写/数字/特殊字符四类至少包含几类
+      #   forbid-username: true  # 是否禁止密码包含用户名
+    captcha:
+      # 滑动验证码开关（关闭后登录不校验、前端不渲染滑块；开关唯一真源在后端）
+      enabled: true
+      # 验证码有效期（秒），超时需刷新
+      # expire-seconds: 120
+      # 滑块位置校验容差（像素）
+      # tolerance-px: 5
+      # 单个验证码最大失败尝试次数，达到后作废并要求刷新
+      # max-attempts: 3
+      # 单 IP 每分钟最大生成次数（防刷）
+      # gen-limit-per-minute: 30
   netty:
     enabled: true
     # port: 9090

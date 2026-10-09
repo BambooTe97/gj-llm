@@ -1,10 +1,12 @@
 package com.gj.llm.base.controller;
 
 import com.gj.llm.base.annotation.OperLog;
+import com.gj.llm.base.model.ChangePasswordRequest;
 import com.gj.llm.base.model.LoginRequest;
 import com.gj.llm.base.model.LoginResponse;
 import com.gj.llm.base.model.UserInfoResponse;
 import com.gj.llm.base.service.AuthService;
+import com.gj.llm.common.util.SecurityUtils;
 import com.gj.llm.common.web.R;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -13,13 +15,14 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * 认证控制器 —— 提供登录、登出、Token 刷新接口。
+ * 认证控制器 —— 提供登录、登出、Token 刷新、自助修改密码接口。
  *
  * <h3>接口列表</h3>
  * <ul>
  *   <li>POST /api/auth/login   — 登录</li>
  *   <li>POST /api/auth/logout  — 登出（需 Bearer Token）</li>
  *   <li>POST /api/auth/refresh — 刷新 Access Token（需 Refresh Token）</li>
+ *   <li>POST /api/auth/change-password — 自助修改密码（登录即可，本人自服务）</li>
  * </ul>
  *
  * @author gj-llm
@@ -102,5 +105,21 @@ public class AuthController {
     @GetMapping("/userinfo")
     public R<UserInfoResponse> userinfo() {
         return R.ok(authService.getCurrentUserInfo());
+    }
+
+    /**
+     * 自助修改密码。
+     *
+     * <p>登录即可调用（无需权限点，与 userinfo/logout 同语义）。
+     * 校验原密码与新密码复杂度策略，改密后当前 Token 保留至自然过期。</p>
+     *
+     * @param request {oldPassword, newPassword}
+     * @return 成功响应
+     */
+    @OperLog(module = "认证管理", type = "修改密码")
+    @PostMapping("/change-password")
+    public R<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(SecurityUtils.getCurrentUsername(), request);
+        return R.ok(null, "密码修改成功");
     }
 }

@@ -111,7 +111,10 @@ public class ApiAutoLinker implements ApplicationRunner {
                     "DELETE", "system:log:clear")),
             Map.entry("OnlineUserController", Map.of(
                     "GET", "system:online:list",
-                    "DELETE", "system:online:forceLogout"))
+                    "DELETE", "system:online:forceLogout")),
+            Map.entry("LoginLogController", Map.of(
+                    "GET", "system:loginlog:list",
+                    "DELETE", "system:loginlog:clear"))
     );
 
     /**
@@ -125,7 +128,7 @@ public class ApiAutoLinker implements ApplicationRunner {
     }
 
     private static final List<PathRule> PATH_RULES = List.of(
-            // ---- 知识库详情页功能（权限点见 sql/gj-base/dataset-detail-perms.sql） ----
+            // ---- 知识库详情页功能（权限点见 sql/gj-base/auth-schema.sql 文末对应段） ----
             new PathRule("DatasetController", "POST", "/api/v1/datasets/*/documents/upload", "dataset:doc:upload"),
             new PathRule("DatasetController", "DELETE", "/api/v1/datasets/*/documents/*", "dataset:doc:delete"),
             new PathRule("DatasetController", "POST", "/api/v1/datasets/*/documents/*/reparse", "dataset:doc:reparse"),

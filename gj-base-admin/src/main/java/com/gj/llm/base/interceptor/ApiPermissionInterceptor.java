@@ -40,13 +40,15 @@ public class ApiPermissionInterceptor implements HandlerInterceptor {
     private final ApiPermissionCache cache;
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
 
-    /** 免权限校验路径（/open 与 login/refresh 免登录；userinfo/logout 需登录免权限） */
+    /** 免权限校验路径（/open 与 login/refresh/captcha 免登录；userinfo/logout/change-password 需登录免权限） */
     private static final List<String> WHITELIST = List.of(
             "/open/**",
             "/api/auth/login",
             "/api/auth/refresh",
             "/api/auth/userinfo",
-            "/api/auth/logout"
+            "/api/auth/logout",
+            "/api/auth/change-password",
+            "/api/captcha/**"
     );
 
     @Override

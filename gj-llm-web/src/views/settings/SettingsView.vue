@@ -1,9 +1,105 @@
 <script setup lang="ts">
+import { computed, reactive, ref } from 'vue'
+import { ElMessage, type FormInstance, type FormItemRule, type FormRules } from 'element-plus'
+import { authApi } from '@/api/modules/auth'
+import { passwordStrengthRule } from '@/utils/password'
+
+defineOptions({ name: 'SettingsView' })
+
+// ---- 修改密码 ----
+const pwdFormRef = ref<FormInstance>()
+const pwdSubmitting = ref(false)
+const pwdForm = reactive({
+  oldPassword: '',
+  newPassword: '',
+  confirmPassword: '',
+})
+
+const pwdRules = computed<FormRules>(() => ({
+  oldPassword: [{ required: true, message: '请输入原密码', trigger: 'blur' }],
+  newPassword: [
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    passwordStrengthRule(),
+  ],
+  confirmPassword: [
+    { required: true, message: '请再次输入新密码', trigger: 'blur' },
+    {
+      validator: (_rule: FormItemRule, value: string, callback) => {
+        if (value && value !== pwdForm.newPassword) {
+          callback(new Error('两次输入的新密码不一致'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+}))
+
+async function handleChangePassword() {
+  const valid = await pwdFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+  pwdSubmitting.value = true
+  try {
+    await authApi.changePassword({ oldPassword: pwdForm.oldPassword, newPassword: pwdForm.newPassword })
+    ElMessage.success('密码修改成功')
+    pwdFormRef.value?.resetFields()
+  } catch {
+    // 拦截器统一处理错误提示
+  } finally {
+    pwdSubmitting.value = false
+  }
+}
 </script>
 
 <template>
   <div class="settings-view">
     <h2>系统设置</h2>
+
+    <div class="glass-card">
+      <div class="glass-card__header">
+        <span>修改密码</span>
+      </div>
+      <div class="glass-card__body">
+        <el-form
+          ref="pwdFormRef"
+          class="pwd-form"
+          :model="pwdForm"
+          :rules="pwdRules"
+          label-position="top"
+          @submit.prevent
+        >
+          <el-form-item label="原密码" prop="oldPassword">
+            <el-input
+              v-model="pwdForm.oldPassword"
+              type="password"
+              show-password
+              placeholder="请输入原密码"
+            />
+          </el-form-item>
+          <el-form-item label="新密码" prop="newPassword">
+            <el-input
+              v-model="pwdForm.newPassword"
+              type="password"
+              show-password
+              placeholder="至少 8 位，含大写字母、小写字母、数字、特殊字符中的 3 类"
+            />
+          </el-form-item>
+          <el-form-item label="确认新密码" prop="confirmPassword">
+            <el-input
+              v-model="pwdForm.confirmPassword"
+              type="password"
+              show-password
+              placeholder="请再次输入新密码"
+              @keyup.enter="handleChangePassword"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="pwdSubmitting" @click="handleChangePassword">保存</el-button>
+          </el-form-item>
+        </el-form>
+      </div>
+    </div>
 
     <div class="glass-card">
       <div class="glass-card__header">
@@ -66,6 +162,11 @@
   &__body {
     padding: 16px 24px;
   }
+}
+
+// ---- 修改密码表单 ----
+.pwd-form {
+  max-width: 360px;
 }
 
 .about-info {

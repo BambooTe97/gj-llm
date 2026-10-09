@@ -39,7 +39,9 @@ public class SecurityProperties {
 
         /**
          * JWT 签名密钥（HMAC-SHA256），Base64 编码。
-         * 留空则应用启动时自动生成随机 256-bit 密钥（仅适合开发环境）。
+         * 生产环境必须配置（可用环境变量注入，如 {@code ${JWT_SECRET}}）；
+         * 多实例部署所有实例必须使用同一密钥，否则跨实例验签失败。
+         * 留空时自动生成临时密钥，服务重启后所有 Token 失效。
          */
         private String secret = "";
 

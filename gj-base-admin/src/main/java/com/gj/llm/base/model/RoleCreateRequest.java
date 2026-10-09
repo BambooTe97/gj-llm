@@ -4,6 +4,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * 创建角色请求 DTO。
  *
@@ -25,4 +27,13 @@ public class RoleCreateRequest {
     /** 角色描述 */
     @Size(max = 200, message = "描述最长 200 个字符")
     private String description;
+
+    /**
+     * 数据权限域（五档，{@link com.gj.llm.base.entity.RoleEntity} 档位常量）：
+     * 1=全部 2=自定义部门 3=本部门 4=本部门及以下 5=仅本人；null 按 1 处理
+     */
+    private Integer dataScope;
+
+    /** 自定义部门 ID 集合（仅 dataScope=2 生效） */
+    private List<Long> deptIds;
 }

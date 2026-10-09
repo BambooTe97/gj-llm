@@ -1,14 +1,41 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { Plus, Delete, EditPen } from '@element-plus/icons-vue'
+import { Plus, Delete, EditPen, Expand, Fold } from '@element-plus/icons-vue'
 import { apiApi, menuApi } from '@/api/modules/system'
 import type { ApiItem, Menu, MenuType } from '@/api/types'
 
 const treeData = ref<Menu[]>([])
 const apiList = ref<ApiItem[]>([])
 const loading = ref(false)
+
+// ==================== 树展开控制 ====================
+// smart：目录+菜单默认展开、按钮层收起（按钮行多且重复，默认折叠降噪）
+type ExpandMode = 'smart' | 'all' | 'none'
+const expandMode = ref<ExpandMode>('smart')
+/** 展开状态切换时重挂载表格，让 default 类属性重新生效 */
+const tableKey = ref(0)
+/** M+C 层级 id（smart 模式展开用） */
+const dirMenuIds = ref<string[]>([])
+/** 全部节点 id（全部展开用） */
+const allIds = ref<string[]>([])
+
+const expandRowKeys = computed(() =>
+  expandMode.value === 'all' ? allIds.value : expandMode.value === 'none' ? [] : dirMenuIds.value,
+)
+
+function toggleExpand() {
+  expandMode.value = expandMode.value === 'all' ? 'none' : 'all'
+  tableKey.value++
+}
+
+function collectIds(nodes: Menu[], includeButtons: boolean, acc: string[]): void {
+  nodes.forEach((n) => {
+    if (includeButtons || n.type !== 'B') acc.push(String(n.id))
+    if (n.children?.length) collectIds(n.children, includeButtons, acc)
+  })
+}
 
 const drawerVisible = ref(false)
 const drawerTitle = ref('')
@@ -50,6 +77,10 @@ async function loadTree() {
   try {
     const res = await menuApi.getTree()
     treeData.value = res.data.data || []
+    dirMenuIds.value = []
+    allIds.value = []
+    collectIds(treeData.value, true, dirMenuIds.value)
+    collectIds(treeData.value, false, allIds.value)
     parentTreeData.value = [
       { id: 0, parentId: -1, name: '顶层', type: 'M', sort: 0, visible: 1, status: 1, children: treeData.value } as Menu,
     ]
@@ -163,18 +194,24 @@ onMounted(() => {
   <div class="page">
     <div class="page-header">
       <h2>菜单管理</h2>
-      <el-button type="primary" :icon="Plus" v-permission="'system:menu:add'" @click="handleCreate()">
-        新增顶级菜单
-      </el-button>
+      <div class="page-header__actions">
+        <el-button :icon="expandMode === 'all' ? Fold : Expand" @click="toggleExpand">
+          {{ expandMode === 'all' ? '折叠全部' : '展开全部' }}
+        </el-button>
+        <el-button type="primary" :icon="Plus" v-permission="'system:menu:add'" @click="handleCreate()">
+          新增顶级菜单
+        </el-button>
+      </div>
     </div>
 
     <el-table
+      :key="tableKey"
       :data="treeData"
       v-loading="loading"
       row-key="id"
       :tree-props="{ children: 'children' }"
+      :expand-row-keys="expandRowKeys"
       border
-      default-expand-all
       class="page-table"
     >
       <el-table-column prop="name" label="菜单名称" min-width="180" />
@@ -307,6 +344,11 @@ onMounted(() => {
     font-weight: 700;
     color: #1d1d1f;
     margin: 0;
+  }
+  &__actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
   }
 }
 .page-table {

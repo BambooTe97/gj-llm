@@ -195,7 +195,7 @@ onMounted(loadList)
       <el-table-column label="操作" width="90" fixed="right">
         <template #default="{ row }">
           <div class="op-cell">
-            <el-button text type="danger" size="small" :icon="Delete" @click="handleRemove(row)">删除</el-button>
+            <el-button v-permission="'notify:manage'" text type="danger" size="small" :icon="Delete" @click="handleRemove(row)">删除</el-button>
           </div>
         </template>
       </el-table-column>

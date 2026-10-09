@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { Plus, Delete, EditPen, Share } from '@element-plus/icons-vue'
 import { roleApi, menuApi } from '@/api/modules/system'
+import { deptApi, type SysDept } from '@/api/modules/dept'
 import type { Menu, Role } from '@/api/types'
 
 const list = ref<Role[]>([])
@@ -16,7 +17,17 @@ const saving = ref(false)
 const isEdit = ref(false)
 const editId = ref<number | null>(null)
 
-const form = ref({ name: '', code: '', description: '' })
+// ---- 数据范围（角色数据权限五档，与后端 RoleEntity 档位常量对齐） ----
+const DATA_SCOPES = [
+  { value: 1, label: '全部数据' },
+  { value: 2, label: '自定义部门' },
+  { value: 3, label: '本部门' },
+  { value: 4, label: '本部门及以下' },
+  { value: 5, label: '仅本人' },
+]
+
+const form = ref({ name: '', code: '', description: '', dataScope: 1, deptIds: [] as number[] })
+const deptTree = ref<SysDept[]>([])
 
 const rules: FormRules = {
   name: [{ required: true, message: '请输入角色名称', trigger: 'blur' }],
@@ -45,20 +56,46 @@ async function loadMenuTree() {
   menuTreeData.value = res.data.data || []
 }
 
+async function loadDeptTree() {
+  if (deptTree.value.length) return
+  try {
+    deptTree.value = await deptApi.tree()
+  } catch {
+    /* 拦截器统一处理 */
+  }
+}
+
 function handleCreate() {
   isEdit.value = false
   editId.value = null
   drawerTitle.value = '新增角色'
-  form.value = { name: '', code: '', description: '' }
+  form.value = { name: '', code: '', description: '', dataScope: 1, deptIds: [] }
+  void loadDeptTree()
   drawerVisible.value = true
 }
 
-function handleEdit(row: any) {
+async function handleEdit(row: any) {
   isEdit.value = true
   editId.value = row.id
   drawerTitle.value = '编辑角色'
-  form.value = { name: row.name, code: row.code, description: row.description || '' }
+  form.value = {
+    name: row.name,
+    code: row.code,
+    description: row.description || '',
+    dataScope: row.dataScope ?? 1,
+    deptIds: [],
+  }
+  void loadDeptTree()
   drawerVisible.value = true
+  // 自定义部门档回显已选部门
+  if (form.value.dataScope === 2) {
+    try {
+      const res = await roleApi.getDeptIds(row.id)
+      form.value.deptIds = (res.data.data || []) as number[]
+    } catch {
+      /* 拦截器统一处理 */
+    }
+  }
 }
 
 async function handleSubmit() {
@@ -66,11 +103,17 @@ async function handleSubmit() {
   if (!valid) return
   saving.value = true
   try {
+    const payload = {
+      name: form.value.name,
+      description: form.value.description,
+      dataScope: form.value.dataScope,
+      deptIds: form.value.dataScope === 2 ? form.value.deptIds : [],
+    }
     if (isEdit.value && editId.value) {
-      await roleApi.update(editId.value, { name: form.value.name, description: form.value.description })
+      await roleApi.update(editId.value, payload)
       ElMessage.success('更新成功')
     } else {
-      await roleApi.create({ name: form.value.name, code: form.value.code, description: form.value.description })
+      await roleApi.create({ ...payload, code: form.value.code })
       ElMessage.success('创建成功')
     }
     drawerVisible.value = false
@@ -200,6 +243,25 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="描述">
           <el-input v-model="form.description" type="textarea" :rows="3" placeholder="选填" />
+        </el-form-item>
+        <el-form-item label="数据范围">
+          <el-select v-model="form.dataScope" style="width: 100%">
+            <el-option v-for="s in DATA_SCOPES" :key="s.value" :label="s.label" :value="s.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="form.dataScope === 2" label="可见部门">
+          <el-tree-select
+            v-model="form.deptIds"
+            :data="deptTree"
+            node-key="id"
+            :props="{ label: 'name', children: 'children' }"
+            multiple
+            show-checkbox
+            check-strictly
+            default-expand-all
+            placeholder="选择该角色可见的部门"
+            style="width: 100%"
+          />
         </el-form-item>
       </el-form>
       <template #footer>

@@ -5,22 +5,37 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.gj.llm.base.entity.SysConfigEntity;
+import com.gj.llm.base.event.ConfigChangedEvent;
 import com.gj.llm.base.mapper.SysConfigMapper;
 import com.gj.llm.base.model.SysConfigCreateRequest;
 import com.gj.llm.base.model.SysConfigUpdateRequest;
 import com.gj.llm.base.service.SysConfigService;
+import com.gj.llm.redis.constant.CacheConstants;
+import com.gj.llm.redis.service.RedisService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+
 /**
  * 参数配置服务实现。
+ *
+ * <p>{@link #getByKey} 为全员高频消费端点，启用 Redis 读缓存
+ * （key={@code sys:config:key:{key}}，TTL 30 分钟兜底），增删改通过
+ * {@link ConfigChangedEvent} 事务提交后按键名失效（键名创建后不可改，删除按旧键失效）。</p>
  *
  * @author gj-llm
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class SysConfigServiceImpl extends ServiceImpl<SysConfigMapper, SysConfigEntity> implements SysConfigService {
+
+    private final RedisService redisService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public IPage<SysConfigEntity> page(long page, long size, String keyword) {
@@ -32,9 +47,18 @@ public class SysConfigServiceImpl extends ServiceImpl<SysConfigMapper, SysConfig
 
     @Override
     public SysConfigEntity getByKey(String key) {
-        return getOne(new LambdaQueryWrapper<SysConfigEntity>()
+        String cacheKey = CacheConstants.SYS_CONFIG_KEY + key;
+        SysConfigEntity cached = redisService.get(cacheKey, SysConfigEntity.class);
+        if (cached != null) {
+            return cached;
+        }
+        SysConfigEntity entity = getOne(new LambdaQueryWrapper<SysConfigEntity>()
                 .eq(SysConfigEntity::getConfigKey, key)
                 .last("LIMIT 1"));
+        if (entity != null) {
+            redisService.set(cacheKey, entity, Duration.ofMinutes(CacheConstants.SYS_CACHE_TTL_MINUTES));
+        }
+        return entity;
     }
 
     @Override
@@ -52,6 +76,7 @@ public class SysConfigServiceImpl extends ServiceImpl<SysConfigMapper, SysConfig
                 .remark(request.getRemark())
                 .build();
         save(entity);
+        eventPublisher.publishEvent(new ConfigChangedEvent(entity.getConfigKey()));
         log.info("创建参数: {}={}", entity.getConfigKey(), entity.getConfigValue());
         return entity;
     }
@@ -67,6 +92,7 @@ public class SysConfigServiceImpl extends ServiceImpl<SysConfigMapper, SysConfig
         entity.setConfigValue(request.getConfigValue() == null ? "" : request.getConfigValue());
         entity.setRemark(request.getRemark());
         updateById(entity);
+        eventPublisher.publishEvent(new ConfigChangedEvent(entity.getConfigKey()));
         log.info("更新参数: {}={}", entity.getConfigKey(), entity.getConfigValue());
         return entity;
     }
@@ -82,6 +108,7 @@ public class SysConfigServiceImpl extends ServiceImpl<SysConfigMapper, SysConfig
             throw new RuntimeException("内置参数不允许删除: " + entity.getConfigKey());
         }
         removeById(id);
+        eventPublisher.publishEvent(new ConfigChangedEvent(entity.getConfigKey()));
         log.info("删除参数: {}", entity.getConfigKey());
     }
 }
