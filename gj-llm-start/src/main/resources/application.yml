@@ -5,6 +5,14 @@ spring:
   profiles:
     active: ai, mybatis, file, redis
 
+  # ==================== 国际化 ====================
+  # basename 为中文默认文件（i18n/base_messages.properties 即兜底）；
+  # 后续模块加词条时新建 i18n/<module>_messages 并以逗号追加（多模块禁止同名 basename）
+  messages:
+    basename: i18n/base_messages
+    fallback-to-system-locale: false
+    encoding: UTF-8
+
   # ==================== 文件上传配置 ====================
   servlet:
     multipart:
@@ -76,6 +84,13 @@ gj:
       # max-attempts: 3
       # 单 IP 每分钟最大生成次数（防刷）
       # gen-limit-per-minute: 30
+    web:
+      # 是否信任 X-Forwarded-For / X-Real-IP 解析客户端 IP（仅部署在可信反向代理之后时开启；
+      # 直连部署时客户端可伪造该头，污染 IP 审计与验证码限流）
+      trust-xff: false
+    log:
+      # 审计日志（操作日志/登录日志）保留天数，每日 03:30 自动清理；0=关闭自动清理
+      retention-days: 90
   netty:
     enabled: true
     # port: 9090

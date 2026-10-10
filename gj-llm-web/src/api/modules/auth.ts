@@ -6,9 +6,9 @@ import type { CaptchaResponse, LoginRequest, LoginResponse, UserInfo } from '@/a
 type ApiResult<T> = AxiosResponse<ApiResponse<T>>
 
 export const authApi = {
-  /** 登录 */
+  /** 登录（silent：失败时全局拦截器不弹提示，由登录页在弹窗/表单内展示） */
   login(data: LoginRequest): Promise<ApiResult<LoginResponse>> {
-    return http.post('/auth/login', data)
+    return http.post('/auth/login', data, { silent: true })
   },
 
   /** 生成滑动验证码（免认证，登录页调用；开关关闭时返回 enabled:false） */

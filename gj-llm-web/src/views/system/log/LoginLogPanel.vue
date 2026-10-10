@@ -1,17 +1,6 @@
 <template>
-  <div class="page">
-    <div class="page-header">
-      <div class="page-header__title">
-        <h2>登录日志</h2>
-        <span class="page-header__desc">登录行为审计（成功/失败/锁定，含 IP 与终端信息，异步落库）</span>
-      </div>
-      <div class="page-header__actions">
-        <el-button :icon="Refresh" @click="loadList">刷新</el-button>
-        <el-button type="danger" :icon="Delete" v-permission="'system:loginlog:clear'" @click="handleClear">清空日志</el-button>
-      </div>
-    </div>
-
-    <div class="page-filter">
+  <div class="log-panel">
+    <div class="log-panel__toolbar">
       <el-input v-model="username" placeholder="登录账号" clearable style="width: 160px" @keyup.enter="handleSearch" />
       <el-input v-model="ip" placeholder="IP" clearable style="width: 140px" @keyup.enter="handleSearch" />
       <el-select v-model="status" placeholder="状态" clearable style="width: 120px" @change="handleSearch">
@@ -19,6 +8,10 @@
         <el-option label="失败" :value="0" />
       </el-select>
       <el-button type="primary" :icon="Search" @click="handleSearch">查询</el-button>
+      <div class="log-panel__actions">
+        <el-button :icon="Refresh" @click="loadList">刷新</el-button>
+        <el-button type="danger" :icon="Delete" v-permission="'system:loginlog:clear'" @click="handleClear">清空日志</el-button>
+      </div>
     </div>
 
     <el-table v-loading="loading" :data="list" class="page-table">
@@ -56,7 +49,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Refresh, Search } from '@element-plus/icons-vue'
 import { loginLogApi, type LoginLogItem } from '@/api/modules/loginlog'
 
-defineOptions({ name: 'LoginLogManage' })
+defineOptions({ name: 'LoginLogPanel' })
 
 const loading = ref(false)
 const list = ref<LoginLogItem[]>([])
@@ -109,38 +102,20 @@ onMounted(loadList)
 </script>
 
 <style scoped lang="scss">
-.page {
-  padding: 16px;
+.log-panel {
+  padding-top: 8px;
 
-  .page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
-
-    &__title {
-      h2 {
-        margin: 0 0 4px;
-        font-size: 18px;
-      }
-    }
-
-    &__desc {
-      font-size: 12px;
-      color: var(--el-text-color-secondary);
-    }
-
-    &__actions {
-      display: flex;
-      gap: 8px;
-    }
-  }
-
-  .page-filter {
+  .log-panel__toolbar {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-bottom: 14px;
+
+    .log-panel__actions {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+    }
   }
 
   .page-table {

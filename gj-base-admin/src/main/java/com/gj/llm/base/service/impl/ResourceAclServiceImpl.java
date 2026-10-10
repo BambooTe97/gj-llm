@@ -3,10 +3,11 @@ package com.gj.llm.base.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.gj.llm.base.entity.ResourceAclEntity;
+import com.gj.llm.base.event.AclChangedEvent;
 import com.gj.llm.base.mapper.ResourceAclMapper;
-import com.gj.llm.base.service.GrantService;
 import com.gj.llm.base.service.ResourceAclService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +15,9 @@ import java.util.List;
 
 /**
  * 资源授权服务实现 -- 通过 {@link ResourceAclMapper} 管理 {@code resource_acl}。
+ *
+ * <p>每次写后发布 {@link AclChangedEvent}，由 {@code GrantServiceImpl} 在事务提交后
+ * 失效 {@code auth:grants:*} 授权缓存（事务内直接删缓存会被并发读回填旧值）。</p>
  *
  * <p><b>红线</b>：不触碰 ThreadLocal，操作者 userId 由调用方显式传入。</p>
  *
@@ -24,7 +28,7 @@ import java.util.List;
 public class ResourceAclServiceImpl extends ServiceImpl<ResourceAclMapper, ResourceAclEntity>
         implements ResourceAclService {
 
-    private final GrantService grantService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -46,7 +50,7 @@ public class ResourceAclServiceImpl extends ServiceImpl<ResourceAclMapper, Resou
                 .createdBy(createdBy)
                 .build();
         save(entity);
-        grantService.invalidateAllGrants();
+        eventPublisher.publishEvent(new AclChangedEvent());
         return entity.getId();
     }
 
@@ -58,7 +62,7 @@ public class ResourceAclServiceImpl extends ServiceImpl<ResourceAclMapper, Resou
                 .eq(ResourceAclEntity::getResourceType, resourceType)
                 .eq(ResourceAclEntity::getResourceId, resourceId));
         if (deleted) {
-            grantService.invalidateAllGrants();
+            eventPublisher.publishEvent(new AclChangedEvent());
         }
         return deleted;
     }
@@ -78,7 +82,7 @@ public class ResourceAclServiceImpl extends ServiceImpl<ResourceAclMapper, Resou
                 .eq(ResourceAclEntity::getResourceType, resourceType)
                 .eq(ResourceAclEntity::getResourceId, resourceId));
         if (deleted > 0) {
-            grantService.invalidateAllGrants();
+            eventPublisher.publishEvent(new AclChangedEvent());
         }
         return deleted;
     }

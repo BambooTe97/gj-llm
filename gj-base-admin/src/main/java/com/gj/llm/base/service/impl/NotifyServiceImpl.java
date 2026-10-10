@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.gj.llm.common.exception.WarnBusinessException;
 import com.gj.llm.base.entity.NotifyEntity;
 import com.gj.llm.base.entity.UserEntity;
 import com.gj.llm.base.mapper.NotifyMapper;
@@ -13,6 +14,7 @@ import com.gj.llm.base.model.NotifyVO;
 import com.gj.llm.base.service.NotifyService;
 import com.gj.llm.base.service.UserService;
 import com.gj.llm.common.util.SecurityUtils;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.netty.protocol.MessageEnvelope;
 import com.gj.llm.netty.service.PushService;
 import lombok.RequiredArgsConstructor;
@@ -128,7 +130,7 @@ public class NotifyServiceImpl extends ServiceImpl<NotifyMapper, NotifyEntity> i
     @Override
     public NotifyVO createAndPush(Long targetUserId, String title, String content, String level) {
         if (targetUserId == null || userService.getById(targetUserId) == null) {
-            throw new RuntimeException("接收用户不存在: " + targetUserId);
+            throw new WarnBusinessException("notify.receiverNotFound", targetUserId);
         }
         String safeLevel = VALID_LEVELS.contains(level) ? level : "info";
 
@@ -160,11 +162,11 @@ public class NotifyServiceImpl extends ServiceImpl<NotifyMapper, NotifyEntity> i
     @Override
     public IPage<NotifyAdminVO> pageForAdmin(long page, long size, String keyword, String level, Integer readFlag) {
         IPage<NotifyEntity> result = page(new Page<>(page, size), new LambdaQueryWrapper<NotifyEntity>()
-                .and(keyword != null && !keyword.isBlank(), w -> w
+                .and(StringUtils.isNotBlank(keyword), w -> w
                         .like(NotifyEntity::getTitle, keyword)
                         .or()
                         .like(NotifyEntity::getContent, keyword))
-                .eq(level != null && !level.isBlank(), NotifyEntity::getLevel, level)
+                .eq(StringUtils.isNotBlank(level), NotifyEntity::getLevel, level)
                 .eq(readFlag != null, NotifyEntity::getReadFlag, readFlag)
                 .orderByDesc(NotifyEntity::getCreatedAt));
 

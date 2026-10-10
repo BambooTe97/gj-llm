@@ -1,5 +1,6 @@
 package com.gj.llm.base.service;
 
+import com.gj.llm.common.exception.WarnBusinessException;
 import com.gj.llm.base.model.OnlineUserRecord;
 import com.gj.llm.base.model.OnlineUserVO;
 import com.gj.llm.base.service.impl.SecurityUserServiceImpl;
@@ -69,6 +70,33 @@ public class OnlineUserService {
     }
 
     /**
+     * 按 tokenId 定位会话条目。
+     *
+     * @param tokenId 会话标识（Refresh Token 的 jti）
+     * @return 会话记录，不存在返回 null
+     */
+    public OnlineUserRecord findByTokenId(String tokenId) {
+        return redisService.get(CacheConstants.ONLINE_USER_KEY + tokenId, OnlineUserRecord.class);
+    }
+
+    /**
+     * 按 accessToken 定位会话条目（注册表按 refresh jti 键控，登出场景只能反向匹配）。
+     *
+     * @param accessToken access token
+     * @return 会话记录，不存在返回 null
+     */
+    public OnlineUserRecord findByAccessToken(String accessToken) {
+        List<String> keys = redisService.scanKeys(CacheConstants.ONLINE_USER_KEY + "*");
+        for (String key : keys) {
+            OnlineUserRecord record = redisService.get(key, OnlineUserRecord.class);
+            if (record != null && Objects.equals(accessToken, record.getAccessToken())) {
+                return record;
+            }
+        }
+        return null;
+    }
+
+    /**
      * 登出时移除会话条目。
      *
      * <p>注册表按 Refresh Token 的 jti 键控，登出只拿得到 Access Token，
@@ -77,13 +105,19 @@ public class OnlineUserService {
      * @param accessToken 当前登出的 Access Token
      */
     public void removeByAccessToken(String accessToken) {
-        List<String> keys = redisService.scanKeys(CacheConstants.ONLINE_USER_KEY + "*");
-        for (String key : keys) {
-            OnlineUserRecord record = redisService.get(key, OnlineUserRecord.class);
-            if (record != null && Objects.equals(accessToken, record.getAccessToken())) {
-                redisService.delete(key);
-            }
+        OnlineUserRecord record = findByAccessToken(accessToken);
+        if (record != null) {
+            remove(record.getTokenId());
         }
+    }
+
+    /**
+     * 按 tokenId 删除会话条目。
+     *
+     * @param tokenId 会话标识（Refresh Token 的 jti）
+     */
+    public void remove(String tokenId) {
+        redisService.delete(CacheConstants.ONLINE_USER_KEY + tokenId);
     }
 
     /**
@@ -123,12 +157,12 @@ public class OnlineUserService {
         String key = CacheConstants.ONLINE_USER_KEY + tokenId;
         OnlineUserRecord record = redisService.get(key, OnlineUserRecord.class);
         if (record == null) {
-            throw new RuntimeException("会话不存在或已下线");
+            throw new WarnBusinessException("online.sessionGone");
         }
         // 双 Token 均入黑名单：只拉黑 access 会被 refresh 继续换新
         blacklistQuietly(record.getAccessToken());
         blacklistQuietly(record.getRefreshToken());
-        redisService.delete(key);
+        remove(tokenId);
         // 失效 30 分钟的用户权限缓存，被禁用/被改角色的用户立即生效
         securityUserService.evict(record.getUsername());
         log.info("强制下线: username={}, tokenId={}", record.getUsername(), tokenId);

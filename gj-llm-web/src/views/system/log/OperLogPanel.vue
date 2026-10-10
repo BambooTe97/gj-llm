@@ -1,17 +1,6 @@
 <template>
-  <div class="page">
-    <div class="page-header">
-      <div class="page-header__title">
-        <h2>操作日志</h2>
-        <span class="page-header__desc">管理端写操作审计（@OperLog 切面自动记录，敏感字段已脱敏）</span>
-      </div>
-      <div class="page-header__actions">
-        <el-button :icon="Refresh" @click="loadList">刷新</el-button>
-        <el-button type="danger" :icon="Delete" v-permission="'system:log:clear'" @click="handleClear">清空日志</el-button>
-      </div>
-    </div>
-
-    <div class="page-filter">
+  <div class="log-panel">
+    <div class="log-panel__toolbar">
       <el-input v-model="module" placeholder="模块（如：认证管理）" clearable style="width: 180px" @keyup.enter="handleSearch" />
       <el-input v-model="operator" placeholder="操作人" clearable style="width: 150px" @keyup.enter="handleSearch" />
       <el-select v-model="status" placeholder="状态" clearable style="width: 120px" @change="handleSearch">
@@ -19,6 +8,10 @@
         <el-option label="失败" :value="0" />
       </el-select>
       <el-button type="primary" :icon="Search" @click="handleSearch">查询</el-button>
+      <div class="log-panel__actions">
+        <el-button :icon="Refresh" @click="loadList">刷新</el-button>
+        <el-button type="danger" :icon="Delete" v-permission="'system:log:clear'" @click="handleClear">清空日志</el-button>
+      </div>
     </div>
 
     <el-table v-loading="loading" :data="list" class="page-table">
@@ -103,7 +96,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Refresh, Search } from '@element-plus/icons-vue'
 import { operLogApi, type OperLogItem } from '@/api/modules/log'
 
-defineOptions({ name: 'OperLogManage' })
+defineOptions({ name: 'OperLogPanel' })
 
 const loading = ref(false)
 const list = ref<OperLogItem[]>([])
@@ -173,38 +166,20 @@ onMounted(loadList)
 </script>
 
 <style scoped lang="scss">
-.page {
-  padding: 16px;
+.log-panel {
+  padding-top: 8px;
 
-  .page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
-
-    &__title {
-      h2 {
-        margin: 0 0 4px;
-        font-size: 18px;
-      }
-    }
-
-    &__desc {
-      font-size: 12px;
-      color: var(--el-text-color-secondary);
-    }
-
-    &__actions {
-      display: flex;
-      gap: 8px;
-    }
-  }
-
-  .page-filter {
+  .log-panel__toolbar {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-bottom: 14px;
+
+    .log-panel__actions {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+    }
   }
 
   .page-table {

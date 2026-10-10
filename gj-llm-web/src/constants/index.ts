@@ -1,6 +1,9 @@
 /** Token 存储键 */
 export const TOKEN_KEY = 'ACCESS_TOKEN'
 
+/** 刷新令牌存储键（7 天有效，用于 401 时静默续签） */
+export const REFRESH_TOKEN_KEY = 'REFRESH_TOKEN'
+
 /** 用户信息存储键 */
 export const USER_INFO_KEY = 'USER_INFO'
 

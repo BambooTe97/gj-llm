@@ -1,5 +1,6 @@
 package com.gj.llm.rag.service;
 
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.rag.config.RagProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -55,8 +56,9 @@ public class QueryRewriter {
      * @return 检索查询变体列表，失败时返回仅含原始查询的列表
      */
     public List<String> rewrite(String query) {
-        if (query == null || query.isBlank()) {
-            return List.of(query);
+        if (StringUtils.isBlank(query)) {
+            // query=null 时 List.of(query) 会 NPE，返回空列表
+            return query == null ? List.of() : List.of(query);
         }
 
         List<String> variants = new ArrayList<>();
@@ -65,7 +67,7 @@ public class QueryRewriter {
         // 生成书面语改写
         for (String line : callLLM(REWRITE_PROMPT.formatted(query), 128)) {
             String cleaned = line.replaceFirst("^\\d+[\\.\\)、]\\s*", "").trim();
-            if (!cleaned.isBlank() && !cleaned.equals(query) && !variants.contains(cleaned)) {
+            if (StringUtils.isNotBlank(cleaned) && !cleaned.equals(query) && !variants.contains(cleaned)) {
                 variants.add(cleaned);
             }
         }
@@ -73,7 +75,7 @@ public class QueryRewriter {
         // 生成 HyDE 假设答案段落 -- 风格接近真实文档，embedding 匹配度最高
         for (String answer : callLLM(HYDE_PROMPT.formatted(query), 256)) {
             String cleaned = answer.trim();
-            if (!cleaned.isBlank() && !variants.contains(cleaned)) {
+            if (StringUtils.isNotBlank(cleaned) && !variants.contains(cleaned)) {
                 variants.add(cleaned);
             }
         }
@@ -89,7 +91,7 @@ public class QueryRewriter {
             OllamaChatOptions.Builder options = OllamaChatOptions.builder()
                     .numPredict(maxTokens)
                     .disableThinking(); // 改写任务不需要思考,省 token
-            if (rewriteModel != null && !rewriteModel.isBlank()) {
+            if (StringUtils.isNotBlank(rewriteModel)) {
                 options.model(rewriteModel);
             }
             String content = chatClient.prompt()
@@ -97,10 +99,10 @@ public class QueryRewriter {
                     .options(options)
                     .call()
                     .content();
-            if (content != null && !content.isBlank()) {
+            if (StringUtils.isNotBlank(content)) {
                 List<String> lines = new ArrayList<>();
                 for (String line : content.trim().split("\n")) {
-                    if (!line.isBlank()) {
+                    if (StringUtils.isNotBlank(line)) {
                         lines.add(line.trim());
                     }
                 }

@@ -4,6 +4,9 @@ import com.gj.llm.base.config.CaptchaProperties;
 import com.gj.llm.base.model.CaptchaResponse;
 import com.gj.llm.base.service.CaptchaService;
 import com.gj.llm.base.util.SlideCaptchaGenerator;
+import com.gj.llm.common.exception.ErrorBusinessException;
+import com.gj.llm.common.exception.WarnBusinessException;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.redis.constant.CacheConstants;
 import com.gj.llm.redis.service.RedisService;
 import lombok.RequiredArgsConstructor;
@@ -44,7 +47,7 @@ public class CaptchaServiceImpl implements CaptchaService {
             redisService.expire(genKey, Duration.ofSeconds(60));
         }
         if (count > properties.getGenLimitPerMinute()) {
-            throw new RuntimeException("验证码获取过于频繁，请稍后再试");
+            throw new WarnBusinessException("captcha.genLimited");
         }
 
         SlideCaptchaGenerator.SlidePuzzle puzzle;
@@ -52,7 +55,7 @@ public class CaptchaServiceImpl implements CaptchaService {
             puzzle = SlideCaptchaGenerator.generate();
         } catch (IOException e) {
             log.warn("滑动验证码生成失败: {}", e.getMessage());
-            throw new RuntimeException("验证码生成失败，请稍后再试");
+            throw new ErrorBusinessException("captcha.genFailed", e);
         }
 
         String token = UUID.randomUUID().toString().replace("-", "");
@@ -76,15 +79,15 @@ public class CaptchaServiceImpl implements CaptchaService {
         if (!properties.isEnabled()) {
             return;
         }
-        if (captchaToken == null || captchaToken.isBlank() || slideX == null) {
-            throw new RuntimeException("请完成滑块验证");
+        if (StringUtils.isBlank(captchaToken) || slideX == null) {
+            throw new WarnBusinessException("captcha.missing");
         }
 
         String slideKey = CacheConstants.CAPTCHA_SLIDE_KEY + captchaToken;
         String failKey = CacheConstants.CAPTCHA_FAIL_KEY + captchaToken;
         Integer targetX = redisService.get(slideKey, Integer.class);
         if (targetX == null) {
-            throw new RuntimeException("验证码已过期，请刷新后重试");
+            throw new WarnBusinessException("captcha.expired");
         }
 
         if (Math.abs(slideX - targetX) <= properties.getTolerancePx()) {
@@ -99,8 +102,8 @@ public class CaptchaServiceImpl implements CaptchaService {
         if (fails >= properties.getMaxAttempts()) {
             // 达到尝试上限：作废令牌，前端需刷新验证码
             redisService.delete(slideKey);
-            throw new RuntimeException("滑块验证失败次数过多，请刷新验证码");
+            throw new WarnBusinessException("captcha.tooManyAttempts");
         }
-        throw new RuntimeException("滑块位置不正确，请重试");
+        throw new WarnBusinessException("captcha.wrongPosition");
     }
 }

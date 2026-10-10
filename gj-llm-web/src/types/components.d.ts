@@ -9,6 +9,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AppHeader: typeof import('./../components/AppHeader/AppHeader.vue')['default']
+    CaptchaDialog: typeof import('./../components/global/CaptchaDialog/CaptchaDialog.vue')['default']
     ChatInput: typeof import('./../components/ChatInput/ChatInput.vue')['default']
     ChatMessage: typeof import('./../components/ChatMessage/ChatMessage.vue')['default']
     ChatSubPanel: typeof import('./../components/ChatSubPanel/ChatSubPanel.vue')['default']

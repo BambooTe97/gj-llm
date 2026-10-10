@@ -4,6 +4,7 @@ import com.gj.llm.chat.config.ChatProperties;
 import com.gj.llm.chat.entity.MessageEntity;
 import com.gj.llm.chat.sse.SseEventBuilder;
 import com.gj.llm.common.util.JacksonUtils;
+import com.gj.llm.common.util.StringUtils;
 import tools.jackson.databind.JsonNode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -81,7 +82,7 @@ public class RemoteHttpAgent implements Agent {
 
     /** 解析单行:识别 SSE data 行,提取 content 增量,累积到 ctx 并发事件 */
     private Flux<ServerSentEvent<String>> parseLine(String line, AgentContext ctx) {
-        if (line == null || line.isBlank()) {
+        if (StringUtils.isBlank(line)) {
             return Flux.empty();
         }
         String jsonStr = null;
@@ -104,7 +105,7 @@ public class RemoteHttpAgent implements Agent {
             // 非 JSON,当作纯文本增量
             content = line;
         }
-        if (content == null || content.isEmpty()) {
+        if (StringUtils.isEmpty(content)) {
             return Flux.empty();
         }
         ctx.getFullAnswer().append(content);

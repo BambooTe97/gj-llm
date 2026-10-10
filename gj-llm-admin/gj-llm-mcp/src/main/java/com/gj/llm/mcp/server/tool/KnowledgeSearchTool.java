@@ -1,6 +1,7 @@
 package com.gj.llm.mcp.server.tool;
 
 import com.gj.llm.common.util.JacksonUtils;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.mcp.auth.McpUserContext;
 import com.gj.llm.mcp.constant.McpConstants;
 import com.gj.llm.rag.service.DatasetVisibleService;
@@ -64,7 +65,7 @@ public class KnowledgeSearchTool {
         if (userId == null) {
             return errorResult("无法识别调用方身份，拒绝检索");
         }
-        if (query == null || query.isBlank()) {
+        if (StringUtils.isBlank(query)) {
             return errorResult("检索问题不能为空");
         }
         int limit = topK == null ? DEFAULT_TOP_K : Math.min(Math.max(topK, 1), MAX_TOP_K);

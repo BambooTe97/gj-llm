@@ -1,6 +1,7 @@
 package com.gj.llm.base.aspect;
 
 import com.gj.llm.base.annotation.OperLog;
+import com.gj.llm.base.config.WebProperties;
 import com.gj.llm.base.event.OperLogEvent;
 import com.gj.llm.base.util.WebUtils;
 import com.gj.llm.common.util.JacksonUtils;
@@ -47,12 +48,13 @@ public class OperLogAspect {
 
     /** 敏感字段脱敏（参数与结果统一处理），如 "password":"xxx" → "password":"***" */
     private static final Pattern SENSITIVE_FIELD_PATTERN = Pattern.compile(
-            "\"(password|newPassword|oldPassword|accessToken|refreshToken|token|authorization|secret|apiKey)\"\\s*:\\s*\"[^\"]*\"",
+            "\"(password|newPassword|oldPassword|accessToken|refreshToken|token|authorization|secret|apiKey|captchaToken|phone|mobile|email|idCard)\"\\s*:\\s*\"[^\"]*\"",
             Pattern.CASE_INSENSITIVE);
 
     private static final String MASK = "\"$1\":\"***\"";
 
     private final ApplicationEventPublisher eventPublisher;
+    private final WebProperties webProperties;
 
     @Around(value = "@annotation(operLog)", argNames = "joinPoint,operLog")
     public Object around(ProceedingJoinPoint joinPoint, OperLog operLog) throws Throwable {
@@ -62,7 +64,7 @@ public class OperLogAspect {
         HttpServletRequest request = attrs == null ? null : attrs.getRequest();
         String requestUri = request == null ? "" : request.getRequestURI();
         String requestMethod = request == null ? "" : request.getMethod();
-        String ip = WebUtils.getClientIp(request);
+        String ip = WebUtils.getClientIp(request, webProperties.isTrustXff());
         // 操作人快照：异步线程无 SecurityContext，必须在请求线程上取
         String operator = SecurityUtils.getCurrentUsername();
         Long userId = SecurityUtils.getCurrentUserId();
@@ -77,7 +79,8 @@ public class OperLogAspect {
         } catch (Throwable e) {
             publishEvent(operLog, method, requestUri, requestMethod, operator, userId, ip, params,
                     null, OperLogEvent.STATUS_FAILURE,
-                    truncate(e.getMessage(), MAX_ERROR_LENGTH),
+                    // errorMsg 可能携带请求回显（含敏感字段）或内部信息，与 params/result 同口径脱敏
+                    truncate(maskSensitive(e.getMessage()), MAX_ERROR_LENGTH),
                     System.currentTimeMillis() - start);
             throw e;
         }

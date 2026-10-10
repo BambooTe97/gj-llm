@@ -70,7 +70,7 @@ public class RecursiveCharacterTextSplitter {
     }
 
     List<String> splitText(String text) {
-        if (text == null || text.isBlank()) {
+        if (StringUtils.isBlank(text)) {
             return List.of();
         }
         List<String> segments = splitIntoSegments(text, chunkSize, separators);
@@ -91,7 +91,7 @@ public class RecursiveCharacterTextSplitter {
             return List.of();
         }
         if (text.length() <= maxSize) {
-            return text.isBlank() ? List.of() : List.of(text);
+            return StringUtils.isBlank(text) ? List.of() : List.of(text);
         }
         for (int i = 0; i < separators.size(); i++) {
             String separator = separators.get(i);
@@ -197,7 +197,7 @@ public class RecursiveCharacterTextSplitter {
      * @return 末尾句子串，可能为空
      */
     public static String trailingSentences(String text, int maxLen) {
-        if (text == null || text.isEmpty() || maxLen <= 0) {
+        if (StringUtils.isEmpty(text) || maxLen <= 0) {
             return "";
         }
         List<String> sentences = new ArrayList<>();

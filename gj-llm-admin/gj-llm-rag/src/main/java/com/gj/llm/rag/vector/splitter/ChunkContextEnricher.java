@@ -1,5 +1,6 @@
 package com.gj.llm.rag.vector.splitter;
 
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.rag.config.RagProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
@@ -36,7 +37,7 @@ public class ChunkContextEnricher {
             Map<String, Object> meta = c.getMetadata();
             String source = str(meta.get("source"));
             String title = str(meta.get("title"));
-            String prefix = (title != null && !title.isBlank())
+            String prefix = StringUtils.isNotBlank(title)
                     ? "[文档: " + source + " > " + title + "]\n"
                     : "[文档: " + source + "]\n";
             c.prependText(prefix);

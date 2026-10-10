@@ -1,5 +1,7 @@
 package com.gj.llm.base.model;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -21,7 +23,7 @@ public class UserCreateRequest {
 
     /** 密码，最少 6 位 */
     @NotBlank(message = "密码不能为空")
-    @Size(min = 6, max = 100, message = "密码长度至少 6 位")
+    @Size(min = 8, max = 100, message = "密码长度至少 8 位")
     private String password;
 
     /** 昵称 */

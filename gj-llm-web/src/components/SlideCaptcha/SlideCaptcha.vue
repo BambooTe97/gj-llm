@@ -1,31 +1,42 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Right } from '@element-plus/icons-vue'
-import { authApi } from '@/api/modules/auth'
 import type { CaptchaResponse } from '@/api/types'
 
 /**
- * 滑动验证码（自研）。
+ * 滑动验证码（受控组件）—— 验证码数据由父级（CaptchaDialog）注入，本组件只负责拖动交互。
  *
- * <p>挂载时向后端拉取拼图；后端开关关闭（enabled=false）时整块不渲染。
- * 拖动滑块使拼图对齐缺口，登录时父组件通过 {@code getData()} 取附带参数；
- * 登录失败后调用 {@code refresh()} 刷新。</p>
+ * <p>拖动滑块使拼图对齐缺口，松手即视为完成并通知父级（自动提交登录）；
+ * 拖动距离需越过阈值才生效，避免误触点按直接放行。</p>
  *
  * <p>图片必须 1:1 渲染（禁止 CSS 缩放），否则前端像素与后端校验坐标错位。</p>
  */
 defineOptions({ name: 'SlideCaptcha' })
 
-const enabled = ref(false)
-const loading = ref(false)
-const captcha = ref<CaptchaResponse | null>(null)
+const props = defineProps<{ captcha: CaptchaResponse | null }>()
+const emit = defineEmits<{ completed: [] }>()
+
+/** 有效拖动阈值（px）：低于此值视为误触，回弹且不触发提交 */
+const MIN_DRAG = 10
+
 /** 拼图块画布左缘 x 坐标（即提交给后端的 slideX） */
 const dragX = ref(0)
 const dragging = ref(false)
+/** 松手且拖动有效后置位，锁定拖动直至父级注入新验证码 */
+const done = ref(false)
 
-const bgUrl = computed(() => (captcha.value ? `data:image/png;base64,${captcha.value.bgImage}` : ''))
-const puzzleUrl = computed(() => (captcha.value ? `data:image/png;base64,${captcha.value.puzzleImage}` : ''))
+watch(
+  () => props.captcha,
+  () => {
+    dragX.value = 0
+    done.value = false
+  },
+)
+
+const bgUrl = computed(() => (props.captcha ? `data:image/png;base64,${props.captcha.bgImage}` : ''))
+const puzzleUrl = computed(() => (props.captcha ? `data:image/png;base64,${props.captcha.puzzleImage}` : ''))
 const puzzleStyle = computed(() => ({
-  top: `${captcha.value?.puzzleY ?? 0}px`,
+  top: `${props.captcha?.puzzleY ?? 0}px`,
   left: `${dragX.value}px`,
 }))
 
@@ -35,27 +46,10 @@ function onPuzzleLoad(e: Event) {
   pieceSize.value = (e.target as HTMLImageElement).naturalWidth || 64
 }
 
-/** 拉取/刷新验证码（登录失败后由父组件调用） */
-async function refresh() {
-  loading.value = true
-  try {
-    const res = await authApi.generateCaptcha()
-    const data = res.data.data
-    enabled.value = !!data?.enabled
-    captcha.value = data?.enabled ? data : null
-    dragX.value = 0
-  } catch {
-    // 拉取失败视为不可用，登录走无验证码参数（后端开关开启时会拒绝并提示）
-    enabled.value = false
-  } finally {
-    loading.value = false
-  }
-}
-
-/** 当前登录附带参数；开关关闭或未就绪时返回 undefined（父组件展开时安全跳过） */
+/** 当前登录附带参数；未注入验证码或未完成拖动时返回 undefined（父组件展开时安全跳过） */
 function getData(): { captchaToken: string; slideX: number } | undefined {
-  if (!enabled.value || !captcha.value) return undefined
-  return { captchaToken: captcha.value.captchaToken || '', slideX: Math.round(dragX.value) }
+  if (!props.captcha || !done.value) return undefined
+  return { captchaToken: props.captcha.captchaToken || '', slideX: Math.round(dragX.value) }
 }
 
 // ==================== 拖动 ====================
@@ -63,7 +57,7 @@ let startX = 0
 let startDragX = 0
 
 function onPointerDown(e: PointerEvent) {
-  if (!enabled.value || !captcha.value) return
+  if (done.value || !props.captcha) return
   dragging.value = true
   startX = e.clientX
   startDragX = dragX.value
@@ -71,22 +65,29 @@ function onPointerDown(e: PointerEvent) {
 }
 
 function onPointerMove(e: PointerEvent) {
-  if (!dragging.value || !captcha.value) return
-  const max = Math.max((captcha.value.width ?? 300) - pieceSize.value, 0)
+  if (!dragging.value || done.value || !props.captcha) return
+  const max = Math.max((props.captcha.width ?? 300) - pieceSize.value, 0)
   dragX.value = Math.min(Math.max(startDragX + (e.clientX - startX), 0), max)
 }
 
 function onPointerUp() {
+  if (!dragging.value) return
   dragging.value = false
+  // 拼图对齐型验证码：拖到尽头几乎必然校验失败，故"松手即提交"而非拖到最大值
+  if (dragX.value >= MIN_DRAG) {
+    done.value = true
+    emit('completed')
+  } else {
+    // 误触点按：回弹复位
+    dragX.value = 0
+  }
 }
 
-defineExpose({ refresh, getData })
-
-onMounted(refresh)
+defineExpose({ getData })
 </script>
 
 <template>
-  <div v-if="enabled" class="slide-captcha">
+  <div v-if="captcha" class="slide-captcha">
     <div class="slide-captcha__canvas">
       <img
         v-if="captcha"
@@ -107,12 +108,11 @@ onMounted(refresh)
         draggable="false"
         @load="onPuzzleLoad"
       />
-      <div v-if="loading" class="slide-captcha__loading">加载中...</div>
     </div>
 
     <div class="slide-captcha__track">
       <div class="slide-captcha__track-text">
-        {{ dragX > 0 ? '松开后点击登录' : '按住滑块，拖动拼图对齐缺口' }}
+        {{ done ? '验证中...' : dragX > 0 ? '松开自动登录' : '按住滑块，拖动拼图对齐缺口' }}
       </div>
       <div
         class="slide-captcha__handle"
@@ -161,16 +161,6 @@ onMounted(refresh)
     &.is-dragging {
       cursor: grabbing;
     }
-  }
-
-  &__loading {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    color: rgba(200, 210, 225, 0.5);
   }
 
   &__track {

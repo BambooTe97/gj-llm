@@ -5,6 +5,7 @@ import com.gj.llm.base.entity.UserRoleEntity;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -38,4 +39,27 @@ public interface UserRoleMapper extends BaseMapper<UserRoleEntity> {
      */
     @Delete("DELETE FROM sys_user_role WHERE user_id = #{userId}")
     int deleteByUserId(@Param("userId") Long userId);
+
+    /**
+     * 删除角色的所有用户关联（角色删除级联清理）。
+     *
+     * @param roleId 角色 ID
+     * @return 删除行数
+     */
+    @Delete("DELETE FROM sys_user_role WHERE role_id = #{roleId}")
+    int deleteByRoleId(@Param("roleId") Long roleId);
+
+    /**
+     * 批量查询多个用户的角色关联（用户分页批量装填角色用，消除 N+1）。
+     *
+     * @param userIds 用户 ID 列表
+     * @return 用户-角色关联行
+     */
+    @Select("<script>" +
+            "SELECT user_id, role_id FROM sys_user_role WHERE user_id IN " +
+            "<foreach collection='userIds' item='userId' separator=',' open='(' close=')'>" +
+            "#{userId}" +
+            "</foreach>" +
+            "</script>")
+    List<UserRoleEntity> selectByUserIds(@Param("userIds") List<Long> userIds);
 }

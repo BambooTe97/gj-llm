@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.gj.llm.common.exception.WarnBusinessException;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.base.entity.RoleEntity;
 import com.gj.llm.base.entity.SysDeptEntity;
 import com.gj.llm.base.entity.UserEntity;
@@ -69,10 +71,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     @Override
     public List<UserEntity> listAll() {
         List<UserEntity> users = list();
-        users.forEach(user -> {
-            user.setRoles(new HashSet<>(findRolesByUserId(user.getId())));
-            user.setPassword(null);   // 不向外暴露密码密文
-        });
+        fillRoles(users);
         fillDeptNames(users);
         return users;
     }
@@ -88,18 +87,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
             wrapper.in(UserEntity::getDeptId, sysDeptService.listSubtreeIds(deptId));
         }
         // 关键字 OR 组用 and 包裹：in AND (like OR like)
-        if (keyword != null && !keyword.isBlank()) {
-            String kw = keyword.trim();
+        if (StringUtils.isNotBlank(keyword)) {
+            String kw = StringUtils.escapeLike(keyword.trim());
             wrapper.and(w -> w.like(UserEntity::getUsername, kw)
                     .or().like(UserEntity::getNickname, kw));
         }
         wrapper.orderByDesc(UserEntity::getCreatedAt);
 
         IPage<UserEntity> result = page(page, wrapper);
-        result.getRecords().forEach(user -> {
-            user.setRoles(new HashSet<>(findRolesByUserId(user.getId())));
-            user.setPassword(null);   // 不向外暴露密码密文
-        });
+        fillRoles(result.getRecords());
         fillDeptNames(result.getRecords());
         return result;
     }
@@ -108,7 +104,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     public UserEntity getById(Long id) {
         UserEntity user = super.getById(id);
         if (user == null) {
-            throw new RuntimeException("用户不存在: id=" + id);
+            throw new WarnBusinessException("user.notFound", id);
         }
         user.setRoles(new HashSet<>(findRolesByUserId(id)));
         user.setPassword(null);   // 不向外暴露密码密文
@@ -124,7 +120,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
         long count = count(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getUsername, request.getUsername()));
         if (count > 0) {
-            throw new RuntimeException("用户名已存在: " + request.getUsername());
+            throw new WarnBusinessException("user.usernameExists", request.getUsername());
         }
 
         UserEntity user = UserEntity.builder()
@@ -142,7 +138,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         // 未指定角色时默认分配 USER 角色（通过 RoleService 查询）
         Set<Long> roleIds = request.getRoleIds();
         if (roleIds == null || roleIds.isEmpty()) {
-            RoleEntity defaultRole = roleService.getByCode("USER");
+            RoleEntity defaultRole = roleService.getByCode(RoleService.DEFAULT_ROLE_CODE);
             if (defaultRole != null) {
                 roleIds = Set.of(defaultRole.getId());
             }
@@ -159,7 +155,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     public UserEntity update(Long id, UserUpdateRequest request) {
         UserEntity user = super.getById(id);
         if (user == null) {
-            throw new RuntimeException("用户不存在: id=" + id);
+            throw new WarnBusinessException("user.notFound", id);
         }
 
         if (request.getNickname() != null) {
@@ -195,7 +191,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     public void resetPassword(Long id, String newPassword) {
         UserEntity user = super.getById(id);
         if (user == null) {
-            throw new RuntimeException("用户不存在: id=" + id);
+            throw new WarnBusinessException("user.notFound", id);
         }
         // 管理员重置同样走复杂度策略（自助改密也复用本方法）
         passwordPolicyValidator.validate(newPassword, user.getUsername());
@@ -211,11 +207,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     public void delete(Long id) {
         UserEntity user = super.getById(id);
         if (user == null) {
-            throw new RuntimeException("用户不存在: id=" + id);
+            throw new WarnBusinessException("user.notFound", id);
         }
         // 超级管理员（admin）受保护，禁止删除，确保系统始终存在管理员
         if ("admin".equals(user.getUsername())) {
-            throw new RuntimeException("超级管理员不能删除");
+            throw new WarnBusinessException("user.builtinDeleteDenied");
         }
         userRoleMapper.deleteByUserId(id);
         removeById(id);
@@ -234,6 +230,28 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     @Override
     public UserEntity findByUsername(String username) {
         return getOne(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getUsername, username));
+    }
+
+    /** 批量装填角色（用户列表/分页用）：一次 in 查关联 + 一次查角色，内存分组，消除逐用户 N+1 */
+    private void fillRoles(List<UserEntity> users) {
+        if (users == null || users.isEmpty()) {
+            return;
+        }
+        List<Long> userIds = users.stream().map(UserEntity::getId).toList();
+        Map<Long, List<Long>> roleIdsByUser = userRoleMapper.selectByUserIds(userIds).stream()
+                .collect(Collectors.groupingBy(UserRoleEntity::getUserId,
+                        Collectors.mapping(UserRoleEntity::getRoleId, Collectors.toList())));
+        Set<Long> allRoleIds = roleIdsByUser.values().stream()
+                .flatMap(List::stream).collect(Collectors.toSet());
+        Map<Long, RoleEntity> roleMap = allRoleIds.isEmpty() ? Map.of()
+                : roleService.listByIds(allRoleIds).stream()
+                        .collect(Collectors.toMap(RoleEntity::getId, Function.identity()));
+        users.forEach(user -> {
+            user.setRoles(roleIdsByUser.getOrDefault(user.getId(), List.of()).stream()
+                    .map(roleMap::get).filter(Objects::nonNull)
+                    .collect(Collectors.toCollection(HashSet::new)));
+            user.setPassword(null);   // 不向外暴露密码密文
+        });
     }
 
     /** 通过 RoleService 查询用户的角色实体集合 */

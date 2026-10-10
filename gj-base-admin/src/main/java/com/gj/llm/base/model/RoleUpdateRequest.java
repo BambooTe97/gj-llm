@@ -1,5 +1,7 @@
 package com.gj.llm.base.model;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -24,6 +26,8 @@ public class RoleUpdateRequest {
     private String description;
 
     /** 数据权限域（五档）：1=全部 2=自定义部门 3=本部门 4=本部门及以下 5=仅本人；null 不变更 */
+    @Min(value = 1, message = "数据权限域取值 1-5")
+    @Max(value = 5, message = "数据权限域取值 1-5")
     private Integer dataScope;
 
     /** 自定义部门 ID 集合（仅 dataScope=2 生效；≠2 时清空已有部门关联） */

@@ -8,6 +8,7 @@ import com.gj.llm.base.model.DictTypeUpdateRequest;
 import com.gj.llm.base.service.DictTypeService;
 import com.gj.llm.common.web.R;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,7 +43,8 @@ public class DictTypeController {
     /** 分页查询字典类型（keyword 匹配名称/类型编码） */
     @GetMapping
     public R<IPage<DictTypeEntity>> page(@RequestParam(defaultValue = "1") long page,
-                                         @RequestParam(defaultValue = "10") long size,
+                                        @Max(value = 200, message = "每页条数最大 200")
+                                        @RequestParam(defaultValue = "10") long size,
                                          @RequestParam(required = false) String keyword,
                                          @RequestParam(required = false) Integer status) {
         return R.ok(dictTypeService.page(page, size, keyword, status));

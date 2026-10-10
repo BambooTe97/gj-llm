@@ -8,6 +8,7 @@ import com.gj.llm.base.model.DictDataUpdateRequest;
 import com.gj.llm.base.service.DictDataService;
 import com.gj.llm.common.web.R;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,7 +46,8 @@ public class DictDataController {
     /** 分页查询字典数据（按字典类型） */
     @GetMapping
     public R<IPage<DictDataEntity>> page(@RequestParam(defaultValue = "1") long page,
-                                         @RequestParam(defaultValue = "10") long size,
+                                        @Max(value = 200, message = "每页条数最大 200")
+                                        @RequestParam(defaultValue = "10") long size,
                                          @RequestParam String dictType,
                                          @RequestParam(required = false) String keyword) {
         return R.ok(dictDataService.page(page, size, dictType, keyword));

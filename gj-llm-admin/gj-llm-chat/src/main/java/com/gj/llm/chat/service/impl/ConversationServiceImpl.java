@@ -9,6 +9,7 @@ import com.gj.llm.chat.mapper.MessageMapper;
 import com.gj.llm.chat.model.ConversationVO;
 import com.gj.llm.chat.service.ConversationService;
 import com.gj.llm.common.util.SecurityUtils;
+import com.gj.llm.common.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,7 +59,7 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
             throw new RuntimeException("用户未登录，无法创建会话");
         }
         ConversationEntity entity = ConversationEntity.builder()
-                .title(title != null && !title.isBlank() ? title : "新对话")
+                .title(StringUtils.isNotBlank(title) ? title : "新对话")
                 .datasetId(datasetId)
                 .userId(userId)
                 .build();

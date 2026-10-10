@@ -1,5 +1,7 @@
 package com.gj.llm.base.model;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -48,8 +50,12 @@ public class MenuCreateRequest {
     private Integer sort;
 
     /** 是否显示：1=显示, 0=隐藏 */
+    @Min(value = 0, message = "visible 取值 0-1")
+    @Max(value = 1, message = "visible 取值 0-1")
     private Integer visible;
 
     /** 状态：1=启用, 0=禁用 */
+    @Min(value = 0, message = "status 取值 0-1")
+    @Max(value = 1, message = "status 取值 0-1")
     private Integer status;
 }

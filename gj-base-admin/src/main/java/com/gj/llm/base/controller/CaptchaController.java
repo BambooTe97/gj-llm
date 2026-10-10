@@ -1,5 +1,6 @@
 package com.gj.llm.base.controller;
 
+import com.gj.llm.base.config.WebProperties;
 import com.gj.llm.base.model.CaptchaResponse;
 import com.gj.llm.base.service.CaptchaService;
 import com.gj.llm.base.util.WebUtils;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class CaptchaController {
 
     private final CaptchaService captchaService;
+    private final WebProperties webProperties;
 
     /**
      * 生成滑动验证码。
@@ -35,6 +37,6 @@ public class CaptchaController {
      */
     @GetMapping("/generate")
     public R<CaptchaResponse> generate(HttpServletRequest request) {
-        return R.ok(captchaService.generate(WebUtils.getClientIp(request)));
+        return R.ok(captchaService.generate(WebUtils.getClientIp(request, webProperties.isTrustXff())));
     }
 }

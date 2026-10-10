@@ -40,6 +40,8 @@ public class MyBatisGlobalConfig {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
         PaginationInnerInterceptor pagination = new PaginationInnerInterceptor(DbType.MYSQL);
         pagination.setOverflow(true);
+        // 单页条数硬上限：防恶意大 size 拖库（Controller 层另有 @Max 校验给出 400）
+        pagination.setMaxLimit(500L);
         interceptor.addInnerInterceptor(pagination);
         return interceptor;
     }

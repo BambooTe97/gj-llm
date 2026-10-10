@@ -1,5 +1,6 @@
 package com.gj.llm.file.constant;
 
+import com.gj.llm.common.util.StringUtils;
 import lombok.Getter;
 
 import java.util.Arrays;
@@ -78,7 +79,7 @@ public enum FileTypeEnum {
      * 根据扩展名字符串（小写，不含点号）查找枚举。
      */
     public static Optional<FileTypeEnum> fromExtension(String ext) {
-        if (ext == null || ext.isEmpty()) {
+        if (StringUtils.isEmpty(ext)) {
             return Optional.empty();
         }
         String lower = ext.toLowerCase();

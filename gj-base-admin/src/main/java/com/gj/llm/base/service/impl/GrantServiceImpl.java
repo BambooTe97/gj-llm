@@ -4,14 +4,18 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.gj.llm.base.config.AuthProperties;
 import com.gj.llm.base.entity.ResourceAclEntity;
 import com.gj.llm.base.entity.RoleEntity;
+import com.gj.llm.base.event.AclChangedEvent;
 import com.gj.llm.base.mapper.ResourceAclMapper;
 import com.gj.llm.base.service.GrantService;
 import com.gj.llm.base.service.RoleService;
 import com.gj.llm.base.service.UserService;
+import com.gj.llm.redis.constant.CacheConstants;
 import com.gj.llm.redis.service.RedisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import tools.jackson.core.type.TypeReference;
 
 import java.time.Duration;
@@ -32,11 +36,6 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class GrantServiceImpl implements GrantService {
 
-    private static final String ROLE_CACHE_PREFIX = "auth:roles:u";
-    private static final String GRANT_CACHE_PREFIX = "auth:grants:u";
-    /** 授权缓存统一前缀（写后按模式失效） */
-    private static final String GRANT_CACHE_PATTERN = "auth:grants:*";
-
     private final UserService userService;
     private final RoleService roleService;
     private final ResourceAclMapper resourceAclMapper;
@@ -56,7 +55,7 @@ public class GrantServiceImpl implements GrantService {
         if (userId == null) {
             return new UserRoleView(Set.of(), List.of());
         }
-        String key = ROLE_CACHE_PREFIX + userId;
+        String key = CacheConstants.AUTH_ROLES_KEY + userId;
         UserRoleView cached = redisService.get(key, new TypeReference<UserRoleView>() {
         });
         if (cached != null) {
@@ -76,7 +75,7 @@ public class GrantServiceImpl implements GrantService {
         if (userId == null) {
             return Set.of();
         }
-        String key = GRANT_CACHE_PREFIX + userId + ":" + resourceType;
+        String key = CacheConstants.AUTH_GRANTS_KEY + userId + ":" + resourceType;
         Set<Long> cached = redisService.get(key, new TypeReference<Set<Long>>() {
         });
         if (cached != null) {
@@ -118,6 +117,18 @@ public class GrantServiceImpl implements GrantService {
 
     @Override
     public long invalidateAllGrants() {
-        return redisService.deleteByPattern(GRANT_CACHE_PATTERN);
+        return redisService.deleteByPattern(CacheConstants.AUTH_GRANTS_PATTERN);
+    }
+
+    /**
+     * 授权（ACL）变更 -> 事务提交后失效全部授权缓存。
+     *
+     * <p>事务内直接删缓存存在"已删缓存、未提交"间隙被并发读回填旧值的竞态
+     * （脏值可活满整个 TTL），与用户/角色缓存失效同走 AFTER_COMMIT 口径。</p>
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onAclChanged(AclChangedEvent event) {
+        long n = invalidateAllGrants();
+        log.info("授权变更，事务提交后失效授权缓存: {} 条", n);
     }
 }

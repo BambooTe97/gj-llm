@@ -235,3 +235,24 @@ CREATE TABLE IF NOT EXISTS sys_role_dept (
     PRIMARY KEY (role_id, dept_id),
     KEY idx_role_dept_dept (dept_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色自定义数据域-部门关联表';
+
+-- ----------------------------
+-- 14. 日志中心合并：操作日志（2008）与登录日志（2010）合并为"日志管理"单页（Tab 切换）
+--     2008 更名并指向 LogCenter；2010 由 C 行转 B 行（仅作权限点，不再生成路由），
+--     perms 均保留原值，role_menu 既有关联继续生效
+-- ----------------------------
+UPDATE sys_menu SET
+    name = '日志管理',
+    component = 'system/log/LogCenter'
+WHERE id = 2008;
+
+UPDATE sys_menu SET
+    type = 'B',
+    parent_id = 2008,
+    visible = 0,
+    path = NULL,
+    component = NULL,
+    icon = NULL,
+    sort = 1
+WHERE id = 2010;
+

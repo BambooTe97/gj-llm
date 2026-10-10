@@ -1,6 +1,7 @@
 package com.gj.llm.rag.service;
 
 import com.gj.llm.common.util.JacksonUtils;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.rag.config.RagProperties;
 import com.gj.llm.rag.model.RoutingDecision;
 import com.gj.llm.redis.service.RedisService;
@@ -176,7 +177,7 @@ public class QueryPlanner {
 
             CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> callLlm(prompt));
             String resp = future.get(cfg.getPlannerTimeoutMs(), TimeUnit.MILLISECONDS);
-            if (resp == null || resp.isBlank()) {
+            if (StringUtils.isBlank(resp)) {
                 return null;
             }
             PlanResult parsed = parse(resp);
@@ -300,7 +301,7 @@ public class QueryPlanner {
         String normOriginal = normalize(originalQuery);
         List<String> out = new ArrayList<>();
         for (String s : raw) {
-            if (s == null || s.isBlank()) {
+            if (StringUtils.isBlank(s)) {
                 continue;
             }
             String item = s.trim();
@@ -338,7 +339,7 @@ public class QueryPlanner {
         OllamaChatOptions.Builder options = OllamaChatOptions.builder()
                 .numPredict(ragProperties.getRouting().isDecompositionEnabled() ? 320 : 128)
                 .disableThinking(); // 路由判定不需要思考,省 token
-        if (model != null && !model.isBlank()) {
+        if (StringUtils.isNotBlank(model)) {
             options.model(model);
         }
         return chatClient.prompt()
@@ -351,7 +352,7 @@ public class QueryPlanner {
     /** 规划模型:优先 routing.planner-model,未配置则复用 rewrite-model */
     private String resolveModel() {
         String model = ragProperties.getRouting().getPlannerModel();
-        if (model == null || model.isBlank()) {
+        if (StringUtils.isBlank(model)) {
             model = ragProperties.getRewriteModel();
         }
         return model;

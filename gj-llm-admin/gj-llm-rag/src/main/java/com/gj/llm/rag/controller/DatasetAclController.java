@@ -8,6 +8,7 @@ import com.gj.llm.base.service.ResourceAclService;
 import com.gj.llm.base.service.RoleService;
 import com.gj.llm.base.service.UserService;
 import com.gj.llm.common.util.SecurityUtils;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.common.web.R;
 import com.gj.llm.rag.entity.DatasetEntity;
 import com.gj.llm.rag.model.AclDetailVO;
@@ -124,7 +125,7 @@ public class DatasetAclController {
      */
     @GetMapping("/acl/users")
     public R<List<PrincipalOptionVO>> searchUsers(@RequestParam(required = false) String keyword) {
-        if (keyword == null || keyword.isBlank()) {
+        if (StringUtils.isBlank(keyword)) {
             return R.ok(List.of());
         }
         List<PrincipalOptionVO> options = userService.page(1, 20, keyword.trim(), null).getRecords().stream()

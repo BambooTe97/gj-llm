@@ -85,14 +85,18 @@ public class RedisService {
 
     /**
      * 读取并反序列化为指定类型。
+     *
+     * <p>反序列化失败的脏缓存视为 miss：删键返回 null 让业务回源，不打断主链路。</p>
      */
     public <T> T get(String key, Class<T> type) {
         String json = stringRedisTemplate.opsForValue().get(key);
-        return fromJson(json, type);
+        return fromJson(key, json, type, true);
     }
 
     /**
      * 读取并按 {@link TypeReference} 反序列化（用于泛型集合，如 {@code Map<String, Set<String>>}）。
+     *
+     * <p>反序列化失败的脏缓存视为 miss：删键返回 null 让业务回源，不打断主链路。</p>
      */
     public <T> T get(String key, TypeReference<T> typeRef) {
         String json = stringRedisTemplate.opsForValue().get(key);
@@ -102,17 +106,18 @@ public class RedisService {
         try {
             return objectMapper.readValue(json, typeRef);
         } catch (JacksonException e) {
-            log.error("Redis 反序列化失败: key={}, type={}", key, typeRef.getType(), e);
-            throw new RuntimeException("Redis 反序列化失败: " + typeRef.getType(), e);
+            return handleCorrupt(key, String.valueOf(typeRef.getType()), e, true);
         }
     }
 
     /**
      * 读取旧值并写入新值。
+     *
+     * <p>旧值反序列化失败只返回 null（新值已写入，不能删键），旧值本就被替换、可视为丢失。</p>
      */
     public <T> T getAndSet(String key, Object newValue, Class<T> type) {
         String json = stringRedisTemplate.opsForValue().getAndSet(key, toJson(newValue));
-        return fromJson(json, type);
+        return fromJson(key, json, type, false);
     }
 
     // ==================== 删除 / 过期 ====================
@@ -217,15 +222,28 @@ public class RedisService {
         }
     }
 
-    private <T> T fromJson(String json, Class<T> type) {
+    /** 反序列化失败容错：脏缓存视为 miss（deleteKey=true 时删键让业务回源），返回 null 不打断主链路 */
+    private <T> T handleCorrupt(String key, String typeDesc, JacksonException e, boolean deleteKey) {
+        log.warn("Redis 缓存反序列化失败，{}: key={}, type={}, err={}",
+                deleteKey ? "删键回源" : "视为 miss 返回 null", key, typeDesc, e.getMessage());
+        if (deleteKey) {
+            try {
+                delete(key);
+            } catch (Exception ex) {
+                log.warn("Redis 脏键删除失败（等待 TTL 兜底）: key={}, err={}", key, ex.getMessage());
+            }
+        }
+        return null;
+    }
+
+    private <T> T fromJson(String key, String json, Class<T> type, boolean deleteKeyOnCorrupt) {
         if (json == null) {
             return null;
         }
         try {
             return objectMapper.readValue(json, type);
         } catch (JacksonException e) {
-            log.error("Redis 反序列化失败: type={}", type.getName(), e);
-            throw new RuntimeException("Redis 反序列化失败: " + type.getName(), e);
+            return handleCorrupt(key, type.getName(), e, deleteKeyOnCorrupt);
         }
     }
 }

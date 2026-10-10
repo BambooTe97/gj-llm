@@ -1,5 +1,6 @@
 package com.gj.llm.base.interceptor;
 
+import com.gj.llm.base.exception.ApiAccessDeniedException;
 import com.gj.llm.base.init.ApiPermissionCache;
 import com.gj.llm.security.model.SecurityUser;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,7 +14,6 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 
@@ -27,8 +27,12 @@ import java.util.Set;
  *   <li>当前用户为 ADMIN 角色时全放行</li>
  *   <li>匹配接口（{@link ApiPermissionCache#matchApi}），未匹配则放行</li>
  *   <li>接口未配置权限点 -> 非 admin 拒绝（默认拒绝）</li>
- *   <li>用户持有接口任一权限点 -> 放行，否则 403</li>
+ *   <li>用户持有接口任一权限点 -> 放行，否则拒绝</li>
  * </ol>
+ *
+ * <p>拒绝时不自行写响应体：抛出 {@link ApiAccessDeniedException} 交由
+ * {@code GlobalExceptionHandler} 统一渲染 403 + {@code R}，序列化走全局链路，
+ * 与其它接口响应结构一致。本类不持有任何 JSON 依赖。</p>
  *
  * @author gj-llm
  */
@@ -52,7 +56,7 @@ public class ApiPermissionInterceptor implements HandlerInterceptor {
     );
 
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         String path = request.getRequestURI();
         String method = request.getMethod();
 
@@ -85,28 +89,20 @@ public class ApiPermissionInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        // 6. 接口权限点校验
+        // 6. 接口权限点校验（拒绝 -> 抛异常，由全局异常处理器渲染 403）
         Set<String> perms = cache.getPerms(apiId);
         if (perms.isEmpty()) {
             // 接口未配置权限点 -> 默认拒绝（非 admin）
-            writeForbidden(response, "该接口未开放访问权限");
-            return false;
+            throw new ApiAccessDeniedException("auth.apiNotOpen");
         }
         if (perms.stream().anyMatch(p -> su.getPermissions().contains(p))) {
             return true;
         }
 
-        writeForbidden(response, "权限不足");
-        return false;
+        throw new ApiAccessDeniedException("auth.accessDenied");
     }
 
     private boolean isWhitelisted(String path) {
         return WHITELIST.stream().anyMatch(p -> pathMatcher.match(p, path));
-    }
-
-    private void writeForbidden(HttpServletResponse response, String message) throws IOException {
-        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-        response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"code\":403,\"data\":null,\"message\":\"" + message + "\"}");
     }
 }

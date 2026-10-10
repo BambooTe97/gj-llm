@@ -1,5 +1,6 @@
 package com.gj.llm.rag.vector.reader;
 
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.file.model.FileInfo;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -37,7 +38,7 @@ public class TextContentReader implements FileContentReader {
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
             String content = br.lines().collect(Collectors.joining("\n"));
-            if (!content.isBlank()) {
+            if (StringUtils.isNotBlank(content)) {
                 return List.of(new Document(content));
             }
         } catch (Exception e) {

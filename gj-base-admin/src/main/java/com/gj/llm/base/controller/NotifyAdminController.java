@@ -5,7 +5,9 @@ import com.gj.llm.base.annotation.OperLog;
 import com.gj.llm.base.model.NotifyAdminVO;
 import com.gj.llm.base.model.NotifyVO;
 import com.gj.llm.base.service.NotifyService;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.common.web.R;
+import jakarta.validation.constraints.Max;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -32,7 +34,8 @@ public class NotifyAdminController {
     @GetMapping
     public R<IPage<NotifyAdminVO>> page(
             @RequestParam(defaultValue = "1") long page,
-            @RequestParam(defaultValue = "10") long size,
+                                        @Max(value = 200, message = "每页条数最大 200")
+                                        @RequestParam(defaultValue = "10") long size,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String level,
             @RequestParam(required = false) Integer readFlag) {
@@ -48,7 +51,7 @@ public class NotifyAdminController {
         Long userId = Long.valueOf(body.get("userId"));
         String title = body.getOrDefault("title", "");
         String content = body.getOrDefault("content", "");
-        if (title.isBlank()) {
+        if (StringUtils.isBlank(title)) {
             return R.badRequest("通知标题不能为空");
         }
         NotifyVO vo = notifyService.createAndPush(userId, title, content, body.get("level"));

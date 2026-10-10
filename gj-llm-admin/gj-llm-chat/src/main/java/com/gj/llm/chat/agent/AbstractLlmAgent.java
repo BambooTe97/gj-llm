@@ -1,5 +1,6 @@
 package com.gj.llm.chat.agent;
 
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.chat.config.ChatProperties;
 import com.gj.llm.chat.sse.SseEventBuilder;
 import lombok.extern.slf4j.Slf4j;
@@ -70,7 +71,7 @@ public abstract class AbstractLlmAgent implements Agent {
                                                     ChatProperties.AgentConfig cfg, boolean think) {
         OllamaChatOptions.Builder options = OllamaChatOptions.builder();
         if (cfg != null) {
-            if (cfg.getModel() != null && !cfg.getModel().isBlank()) {
+            if (StringUtils.isNotBlank(cfg.getModel())) {
                 options.model(cfg.getModel());
             }
             if (cfg.getNumPredict() != null) {
@@ -102,7 +103,7 @@ public abstract class AbstractLlmAgent implements Agent {
 
                     // 提取内容增量,发 chunk(前端追加)
                     String contentChunk = msg.getText();
-                    if (contentChunk != null && !contentChunk.isEmpty()) {
+                    if (StringUtils.isNotEmpty(contentChunk)) {
                         ctx.getFullAnswer().append(contentChunk);
                         events.add(SseEventBuilder.event("content", Map.of("content", contentChunk)));
                     }

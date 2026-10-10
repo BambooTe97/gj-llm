@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.gj.llm.common.util.SecurityUtils;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.mcp.constant.McpConstants;
 import com.gj.llm.mcp.entity.McpApiKeyEntity;
 import com.gj.llm.mcp.mapper.McpApiKeyMapper;
@@ -99,7 +100,7 @@ public class McpApiKeyServiceImpl implements McpApiKeyService {
 
     @Override
     public McpApiKeyEntity validateByKey(String rawKey) {
-        if (rawKey == null || rawKey.isBlank()) {
+        if (StringUtils.isBlank(rawKey)) {
             return null;
         }
         McpApiKeyEntity entity = apiKeyMapper.selectOne(

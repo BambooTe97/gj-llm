@@ -1,5 +1,6 @@
 package com.gj.llm.mcp.common;
 
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.mcp.config.McpProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -40,7 +41,7 @@ public class AesGcmTextCipher {
 
     /** 加密：明文 -> Base64(iv + 密文) */
     public String encrypt(String plain) {
-        if (plain == null || plain.isEmpty()) {
+        if (StringUtils.isEmpty(plain)) {
             return plain;
         }
         try {
@@ -60,7 +61,7 @@ public class AesGcmTextCipher {
 
     /** 解密：Base64(iv + 密文) -> 明文；入参非本组件密文（如明文残留）时原样返回由上层校验 */
     public String decrypt(String encoded) {
-        if (encoded == null || encoded.isEmpty()) {
+        if (StringUtils.isEmpty(encoded)) {
             return encoded;
         }
         try {
@@ -81,7 +82,7 @@ public class AesGcmTextCipher {
     /** 密钥解析：优先配置的 Base64 32 字节；否则 SHA-256(开发盐) 派生并 WARN */
     private SecretKeySpec resolveKey(String secret) {
         try {
-            if (secret != null && !secret.isBlank()) {
+            if (StringUtils.isNotBlank(secret)) {
                 byte[] key = Base64.getDecoder().decode(secret);
                 if (key.length != 32) {
                     throw new IllegalArgumentException("gj.llm.mcp.crypto.secret 须为 Base64 编码的 32 字节（256 位）密钥");

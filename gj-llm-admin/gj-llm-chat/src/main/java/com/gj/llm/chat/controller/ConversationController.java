@@ -7,6 +7,7 @@ import com.gj.llm.chat.model.MessageVO;
 import com.gj.llm.chat.model.RenameRequest;
 import com.gj.llm.chat.service.ConversationService;
 import com.gj.llm.common.util.JacksonUtils;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.common.web.R;
 import com.gj.llm.rag.service.Reference;
 import lombok.RequiredArgsConstructor;
@@ -75,7 +76,7 @@ public class ConversationController {
 
     /** 从 metadata_json 解析引用片段;格式异常或无引用时返回 null(历史消息降级为无角标展示) */
     private List<Reference> parseReferences(String metadataJson) {
-        if (metadataJson == null || metadataJson.isBlank()) {
+        if (StringUtils.isBlank(metadataJson)) {
             return null;
         }
         try {

@@ -16,11 +16,29 @@ import java.util.*;
  */
 public class StringUtils extends org.apache.commons.lang3.StringUtils {
 
-    private StringUtils() {}
+    private StringUtils() {
+    }
+
     /**
      * 空字符串
      */
     private static final String NULLSTR = "";
+
+    /**
+     * 转义 MySQL LIKE 通配符（\ % _），用于模糊查询关键字。
+     *
+     * <p>MyBatis-Plus 的 {@code like(...)} 不转义值内的通配符，用户输入的 {@code %}
+     * 或 {@code _} 会带上通配语义（一次输入匹配全表）；进查询前先过本方法。</p>
+     *
+     * @param keyword 用户输入的模糊查询关键字
+     * @return 转义后的关键字；入参为空白时原样返回
+     */
+    public static String escapeLike(String keyword) {
+        if (isBlank(keyword)) {
+            return keyword;
+        }
+        return keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
 
     /**
      * 下划线
@@ -66,7 +84,7 @@ public class StringUtils extends org.apache.commons.lang3.StringUtils {
      * * 判断一个对象数组是否为空
      *
      * @param objects 要判断的对象数组
-     *                * @return true：为空 false：非空
+     * @return true：为空 false：非空
      */
     public static boolean isEmpty(Object[] objects) {
         return isNull(objects) || (objects.length == 0);

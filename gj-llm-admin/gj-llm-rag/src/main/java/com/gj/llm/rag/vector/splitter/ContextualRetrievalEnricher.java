@@ -1,6 +1,7 @@
 package com.gj.llm.rag.vector.splitter;
 
 import com.gj.llm.common.util.JacksonUtils;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.rag.config.RagProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -64,7 +65,7 @@ public class ContextualRetrievalEnricher {
             Chunk first = group.getFirst();
             String source = str(first.getMetadata().get("source"));
             String context = callLLM(CONTEXT_PROMPT.formatted(source, truncate(first.getParentText(), 800)), 96);
-            if (context != null && !context.isBlank()) {
+            if (StringUtils.isNotBlank(context)) {
                 String prefix = "[" + context.trim() + "]\n";
                 group.forEach(c -> c.prependText(prefix));
             }

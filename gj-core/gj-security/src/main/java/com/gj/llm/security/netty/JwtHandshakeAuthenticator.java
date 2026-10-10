@@ -1,5 +1,6 @@
 package com.gj.llm.security.netty;
 
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.netty.protocol.HandshakeRequest;
 import com.gj.llm.netty.spi.ClientPrincipal;
 import com.gj.llm.netty.spi.HandshakeAuthenticator;
@@ -36,7 +37,7 @@ public class JwtHandshakeAuthenticator implements HandshakeAuthenticator {
     @Override
     public ClientPrincipal authenticate(HandshakeRequest request) {
         String token = resolveToken(request);
-        if (token == null || token.isBlank()) {
+        if (StringUtils.isBlank(token)) {
             return null;
         }
         if (!jwtUtils.validateAccessToken(token)) {

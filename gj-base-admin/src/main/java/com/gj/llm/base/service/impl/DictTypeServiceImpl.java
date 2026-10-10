@@ -13,6 +13,7 @@ import com.gj.llm.base.model.DictTypeCreateRequest;
 import com.gj.llm.base.model.DictTypeUpdateRequest;
 import com.gj.llm.base.service.DictDataService;
 import com.gj.llm.base.service.DictTypeService;
+import com.gj.llm.common.exception.WarnBusinessException;
 import com.gj.llm.common.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,7 +54,7 @@ public class DictTypeServiceImpl extends ServiceImpl<DictTypeMapper, DictTypeEnt
     public DictTypeEntity create(DictTypeCreateRequest request) {
         long count = count(new LambdaQueryWrapper<DictTypeEntity>().eq(DictTypeEntity::getType, request.getType()));
         if (count > 0) {
-            throw new RuntimeException("字典类型已存在: " + request.getType());
+            throw new WarnBusinessException("dictType.exists", request.getType());
         }
         DictTypeEntity entity = DictTypeEntity.builder()
                 .name(request.getName())
@@ -70,13 +71,13 @@ public class DictTypeServiceImpl extends ServiceImpl<DictTypeMapper, DictTypeEnt
     public DictTypeEntity update(Long id, DictTypeUpdateRequest request) {
         DictTypeEntity entity = getById(id);
         if (entity == null) {
-            throw new RuntimeException("字典类型不存在");
+            throw new WarnBusinessException("dictType.notFound", id);
         }
         // type 改名：唯一性校验 + 级联更新字典数据
         if (!Objects.equals(entity.getType(), request.getType())) {
             long count = count(new LambdaQueryWrapper<DictTypeEntity>().eq(DictTypeEntity::getType, request.getType()));
             if (count > 0) {
-                throw new RuntimeException("字典类型已存在: " + request.getType());
+                throw new WarnBusinessException("dictType.exists", request.getType());
             }
             String oldType = entity.getType();
             dictDataService.update(new LambdaUpdateWrapper<DictDataEntity>()
@@ -100,12 +101,12 @@ public class DictTypeServiceImpl extends ServiceImpl<DictTypeMapper, DictTypeEnt
     public void delete(Long id) {
         DictTypeEntity entity = getById(id);
         if (entity == null) {
-            throw new RuntimeException("字典类型不存在");
+            throw new WarnBusinessException("dictType.notFound", id);
         }
         long dataCount = dictDataService.count(new LambdaQueryWrapper<DictDataEntity>()
                 .eq(DictDataEntity::getDictType, entity.getType()));
         if (dataCount > 0) {
-            throw new RuntimeException("该类型下存在 " + dataCount + " 条字典数据，请先删除数据");
+            throw new WarnBusinessException("dictType.hasData", dataCount);
         }
         removeById(id);
         eventPublisher.publishEvent(new DictChangedEvent(null));

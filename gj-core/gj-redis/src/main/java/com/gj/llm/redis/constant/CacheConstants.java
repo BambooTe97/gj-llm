@@ -41,6 +41,17 @@ public final class CacheConstants {
     /** 在线会话注册表 key 前缀，完整 key = {@code online:token:{refreshTokenJti}} */
     public static final String ONLINE_USER_KEY = "online:token:";
 
+    // ==================== 资源授权（ACL）缓存 ====================
+
+    /** 用户角色视图缓存 key 前缀，完整 key = {@code auth:roles:u{userId}} */
+    public static final String AUTH_ROLES_KEY = "auth:roles:u";
+
+    /** 用户授权资源集合缓存 key 前缀，完整 key = {@code auth:grants:u{userId}:{resourceType}} */
+    public static final String AUTH_GRANTS_KEY = "auth:grants:u";
+
+    /** 授权缓存统一失效模式（角色主体授权影响面不可知，写后按模式全清） */
+    public static final String AUTH_GRANTS_PATTERN = "auth:grants:*";
+
     // ==================== 字典/参数读缓存 ====================
 
     /** 字典数据读缓存 key 前缀，完整 key = {@code sys:dict:data:{dictType}}，value = 启用态字典数据列表 */

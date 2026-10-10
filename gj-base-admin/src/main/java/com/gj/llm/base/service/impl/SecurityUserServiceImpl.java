@@ -116,10 +116,16 @@ public class SecurityUserServiceImpl implements SecurityUserService {
 
     /**
      * 角色变更（更新/删除/分配菜单）-> 事务提交后失效全部用户缓存。
+     *
+     * <p>顺带失效 {@code auth:roles:*}（GrantService 的用户角色视图缓存）：
+     * 该缓存此前仅靠 TTL 过期，角色删除/改派后授权判定最多滞后 TTL；
+     * 角色删除还会级联清理 user_role，缓存必须同步失效。</p>
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onRoleChanged(RoleChangedEvent event) {
         evictAll();
+        long n = redisService.deleteByPattern(CacheConstants.AUTH_ROLES_KEY + "*");
+        log.info("角色变更，清除用户角色缓存: {} 条", n);
     }
 
     /**

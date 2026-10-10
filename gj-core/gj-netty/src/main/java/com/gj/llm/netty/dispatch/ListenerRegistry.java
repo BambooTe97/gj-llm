@@ -1,5 +1,6 @@
 package com.gj.llm.netty.dispatch;
 
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.netty.protocol.Topic;
 import com.gj.llm.netty.spi.MessageListener;
 import lombok.extern.slf4j.Slf4j;
@@ -42,7 +43,7 @@ public class ListenerRegistry {
      */
     public void register(MessageListener listener) {
         String topic = listener.topic();
-        if (topic == null || topic.isBlank()) {
+        if (StringUtils.isBlank(topic)) {
             throw new IllegalArgumentException("MessageListener topic 不能为空: " + listener.getClass().getName());
         }
         if (topic.startsWith(Topic.SYS_PREFIX)) {

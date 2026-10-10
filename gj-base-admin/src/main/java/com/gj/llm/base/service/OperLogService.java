@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.gj.llm.base.entity.OperLogEntity;
 
+import java.time.LocalDateTime;
+
 /**
  * 操作日志服务 -- 审计日志查询与清理。
  *
@@ -29,4 +31,12 @@ public interface OperLogService extends IService<OperLogEntity> {
      * 清空全部操作日志。
      */
     void clearAll();
+
+    /**
+     * 清理指定时间之前的操作日志（保留期定时清理用，分批执行）。
+     *
+     * @param threshold 时间阈值，早于该时间的记录被删除
+     * @return 清理条数
+     */
+    int clearBefore(LocalDateTime threshold);
 }

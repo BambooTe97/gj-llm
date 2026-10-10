@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { TOKEN_KEY, USER_INFO_KEY } from '@/constants'
+import { REFRESH_TOKEN_KEY, TOKEN_KEY, USER_INFO_KEY } from '@/constants'
 import { storage } from '@/utils/storage'
 import { authApi } from '@/api/modules/auth'
 import type { LoginRequest, Menu } from '@/api/types'
@@ -54,12 +54,14 @@ export const useUserStore = defineStore('user', () => {
     try {
       const res = await authApi.login(data)
       // res.data 是 ApiResponse 包装层，内层 data 才是 LoginResponse
-      const { accessToken: tk, username: uname, avatar: avt } = res.data.data
+      const { accessToken: tk, refreshToken: rtk, username: uname, avatar: avt } = res.data.data
       token.value = tk
       username.value = uname
       avatar.value = avt || null
 
       storage.set(TOKEN_KEY, tk)
+      // 刷新令牌由 axios 401 拦截器消费（静默续签）
+      if (rtk) storage.set(REFRESH_TOKEN_KEY, rtk)
       storage.set(USER_INFO_KEY, { username: uname, avatar: avt })
 
       return { success: true }
@@ -75,6 +77,7 @@ export const useUserStore = defineStore('user', () => {
     } finally {
       resetState()
       storage.remove(TOKEN_KEY)
+      storage.remove(REFRESH_TOKEN_KEY)
       storage.remove(USER_INFO_KEY)
       router.push('/login')
     }

@@ -1,5 +1,7 @@
 package com.gj.llm.base.model;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -38,5 +40,7 @@ public class DeptUpdateRequest {
     private String email;
 
     /** 状态：1=启用，0=停用 */
+    @Min(value = 0, message = "status 取值 0-1")
+    @Max(value = 1, message = "status 取值 0-1")
     private Integer status;
 }

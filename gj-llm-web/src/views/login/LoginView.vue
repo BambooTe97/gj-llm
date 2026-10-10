@@ -3,7 +3,7 @@ import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/modules/user'
 import { HOME_PATH } from '@/constants'
-import SlideCaptcha from '@/components/SlideCaptcha/SlideCaptcha.vue'
+import CaptchaDialog from '@/components/global/CaptchaDialog/CaptchaDialog.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const route = useRoute()
@@ -11,9 +11,11 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const formRef = ref<FormInstance>()
-const captchaRef = ref<InstanceType<typeof SlideCaptcha>>()
+const captchaDialogRef = ref<InstanceType<typeof CaptchaDialog>>()
 const loading = ref(false)
 const errorMessage = ref('')
+/** 验证码被跳过（开关关闭/首次拉取失败）时，登录错误落表单顶部 alert 而非弹窗 */
+const captchaSkipped = ref(false)
 
 const form = reactive({ username: '', password: '' })
 const rules: FormRules = {
@@ -27,21 +29,41 @@ const rules: FormRules = {
   ],
 }
 
+/** 点击登录：表单校验通过后弹出安全验证弹窗（弹窗自行拉取验证码） */
 async function handleLogin() {
   errorMessage.value = ''
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
   loading.value = true
-  // 滑动验证码参数：开关关闭/未就绪时为 undefined，展开后安全跳过
-  const captchaPayload = captchaRef.value?.getData()
+  // 开关关闭/首次拉取失败时弹窗不闪现，经 skip 事件直接登录
+  captchaDialogRef.value?.open()
+}
+
+function onCaptchaPass() {
+  captchaSkipped.value = false
+  doLogin()
+}
+
+function onCaptchaSkip() {
+  captchaSkipped.value = true
+  doLogin()
+}
+
+async function doLogin() {
+  loading.value = true
+  // 滑块松手后的附带参数；skip 路径为 undefined，展开后安全跳过
+  const captchaPayload = captchaDialogRef.value?.getData()
   const result = await userStore.login({ ...form, ...captchaPayload })
   loading.value = false
   if (result.success) {
+    captchaDialogRef.value?.close()
     router.push((route.query.redirect as string) || HOME_PATH)
+  } else if (!captchaSkipped.value) {
+    // 验证码路径：错误在弹窗内展示；token 一次性消费，换新题重试
+    captchaDialogRef.value?.setError(result.message || '用户名或密码错误')
+    captchaDialogRef.value?.refetch()
   } else {
     errorMessage.value = result.message || '用户名或密码错误'
-    // 验证码一次性消费：无论失败原因，刷新拼图与滑块位置
-    captchaRef.value?.refresh()
   }
 }
 
@@ -428,7 +450,6 @@ onUnmounted(() => {
             show-password @keyup.enter="handleLogin"
           />
         </el-form-item>
-        <SlideCaptcha ref="captchaRef" />
         <el-form-item>
           <el-button type="primary" :loading="loading" style="width: 100%" @click="handleLogin">
             {{ loading ? '登录中...' : '登 录' }}
@@ -436,6 +457,13 @@ onUnmounted(() => {
         </el-form-item>
       </el-form>
     </div>
+
+    <CaptchaDialog
+      ref="captchaDialogRef"
+      @pass="onCaptchaPass"
+      @skip="onCaptchaSkip"
+      @cancel="loading = false"
+    />
   </div>
 </template>
 

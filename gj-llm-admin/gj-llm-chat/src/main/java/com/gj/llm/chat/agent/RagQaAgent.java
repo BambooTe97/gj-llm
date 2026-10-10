@@ -1,5 +1,6 @@
 package com.gj.llm.chat.agent;
 
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.chat.config.ChatProperties;
 import com.gj.llm.chat.sse.SseEventBuilder;
 import com.gj.llm.rag.model.RoutingDecision;
@@ -120,7 +121,7 @@ public class RagQaAgent extends AbstractLlmAgent {
     // ==================== RAG Prompt 构建(本智能体私有) ====================
 
     private String buildSystemPrompt(String context, boolean decomposed) {
-        if (context != null && !context.isBlank()) {
+        if (StringUtils.isNotBlank(context)) {
             if (decomposed) {
                 // 拆解检索:上下文按子问题组织(片段头带子问题标注),要求逐子问题覆盖、缺口如实声明
                 return """
@@ -164,7 +165,7 @@ public class RagQaAgent extends AbstractLlmAgent {
 
     /** 构建当前用户消息(含 RAG 上下文,历史对话通过独立 message 角色传递) */
     private String buildUserPrompt(String currentQuestion, String context) {
-        if (context != null && !context.isBlank()) {
+        if (StringUtils.isNotBlank(context)) {
             return "参考上下文:\n" + context + "\n\n用户问题:\n" + currentQuestion;
         }
         return currentQuestion;

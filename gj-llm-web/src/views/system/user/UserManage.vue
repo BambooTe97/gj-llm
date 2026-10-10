@@ -299,7 +299,7 @@ onMounted(() => {
           <el-input v-model="form.username" :disabled="isEdit" placeholder="登录用户名" />
         </el-form-item>
         <el-form-item v-if="!isEdit" label="密码" prop="password">
-          <el-input v-model="form.password" type="password" show-password placeholder="至少 6 位" />
+          <el-input v-model="form.password" type="password" show-password placeholder="至少 8 位，需包含大小写字母/数字/特殊字符中的 3 类" />
         </el-form-item>
         <el-form-item label="昵称">
           <el-input v-model="form.nickname" placeholder="选填" />

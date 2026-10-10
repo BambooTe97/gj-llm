@@ -1,9 +1,11 @@
 package com.gj.llm.base.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.gj.llm.base.annotation.OperLog;
 import com.gj.llm.base.entity.LogininforEntity;
 import com.gj.llm.base.service.LoginLogService;
 import com.gj.llm.common.web.R;
+import jakarta.validation.constraints.Max;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -44,7 +46,8 @@ public class LoginLogController {
      */
     @GetMapping
     public R<IPage<LogininforEntity>> page(@RequestParam(defaultValue = "1") long page,
-                                           @RequestParam(defaultValue = "10") long size,
+                                        @Max(value = 200, message = "每页条数最大 200")
+                                        @RequestParam(defaultValue = "10") long size,
                                            @RequestParam(required = false) String username,
                                            @RequestParam(required = false) String ip,
                                            @RequestParam(required = false) Integer status) {
@@ -54,6 +57,7 @@ public class LoginLogController {
     /**
      * 清空全部登录日志。
      */
+    @OperLog(module = "日志管理", type = "清空")
     @DeleteMapping
     public R<Void> clear() {
         loginLogService.clearAll();

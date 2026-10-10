@@ -1,5 +1,6 @@
 package com.gj.llm.rag.service.impl;
 
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.rag.config.RagProperties;
 import com.gj.llm.rag.entity.DatasetEntity;
 import com.gj.llm.rag.model.RankedTestItem;
@@ -432,7 +433,7 @@ public class RetrievalServiceImpl implements RetrievalService {
             Document d = c.doc();
             // 片段正文:优先父块完整上下文(parent_content 为 null 时回退子块文本)
             String parentContent = (String) d.getMetadata().get("parent_content");
-            String segBody = (parentContent != null && !parentContent.isBlank()) ? parentContent : d.getText();
+            String segBody = StringUtils.isNotBlank(parentContent) ? parentContent : d.getText();
             String source = (String) d.getMetadata().get("source");
             rank++;
 

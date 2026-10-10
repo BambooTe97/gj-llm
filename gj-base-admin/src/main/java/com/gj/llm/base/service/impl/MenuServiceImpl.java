@@ -11,6 +11,7 @@ import com.gj.llm.base.model.MenuCreateRequest;
 import com.gj.llm.base.model.MenuUpdateRequest;
 import com.gj.llm.base.service.MenuService;
 import com.gj.llm.base.service.RoleService;
+import com.gj.llm.common.exception.WarnBusinessException;
 import com.gj.llm.common.util.SecurityUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -19,9 +20,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -67,6 +70,7 @@ public class MenuServiceImpl extends ServiceImpl<MenuMapper, MenuEntity> impleme
     @Override
     @Transactional
     public MenuEntity create(MenuCreateRequest request) {
+        validateParent(request.getParentId(), null);
         MenuEntity menu = MenuEntity.builder()
                 .parentId(request.getParentId())
                 .name(request.getName())
@@ -89,9 +93,13 @@ public class MenuServiceImpl extends ServiceImpl<MenuMapper, MenuEntity> impleme
     public MenuEntity update(Long id, MenuUpdateRequest request) {
         MenuEntity menu = getById(id);
         if (menu == null) {
-            throw new RuntimeException("菜单不存在: id=" + id);
+            throw new WarnBusinessException("menu.notFound", id);
         }
-        if (request.getParentId() != null) menu.setParentId(request.getParentId());
+        // 换父校验：父存在、非按钮、不得移入自身或子孙（菜单无 ancestors 列，沿 parent 链上溯判环）
+        if (request.getParentId() != null) {
+            validateParent(request.getParentId(), id);
+            menu.setParentId(request.getParentId());
+        }
         if (request.getName() != null) menu.setName(request.getName());
         if (request.getType() != null) menu.setType(request.getType());
         if (request.getPath() != null) menu.setPath(request.getPath());
@@ -112,11 +120,11 @@ public class MenuServiceImpl extends ServiceImpl<MenuMapper, MenuEntity> impleme
     @Transactional
     public void delete(Long id) {
         if (getById(id) == null) {
-            throw new RuntimeException("菜单不存在: id=" + id);
+            throw new WarnBusinessException("menu.notFound", id);
         }
         long childCount = count(new LambdaQueryWrapper<MenuEntity>().eq(MenuEntity::getParentId, id));
         if (childCount > 0) {
-            throw new RuntimeException("存在子菜单，请先删除子节点");
+            throw new WarnBusinessException("menu.hasChildren");
         }
         // 通过 RoleService 清理角色-菜单关联
         roleService.removeMenuFromAllRoles(id);
@@ -138,11 +146,13 @@ public class MenuServiceImpl extends ServiceImpl<MenuMapper, MenuEntity> impleme
     @Transactional
     public void assignApis(Long menuId, Set<Long> apiIds) {
         if (getById(menuId) == null) {
-            throw new RuntimeException("菜单不存在: id=" + menuId);
+            throw new WarnBusinessException("menu.notFound", menuId);
         }
         menuApiMapper.deleteByMenuId(menuId);
         if (apiIds != null && !apiIds.isEmpty()) {
-            apiIds.forEach(apiId -> menuApiMapper.insert(new MenuApiEntity(menuId, apiId)));
+            menuApiMapper.insertBatch(apiIds.stream()
+                    .map(apiId -> new MenuApiEntity(menuId, apiId))
+                    .toList());
         }
         eventPublisher.publishEvent(new ApiPermissionChangedEvent());
         log.info("菜单分配接口成功: menuId={}, apiCount={}", menuId, apiIds == null ? 0 : apiIds.size());
@@ -177,6 +187,42 @@ public class MenuServiceImpl extends ServiceImpl<MenuMapper, MenuEntity> impleme
     public void addApiLinks(List<MenuApiEntity> links) {
         if (links != null && !links.isEmpty()) {
             menuApiMapper.insertBatch(links);
+        }
+    }
+
+    /**
+     * 父菜单校验：存在性 + 类型（按钮不可作父级）+ 防环。
+     *
+     * <p>菜单表无 {@code ancestors} 列，防环从目标父沿 parent 链向上追溯：
+     * 命中 {@code selfId} 即说明目标父就是自身或位于自身子树内。
+     * 已访问集防止存量脏数据成环导致死循环。</p>
+     *
+     * @param parentId 目标父菜单 ID（null 或 0 = 顶层，直接放行）
+     * @param selfId   当前菜单 ID（创建场景传 null，跳过防环检查）
+     */
+    private void validateParent(Long parentId, Long selfId) {
+        if (parentId == null || parentId == 0L) {
+            return;
+        }
+        Map<Long, MenuEntity> byId = list().stream()
+                .collect(Collectors.toMap(MenuEntity::getId, Function.identity(), (a, b) -> a));
+        MenuEntity parent = byId.get(parentId);
+        if (parent == null) {
+            throw new WarnBusinessException("menu.parentNotFound", parentId);
+        }
+        if ("B".equals(parent.getType())) {
+            throw new WarnBusinessException("menu.buttonAsParent");
+        }
+        if (selfId != null) {
+            Set<Long> visited = new HashSet<>();
+            Long cursor = parentId;
+            while (cursor != null && cursor != 0L && visited.add(cursor)) {
+                if (cursor.equals(selfId)) {
+                    throw new WarnBusinessException("menu.cyclicMove");
+                }
+                MenuEntity node = byId.get(cursor);
+                cursor = node == null ? null : node.getParentId();
+            }
         }
     }
 

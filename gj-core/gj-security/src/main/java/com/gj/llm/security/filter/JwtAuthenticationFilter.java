@@ -1,5 +1,6 @@
 package com.gj.llm.security.filter;
 
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.security.config.SecurityConfig;
 import com.gj.llm.security.model.SecurityUser;
 import com.gj.llm.security.service.SecurityUserService;
@@ -17,7 +18,6 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;

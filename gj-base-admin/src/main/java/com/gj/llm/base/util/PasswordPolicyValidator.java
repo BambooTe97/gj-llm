@@ -1,7 +1,11 @@
 package com.gj.llm.base.util;
 
 import com.gj.llm.base.config.AuthProperties;
+import com.gj.llm.common.exception.WarnBusinessException;
+import com.gj.llm.common.util.StringUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -18,7 +22,8 @@ import java.util.regex.Pattern;
  *   <li>禁止包含用户名（忽略大小写，默认开启）</li>
  * </ul>
  *
- * <p>校验失败抛 {@link RuntimeException}，由 {@code GlobalExceptionHandler} 转为 400 + 可读文案。</p>
+ * <p>校验失败抛 {@link WarnBusinessException}，由 {@code GlobalExceptionHandler} 转为 400 + 可读文案。
+ * 多条规则提示需先按当前 Locale 解析并拼接后作为占位参数传入（{@code password.policy.violation}）。</p>
  *
  * @author gj-llm
  */
@@ -33,6 +38,7 @@ public class PasswordPolicyValidator {
     private static final Pattern SPECIAL = Pattern.compile("[^A-Za-z0-9]");
 
     private final AuthProperties authProperties;
+    private final MessageSource messageSource;
 
     /**
      * 校验明文密码是否符合复杂度策略。
@@ -49,10 +55,12 @@ public class PasswordPolicyValidator {
 
         List<String> errors = new ArrayList<>();
         if (rawPassword.length() < policy.getMinLength()) {
-            errors.add("密码长度至少 " + policy.getMinLength() + " 位");
+            errors.add(messageSource.getMessage("password.policy.minLength",
+                    new Object[]{policy.getMinLength()}, LocaleContextHolder.getLocale()));
         }
         if (rawPassword.length() > policy.getMaxLength()) {
-            errors.add("密码长度不能超过 " + policy.getMaxLength() + " 位");
+            errors.add(messageSource.getMessage("password.policy.maxLength",
+                    new Object[]{policy.getMaxLength()}, LocaleContextHolder.getLocale()));
         }
 
         int categories = 0;
@@ -69,16 +77,18 @@ public class PasswordPolicyValidator {
             categories++;
         }
         if (categories < policy.getMinCategories()) {
-            errors.add("密码需包含大写字母、小写字母、数字、特殊字符中的至少 " + policy.getMinCategories() + " 类");
+            errors.add(messageSource.getMessage("password.policy.minCategories",
+                    new Object[]{policy.getMinCategories()}, LocaleContextHolder.getLocale()));
         }
 
-        if (policy.isForbidUsername() && username != null && !username.isBlank()
+        if (policy.isForbidUsername() && StringUtils.isNotBlank(username)
                 && rawPassword.toLowerCase().contains(username.toLowerCase())) {
-            errors.add("密码不能包含用户名");
+            errors.add(messageSource.getMessage("password.policy.forbidUsername",
+                    null, LocaleContextHolder.getLocale()));
         }
 
         if (!errors.isEmpty()) {
-            throw new RuntimeException(String.join("；", errors));
+            throw new WarnBusinessException("password.policy.violation", String.join("；", errors));
         }
     }
 }

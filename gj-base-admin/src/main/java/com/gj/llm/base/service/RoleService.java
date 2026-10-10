@@ -15,6 +15,9 @@ import java.util.Set;
  */
 public interface RoleService extends IService<RoleEntity> {
 
+    /** 内置默认角色编码（新建用户未指定角色时的兜底角色），受删除保护 */
+    String DEFAULT_ROLE_CODE = "USER";
+
     /** 角色列表 */
     List<RoleEntity> listAll();
 

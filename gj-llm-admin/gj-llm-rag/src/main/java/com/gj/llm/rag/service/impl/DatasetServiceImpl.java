@@ -9,6 +9,7 @@ import com.gj.llm.base.entity.ResourceAclEntity;
 import com.gj.llm.base.service.GrantService;
 import com.gj.llm.base.service.ResourceAclService;
 import com.gj.llm.common.util.SecurityUtils;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.es.service.EsSearchService;
 import com.gj.llm.file.service.FileStorageService;
 import com.gj.llm.rag.entity.DatasetEntity;
@@ -122,7 +123,7 @@ public class DatasetServiceImpl extends ServiceImpl<DatasetMapper, DatasetEntity
 
         // 统一处理集合名称：去掉可能的前缀，保留纯 type；未填则用库名生成
         String typeName = request.getCollectionName();
-        if (typeName == null || typeName.isBlank()) {
+        if (StringUtils.isBlank(typeName)) {
             typeName = request.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
         } else if (typeName.startsWith(VectorStoreConstants.COLLECTION_PREFIX)) {
             typeName = typeName.substring(VectorStoreConstants.COLLECTION_PREFIX.length());

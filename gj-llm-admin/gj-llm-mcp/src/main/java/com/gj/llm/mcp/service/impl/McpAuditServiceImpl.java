@@ -3,6 +3,7 @@ package com.gj.llm.mcp.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.mcp.entity.McpAuditLogEntity;
 import com.gj.llm.mcp.mapper.McpAuditLogMapper;
 import com.gj.llm.mcp.service.McpAuditService;
@@ -40,6 +41,6 @@ public class McpAuditServiceImpl implements McpAuditService {
 
     /** 空串归一为 null（条件不生效） */
     private String normalize(String value) {
-        return (value == null || value.isBlank()) ? null : value;
+        return StringUtils.isBlank(value) ? null : value;
     }
 }

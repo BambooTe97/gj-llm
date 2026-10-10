@@ -1,6 +1,7 @@
 package com.gj.llm.mcp.auth;
 
 import com.gj.llm.common.util.JacksonUtils;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.common.web.R;
 import com.gj.llm.mcp.auth.McpUserContext.McpPrincipal;
 import com.gj.llm.mcp.entity.McpApiKeyEntity;
@@ -56,7 +57,7 @@ public class McpApiKeyAuthInterceptor implements HandlerInterceptor {
     /** 取明文 key：X-Api-Key 优先，其次 Authorization: Bearer */
     private String extractKey(HttpServletRequest request) {
         String key = request.getHeader(HEADER_API_KEY);
-        if (key != null && !key.isBlank()) {
+        if (StringUtils.isNotBlank(key)) {
             return key.trim();
         }
         String auth = request.getHeader(HEADER_AUTHORIZATION);
@@ -68,7 +69,7 @@ public class McpApiKeyAuthInterceptor implements HandlerInterceptor {
 
     private String clientIp(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
+        if (StringUtils.isNotBlank(forwarded)) {
             return forwarded.split(",")[0].trim();
         }
         return request.getRemoteAddr();

@@ -2,13 +2,17 @@ package com.gj.llm.base.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.gj.llm.base.entity.RoleDeptEntity;
 import com.gj.llm.base.entity.SysDeptEntity;
 import com.gj.llm.base.entity.UserEntity;
+import com.gj.llm.base.mapper.RoleDeptMapper;
 import com.gj.llm.base.mapper.SysDeptMapper;
 import com.gj.llm.base.model.DeptCreateRequest;
 import com.gj.llm.base.model.DeptUpdateRequest;
 import com.gj.llm.base.service.SysDeptService;
 import com.gj.llm.base.service.UserService;
+import com.gj.llm.common.exception.WarnBusinessException;
+import com.gj.llm.common.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -16,16 +20,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * 部门服务实现 -- 树形结构管理（仿 MenuServiceImpl 的树构建惯例）。
  *
  * <p>{@code ancestors} 存祖级链路（如 {@code 0,100}）；换父时重算自身与全部子孙的链路；
- * 删除前校验无下级、无挂载用户。</p>
+ * 删除前校验无下级、无挂载用户，删除后清理 {@code sys_role_dept} 悬空引用。</p>
  *
  * <p>{@link UserService} 为双向域依赖（用户侧依赖部门树，部门删除校验依赖用户计数），
  * 用 {@code @Lazy} 代理打破构造期循环（显式构造器：{@code @RequiredArgsConstructor}
@@ -38,9 +44,11 @@ import java.util.stream.Collectors;
 public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity> implements SysDeptService {
 
     private final UserService userService;
+    private final RoleDeptMapper roleDeptMapper;
 
-    public SysDeptServiceImpl(@Lazy UserService userService) {
+    public SysDeptServiceImpl(@Lazy UserService userService, RoleDeptMapper roleDeptMapper) {
         this.userService = userService;
+        this.roleDeptMapper = roleDeptMapper;
     }
 
     @Override
@@ -56,7 +64,7 @@ public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity
         if (parentId != null && parentId != 0L) {
             SysDeptEntity parent = getById(parentId);
             if (parent == null) {
-                throw new RuntimeException("父部门不存在: id=" + parentId);
+                throw new WarnBusinessException("dept.parentNotFound", parentId);
             }
             ancestors = parent.getAncestors() + "," + parentId;
         }
@@ -79,7 +87,7 @@ public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity
     public SysDeptEntity update(Long id, DeptUpdateRequest request) {
         SysDeptEntity entity = getById(id);
         if (entity == null) {
-            throw new RuntimeException("部门不存在: id=" + id);
+            throw new WarnBusinessException("dept.notFound", id);
         }
         entity.setName(request.getName());
         if (request.getSort() != null) {
@@ -106,17 +114,20 @@ public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity
     public void delete(Long id) {
         SysDeptEntity entity = getById(id);
         if (entity == null) {
-            throw new RuntimeException("部门不存在: id=" + id);
+            throw new WarnBusinessException("dept.notFound", id);
         }
         long childCount = count(new LambdaQueryWrapper<SysDeptEntity>().eq(SysDeptEntity::getParentId, id));
         if (childCount > 0) {
-            throw new RuntimeException("存在下级部门，不能删除");
+            throw new WarnBusinessException("dept.hasChildren");
         }
         long userCount = userService.count(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getDeptId, id));
         if (userCount > 0) {
-            throw new RuntimeException("部门下存在 " + userCount + " 个用户，不能删除");
+            throw new WarnBusinessException("dept.hasUsers", userCount);
         }
         removeById(id);
+        // 清理角色自定义数据域中的悬空引用（sys_role_dept 无外键级联）
+        roleDeptMapper.delete(new LambdaQueryWrapper<RoleDeptEntity>()
+                .eq(RoleDeptEntity::getDeptId, id));
         log.info("删除部门: {}", entity.getName());
     }
 
@@ -142,14 +153,19 @@ public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity
     private void changeParent(SysDeptEntity entity, Long newParentId) {
         String oldPath = entity.getAncestors() + "," + entity.getId();
 
+        // 不得以自身为父：自环会让部门从树中消失、子孙链路重算与 collectChildren 无限递归
+        if (Objects.equals(newParentId, entity.getId())) {
+            throw new WarnBusinessException("dept.cyclicMoveSelf");
+        }
+
         if (newParentId != 0L) {
             SysDeptEntity newParent = getById(newParentId);
             if (newParent == null) {
-                throw new RuntimeException("目标父部门不存在: id=" + newParentId);
+                throw new WarnBusinessException("dept.parentNotFound", newParentId);
             }
             // 不得移入自身或子孙：目标父的祖级链路中包含自身 ID
             if (containsId(newParent.getAncestors(), entity.getId())) {
-                throw new RuntimeException("不能移动到自身或下级部门下");
+                throw new WarnBusinessException("dept.cyclicMove");
             }
             entity.setAncestors(newParent.getAncestors() + "," + newParentId);
         } else {
@@ -178,7 +194,7 @@ public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity
 
     /** 判断祖级链路中是否包含指定 ID（严格按逗号分段匹配） */
     private boolean containsId(String ancestors, Long id) {
-        if (ancestors == null || ancestors.isBlank()) {
+        if (StringUtils.isBlank(ancestors)) {
             return false;
         }
         for (String segment : ancestors.split(",")) {
@@ -189,12 +205,16 @@ public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity
         return false;
     }
 
-    /** 内存递归收集子部门 ID */
+    /** 内存遍历收集子部门 ID（visited 集防存量脏数据成环导致死循环） */
     private void collectChildren(Long parentId, List<SysDeptEntity> all, List<Long> ids) {
+        collectChildren(parentId, all, ids, new HashSet<>());
+    }
+
+    private void collectChildren(Long parentId, List<SysDeptEntity> all, List<Long> ids, Set<Long> visited) {
         for (SysDeptEntity dept : all) {
-            if (parentId.equals(dept.getParentId())) {
+            if (parentId.equals(dept.getParentId()) && visited.add(dept.getId())) {
                 ids.add(dept.getId());
-                collectChildren(dept.getId(), all, ids);
+                collectChildren(dept.getId(), all, ids, visited);
             }
         }
     }

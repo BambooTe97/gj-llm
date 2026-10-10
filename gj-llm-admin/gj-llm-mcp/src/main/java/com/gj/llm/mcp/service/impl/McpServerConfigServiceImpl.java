@@ -3,6 +3,7 @@ package com.gj.llm.mcp.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.mcp.client.McpConnectionManager;
 import com.gj.llm.mcp.client.McpToolRegistry;
 import com.gj.llm.mcp.common.AesGcmTextCipher;
@@ -222,7 +223,7 @@ public class McpServerConfigServiceImpl implements McpServerConfigService {
     }
 
     private String trimToNull(String value) {
-        if (value == null || value.isBlank()) {
+        if (StringUtils.isBlank(value)) {
             return null;
         }
         return value.trim();

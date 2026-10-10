@@ -1,6 +1,7 @@
 package com.gj.llm.base.service.impl;
 
 import com.gj.llm.base.config.AuthProperties;
+import com.gj.llm.base.config.WebProperties;
 import com.gj.llm.base.entity.MenuEntity;
 import com.gj.llm.base.entity.UserEntity;
 import com.gj.llm.base.event.LogininforEvent;
@@ -15,6 +16,8 @@ import com.gj.llm.base.service.MenuService;
 import com.gj.llm.base.service.OnlineUserService;
 import com.gj.llm.base.service.UserService;
 import com.gj.llm.base.util.WebUtils;
+import com.gj.llm.common.exception.ErrorBusinessException;
+import com.gj.llm.common.exception.WarnBusinessException;
 import com.gj.llm.common.http.UserAgentUtils;
 import com.gj.llm.redis.constant.CacheConstants;
 import com.gj.llm.redis.service.RedisService;
@@ -25,6 +28,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -64,11 +69,13 @@ public class AuthServiceImpl implements AuthService {
     private final TokenBlacklistService tokenBlacklistService;
     private final RedisService redisService;
     private final AuthProperties authProperties;
+    private final WebProperties webProperties;
     private final OnlineUserService onlineUserService;
     private final UserService userService;
     private final PasswordEncoder passwordEncoder;
     private final CaptchaService captchaService;
     private final ApplicationEventPublisher eventPublisher;
+    private final MessageSource messageSource;
 
     /**
      * 用户登录：校验凭据（含防暴力破解）并签发双 Token。
@@ -85,7 +92,7 @@ public class AuthServiceImpl implements AuthService {
         // 0. 滑动验证码校验（开关关闭时内部直接跳过；验证成功即消费令牌）
         captchaService.verify(request.getCaptchaToken(), request.getSlideX());
 
-        // 1. 失败锁定前置检查：锁定期内直接拒绝（普通 RuntimeException → 400 + 自定义文案）
+        // 1. 失败锁定前置检查：锁定期内直接拒绝（BusinessException → 400 + 自定义文案）
         checkLocked(username, httpRequest);
 
         // 2. 构造认证令牌并委托 Spring Security 认证
@@ -143,13 +150,21 @@ public class AuthServiceImpl implements AuthService {
         // 不检查则被踢用户的 refresh token 仍能继续换新（/api/auth/refresh 不经过认证过滤器）
         if (tokenBlacklistService.isBlacklisted(refreshToken)) {
             log.warn("Refresh Token 已被拉黑（登出/强制下线），拒绝刷新");
-            throw new RuntimeException("Token 已失效，请重新登录");
+            throw new WarnBusinessException("auth.tokenInvalid");
         }
 
         // 校验 Refresh Token
         if (!jwtUtils.validateRefreshToken(refreshToken)) {
             log.warn("Refresh Token 无效或已过期");
             throw new BadCredentialsException("Refresh Token 无效或已过期");
+        }
+
+        // 会话存在性校验：登出/强制下线时在线会话条目已删除。登记表是会话唯一真相，
+        // 条目不在则即使 refresh token 仍在有效期内也拒绝，防止登出后凭残留 token 复活会话
+        String jti = jwtUtils.getJti(refreshToken);
+        if (onlineUserService.findByTokenId(jti) == null) {
+            log.warn("Refresh Token 对应的在线会话不存在（已登出/被下线）: jti={}", jti);
+            throw new WarnBusinessException("auth.sessionInvalid");
         }
 
         // 从 Token 中提取用户信息并签发新的 Access Token
@@ -167,17 +182,23 @@ public class AuthServiceImpl implements AuthService {
     /**
      * 用户登出。
      *
-     * <p>将 Access Token 加入 Redis 黑名单（剩余有效期作为 TTL），认证过滤器后续校验到该
-     * Token 时直接拒绝；同时移除在线会话注册表中的对应条目。</p>
+     * <p>双 Token 均加入 Redis 黑名单（剩余有效期作为 TTL）——只拉黑 Access Token 会被
+     * 7 天有效的 Refresh Token 继续换新导致会话复活（与强制下线同口径）；
+     * 随后移除在线会话注册表中的对应条目。</p>
      *
      * @param accessToken 当前请求的 Access Token
      */
     @Override
     public void logout(String accessToken) {
-        // 将 Access Token 加入 Redis 黑名单（TTL 为其剩余有效期），过滤后续请求
+        // Access Token 加入黑名单，过滤后续请求
         tokenBlacklistService.blacklist(accessToken);
-        // 移除在线会话条目（注册表按 refresh jti 键控，扫描按 accessToken 匹配）
-        onlineUserService.removeByAccessToken(accessToken);
+        // 定位在线会话：Refresh Token 一并拉黑后移除条目；
+        // 会话条目不存在（已过期/Redis 丢失）时仅兜底拉黑 Access Token
+        OnlineUserRecord record = onlineUserService.findByAccessToken(accessToken);
+        if (record != null) {
+            tokenBlacklistService.blacklist(record.getRefreshToken());
+            onlineUserService.remove(record.getTokenId());
+        }
         String username = jwtUtils.getUsername(accessToken);
         log.info("用户登出: {}", username);
     }
@@ -190,7 +211,7 @@ public class AuthServiceImpl implements AuthService {
     public UserInfoResponse getCurrentUserInfo() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !(auth.getPrincipal() instanceof SecurityUser su)) {
-            throw new RuntimeException("未登录或认证信息缺失");
+            throw new WarnBusinessException("auth.notAuthenticated");
         }
         // 从 authorities 中提取角色编码（ROLE_ 前缀）
         List<String> roles = su.getAuthorities().stream()
@@ -222,7 +243,7 @@ public class AuthServiceImpl implements AuthService {
     public void changePassword(String username, ChangePasswordRequest request) {
         UserEntity user = userService.findByUsername(username);
         if (user == null) {
-            throw new RuntimeException("用户不存在: " + username);
+            throw new ErrorBusinessException("user.notFound", username);
         }
         // 原密码确认（失败文案与登录失败口径一致，不暴露额外信息）
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
@@ -242,9 +263,8 @@ public class AuthServiceImpl implements AuthService {
         if (redisService.hasKey(lockKey)) {
             long ttlSeconds = Math.max(redisService.getExpire(lockKey), 0);
             long minutes = (ttlSeconds + 59) / 60;
-            String msg = "登录失败次数过多，账号已锁定，请 " + minutes + " 分钟后再试";
             publishLogininfor(username, null, "账号锁定中", LogininforEvent.STATUS_FAILURE, request);
-            throw new RuntimeException(msg);
+            throw new WarnBusinessException("auth.accountLocked", minutes);
         }
     }
 
@@ -268,10 +288,12 @@ public class AuthServiceImpl implements AuthService {
         if (fails >= maxFailures) {
             redisService.set(CacheConstants.LOGIN_LOCK_KEY + username, "1", window);
             redisService.delete(failKey);
-            String msg = "密码错误次数已达 " + maxFailures + " 次，账号锁定 "
-                    + authProperties.getLockDurationMinutes() + " 分钟";
+            // 登录日志落库需可读文案，此处按当前 Locale 直接解析（请求线程内）
+            String msg = messageSource.getMessage("auth.lockTriggered",
+                    new Object[]{maxFailures, authProperties.getLockDurationMinutes()},
+                    LocaleContextHolder.getLocale());
             publishLogininfor(username, null, msg, LogininforEvent.STATUS_FAILURE, request);
-            throw new RuntimeException(msg);
+            throw new WarnBusinessException("auth.lockTriggered", maxFailures, authProperties.getLockDurationMinutes());
         }
         publishLogininfor(username, null, "用户名或密码错误", LogininforEvent.STATUS_FAILURE, request);
     }
@@ -285,7 +307,7 @@ public class AuthServiceImpl implements AuthService {
         eventPublisher.publishEvent(new LogininforEvent(
                 username,
                 userId,
-                WebUtils.getClientIp(request),
+                WebUtils.getClientIp(request, webProperties.isTrustXff()),
                 UserAgentUtils.getBrowser(userAgent),
                 UserAgentUtils.getOperatingSystem(userAgent),
                 status,
@@ -305,7 +327,7 @@ public class AuthServiceImpl implements AuthService {
                 .userId(securityUser.getUserId())
                 .username(securityUser.getUsername())
                 .nickname(securityUser.getNickname())
-                .ip(WebUtils.getClientIp(request))
+                .ip(WebUtils.getClientIp(request, webProperties.isTrustXff()))
                 .browser(UserAgentUtils.getBrowser(request.getHeader("User-Agent")))
                 .os(UserAgentUtils.getOperatingSystem(request.getHeader("User-Agent")))
                 .loginTime(LocalDateTime.now())

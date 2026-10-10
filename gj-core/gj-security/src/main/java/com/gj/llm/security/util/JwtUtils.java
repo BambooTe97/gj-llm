@@ -1,5 +1,6 @@
 package com.gj.llm.security.util;
 
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.security.properties.SecurityProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -81,7 +82,7 @@ public class JwtUtils {
     @PostConstruct
     public void init() {
         String configuredSecret = securityProperties.getJwt().getSecret();
-        if (configuredSecret != null && !configuredSecret.isBlank()) {
+        if (StringUtils.isNotBlank(configuredSecret)) {
             byte[] keyBytes = Decoders.BASE64.decode(configuredSecret);
             this.secretKey = Keys.hmacShaKeyFor(keyBytes);
             log.info("JWT 签名密钥已从配置（app.security.jwt.secret）加载");

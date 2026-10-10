@@ -9,6 +9,7 @@ import com.gj.llm.base.model.UserUpdateRequest;
 import com.gj.llm.base.service.UserService;
 import com.gj.llm.common.web.R;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -38,7 +39,8 @@ public class UserController {
     @GetMapping
     public R<IPage<UserEntity>> page(
             @RequestParam(defaultValue = "1") long page,
-            @RequestParam(defaultValue = "10") long size,
+                                        @Max(value = 200, message = "每页条数最大 200")
+                                        @RequestParam(defaultValue = "10") long size,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Long deptId) {
         return R.ok(userService.page(page, size, keyword, deptId));

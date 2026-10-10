@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.gj.llm.base.entity.LogininforEntity;
 
+import java.time.LocalDateTime;
+
 /**
  * 登录日志服务 -- 查询与清空（管理端）。
  *
@@ -25,4 +27,12 @@ public interface LoginLogService extends IService<LogininforEntity> {
 
     /** 清空全部登录日志 */
     void clearAll();
+
+    /**
+     * 清理指定时间之前的登录日志（保留期定时清理用，分批执行）。
+     *
+     * @param threshold 时间阈值，早于该时间的记录被删除
+     * @return 清理条数
+     */
+    int clearBefore(LocalDateTime threshold);
 }

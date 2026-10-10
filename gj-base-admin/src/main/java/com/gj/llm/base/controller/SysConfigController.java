@@ -8,6 +8,7 @@ import com.gj.llm.base.model.SysConfigUpdateRequest;
 import com.gj.llm.base.service.SysConfigService;
 import com.gj.llm.common.web.R;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -43,7 +44,8 @@ public class SysConfigController {
     /** 分页查询参数配置（keyword 匹配名称/键名） */
     @GetMapping
     public R<IPage<SysConfigEntity>> page(@RequestParam(defaultValue = "1") long page,
-                                          @RequestParam(defaultValue = "10") long size,
+                                        @Max(value = 200, message = "每页条数最大 200")
+                                        @RequestParam(defaultValue = "10") long size,
                                           @RequestParam(required = false) String keyword) {
         return R.ok(sysConfigService.page(page, size, keyword));
     }
