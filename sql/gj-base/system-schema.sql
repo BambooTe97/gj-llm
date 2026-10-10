@@ -3,7 +3,7 @@
 -- 部门管理 / 字典管理 / 参数配置 / 操作日志 / 登录日志 / 角色数据域
 --
 -- 幂等脚本：可重复执行（CREATE TABLE IF NOT EXISTS + INSERT IGNORE）
--- 菜单 ID 分配：C 行 2005-2010，B 行 25xx/26xx/27xx/2801/2901/3001，全局 B 行 4100/4101
+-- 菜单 ID 分配：C 行 2005-2010，B 行 25xx/26xx/27xx/2901，全局 B 行 4100/4101
 -- 注意：本脚本需在应用启动【之前】执行 —— ApiAutoLinker 启动时按
 --       sys_menu.perms 建立 sys_menu_api 权限链接。
 -- ============================================================
@@ -159,7 +159,6 @@ INSERT IGNORE INTO sys_menu (id, parent_id, name, type, perms, sort, visible, st
 (2701, 2007, '参数新增', 'B', 'system:config:add',    1, 0, 1, 'system'),
 (2702, 2007, '参数编辑', 'B', 'system:config:edit',   2, 0, 1, 'system'),
 (2703, 2007, '参数删除', 'B', 'system:config:remove', 3, 0, 1, 'system'),
-(2801, 2008, '日志清空', 'B', 'system:log:clear',     1, 0, 1, 'system'),
 (2901, 2009, '强制下线', 'B', 'system:online:forceLogout', 1, 0, 1, 'system');
 
 -- ----------------------------
@@ -178,7 +177,7 @@ WHERE id BETWEEN 2005 AND 2009
    OR id BETWEEN 2501 AND 2503
    OR id BETWEEN 2601 AND 2603
    OR id BETWEEN 2701 AND 2703
-   OR id IN (2801, 2901, 4100, 4101);
+   OR id IN (2901, 4100, 4101);
 
 INSERT IGNORE INTO sys_role_menu (role_id, menu_id) VALUES
 (2, 4100),
@@ -204,17 +203,13 @@ CREATE TABLE IF NOT EXISTS sys_logininfor (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='登录日志表';
 
 -- ----------------------------
--- 12. 菜单种子：登录日志 C 行（2010）+ 日志清空 B 行（3001）
+-- 12. 菜单种子：登录日志 C 行（2010）
 -- ----------------------------
 INSERT IGNORE INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_by) VALUES
 (2010, 2000, '登录日志', 'C', '/system/login-log', 'system/log/LoginLogManage', 'system:loginlog:list', 'Key', 10, 1, 1, 'system');
 
-INSERT IGNORE INTO sys_menu (id, parent_id, name, type, perms, sort, visible, status, create_by) VALUES
-(3001, 2010, '日志清空', 'B', 'system:loginlog:clear', 1, 0, 1, 'system');
-
 INSERT IGNORE INTO sys_role_menu (role_id, menu_id) VALUES
-(1, 2010),
-(1, 3001);
+(1, 2010);
 
 -- ----------------------------
 -- 13. 数据权限：sys_role 增加数据范围列（幂等 ALTER）+ 角色自定义部门关联表

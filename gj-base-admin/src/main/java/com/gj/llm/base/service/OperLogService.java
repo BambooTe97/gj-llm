@@ -7,9 +7,10 @@ import com.gj.llm.base.entity.OperLogEntity;
 import java.time.LocalDateTime;
 
 /**
- * 操作日志服务 -- 审计日志查询与清理。
+ * 操作日志服务 -- 审计日志查询与保留期清理。
  *
- * <p>日志写入走 {@code OperLogEventListener} 异步落库，本服务只提供查询与清空。</p>
+ * <p>日志写入走 {@code OperLogEventListener} 异步落库，本服务只提供查询与保留期清理
+ * （删除只走 {@code LogCleanJob} 定时任务，不提供手动一键清空）。</p>
  *
  * @author gj-llm
  */
@@ -26,11 +27,6 @@ public interface OperLogService extends IService<OperLogEntity> {
      * @return 分页结果，按操作时间倒序
      */
     IPage<OperLogEntity> page(long page, long size, String module, String operator, Integer status);
-
-    /**
-     * 清空全部操作日志。
-     */
-    void clearAll();
 
     /**
      * 清理指定时间之前的操作日志（保留期定时清理用，分批执行）。

@@ -10,7 +10,6 @@
       <el-button type="primary" :icon="Search" @click="handleSearch">查询</el-button>
       <div class="log-panel__actions">
         <el-button :icon="Refresh" @click="loadList">刷新</el-button>
-        <el-button type="danger" :icon="Delete" v-permission="'system:log:clear'" @click="handleClear">清空日志</el-button>
       </div>
     </div>
 
@@ -92,8 +91,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Refresh, Search } from '@element-plus/icons-vue'
+import { Refresh, Search } from '@element-plus/icons-vue'
 import { operLogApi, type OperLogItem } from '@/api/modules/log'
 
 defineOptions({ name: 'OperLogPanel' })
@@ -143,22 +141,6 @@ function formatJson(raw: string): string {
     return JSON.stringify(JSON.parse(raw), null, 2)
   } catch {
     return raw
-  }
-}
-
-async function handleClear() {
-  try {
-    await ElMessageBox.confirm('确定清空全部操作日志吗？该操作不可恢复。', '警告', { type: 'warning' })
-  } catch {
-    return
-  }
-  try {
-    await operLogApi.clearAll()
-    ElMessage.success('已清空')
-    currentPage.value = 1
-    await loadList()
-  } catch {
-    // 错误已由 axios 拦截器统一处理
   }
 }
 

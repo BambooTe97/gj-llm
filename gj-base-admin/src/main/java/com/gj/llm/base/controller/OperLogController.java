@@ -1,26 +1,26 @@
 package com.gj.llm.base.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.gj.llm.base.annotation.OperLog;
 import com.gj.llm.base.entity.OperLogEntity;
 import com.gj.llm.base.service.OperLogService;
 import com.gj.llm.common.web.R;
 import jakarta.validation.constraints.Max;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 操作日志控制器 -- 审计日志查询与清空（管理端）。
+ * 操作日志控制器 -- 审计日志查询（管理端）。
  *
  * <h3>接口列表</h3>
  * <ul>
- *   <li>GET    /api/oper-logs — 分页查询</li>
- *   <li>DELETE /api/oper-logs — 清空全部日志</li>
+ *   <li>GET /api/oper-logs — 分页查询</li>
  * </ul>
+ *
+ * <p>不做手动清空：审计日志的删除只走保留期定时任务（{@code LogCleanJob}，
+ * {@code gj.llm.log.retention-days}），避免一键清空留下销毁审计记录的口子。</p>
  *
  * @author gj-llm
  */
@@ -49,15 +49,5 @@ public class OperLogController {
                                         @RequestParam(required = false) String operator,
                                         @RequestParam(required = false) Integer status) {
         return R.ok(operLogService.page(page, size, module, operator, status));
-    }
-
-    /**
-     * 清空全部操作日志。
-     */
-    @OperLog(module = "日志管理", type = "清空")
-    @DeleteMapping
-    public R<Void> clear() {
-        operLogService.clearAll();
-        return R.ok(null, "日志清空成功");
     }
 }

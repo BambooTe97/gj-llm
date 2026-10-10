@@ -28,7 +28,7 @@ import java.util.function.Consumer;
 @Service
 public class OperLogServiceImpl extends ServiceImpl<OperLogMapper, OperLogEntity> implements OperLogService {
 
-    /** 清空/清理的分批大小 */
+    /** 保留期清理的分批大小 */
     private static final int BATCH_SIZE = 1000;
 
     private final DataScopeService dataScopeService;
@@ -49,11 +49,6 @@ public class OperLogServiceImpl extends ServiceImpl<OperLogMapper, OperLogEntity
         wrapper.eq(status != null, OperLogEntity::getStatus, status)
                 .orderByDesc(OperLogEntity::getCreatedAt);
         return page(new Page<>(page, size), wrapper);
-    }
-
-    @Override
-    public void clearAll() {
-        log.info("操作日志已清空: {} 条", deleteInBatches(w -> { }));
     }
 
     @Override

@@ -40,9 +40,4 @@ export const operLogApi = {
     const d = res.data.data
     return { records: d?.records ?? [], total: d?.total ?? 0 }
   },
-
-  /** 清空全部日志 */
-  async clearAll(): Promise<void> {
-    await http.delete('/oper-logs')
-  },
 }

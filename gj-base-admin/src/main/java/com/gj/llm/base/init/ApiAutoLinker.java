@@ -107,14 +107,12 @@ public class ApiAutoLinker implements ApplicationRunner {
                     "PUT", "system:config:edit",
                     "DELETE", "system:config:remove")),
             Map.entry("OperLogController", Map.of(
-                    "GET", "system:log:list",
-                    "DELETE", "system:log:clear")),
+                    "GET", "system:log:list")),
             Map.entry("OnlineUserController", Map.of(
                     "GET", "system:online:list",
                     "DELETE", "system:online:forceLogout")),
             Map.entry("LoginLogController", Map.of(
-                    "GET", "system:loginlog:list",
-                    "DELETE", "system:loginlog:clear"))
+                    "GET", "system:loginlog:list"))
     );
 
     /**

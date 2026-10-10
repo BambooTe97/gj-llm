@@ -1,29 +1,28 @@
 package com.gj.llm.base.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.gj.llm.base.annotation.OperLog;
 import com.gj.llm.base.entity.LogininforEntity;
 import com.gj.llm.base.service.LoginLogService;
 import com.gj.llm.common.web.R;
 import jakarta.validation.constraints.Max;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 登录日志控制器 -- 登录审计查询与清空（管理端）。
+ * 登录日志控制器 -- 登录审计查询（管理端）。
  *
  * <h3>接口列表</h3>
  * <ul>
- *   <li>GET    /api/login-logs — 分页查询</li>
- *   <li>DELETE /api/login-logs — 清空全部日志</li>
+ *   <li>GET /api/login-logs — 分页查询</li>
  * </ul>
  *
- * <p>权限四件套：perms {@code system:loginlog:list} / {@code system:loginlog:clear}，
- * ApiAutoLinker 按控制器名自动关联（见 init/ApiAutoLinker RULES）。</p>
+ * <p>权限四件套：perms {@code system:loginlog:list}，
+ * ApiAutoLinker 按控制器名自动关联（见 init/ApiAutoLinker RULES）。
+ * 不做手动清空：审计日志的删除只走保留期定时任务（{@code LogCleanJob}，
+ * {@code gj.llm.log.retention-days}），避免一键清空留下销毁审计记录的口子。</p>
  *
  * @author gj-llm
  */
@@ -52,15 +51,5 @@ public class LoginLogController {
                                            @RequestParam(required = false) String ip,
                                            @RequestParam(required = false) Integer status) {
         return R.ok(loginLogService.page(page, size, username, ip, status));
-    }
-
-    /**
-     * 清空全部登录日志。
-     */
-    @OperLog(module = "日志管理", type = "清空")
-    @DeleteMapping
-    public R<Void> clear() {
-        loginLogService.clearAll();
-        return R.ok(null, "日志清空成功");
     }
 }
