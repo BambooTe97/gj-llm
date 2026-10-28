@@ -76,7 +76,15 @@ public class GjMqProperties {
         private int maxAttempts = 3;
         /** 重试退避基础间隔（毫秒） */
         private long retryBackoffMillis = 1000;
-        /** 追加透传的客户端属性（producer/consumer 共用），如 max.poll.records；优先级高于内置默认值 */
+        /**
+         * Kafka 同步发送超时（毫秒）—— 内部映射 request.timeout.ms / delivery.timeout.ms / max.block.ms
+         * 三件套联动（Kafka 约束 delivery.timeout.ms >= linger.ms + request.timeout.ms，不能单独配置）。
+         * properties 透传不得覆盖本项。
+         */
+        private int sendTimeoutMillis = 10000;
+        /** 死信写入失败后的后台重试间隔（毫秒）—— 消费容器暂停期间定时重试写 DLQ，写入成功自动恢复消费 */
+        private long dlqRetryIntervalMillis = 10000;
+        /** 追加透传的客户端属性（producer/consumer 共用），如 max.poll.records；优先级高于内置默认值（序列化器/手动 ack/超时等关键配置除外） */
         private Map<String, String> properties = new LinkedHashMap<>();
     }
 }

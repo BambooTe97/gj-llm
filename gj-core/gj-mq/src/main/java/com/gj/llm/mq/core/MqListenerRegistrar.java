@@ -12,7 +12,9 @@ import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Method;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -40,7 +42,8 @@ public class MqListenerRegistrar implements BeanPostProcessor, SmartInitializing
     @Override
     public Object postProcessAfterInitialization(Object bean, String beanName) {
         Class<?> targetClass = AopUtils.getTargetClass(bean);
-        for (Method method : targetClass.getDeclaredMethods()) {
+        // 沿父类链扫描（@MqListener 写在基类模板方法上同样生效；子类覆盖父类时以子类方法为准）
+        for (Method method : listenerCandidateMethods(targetClass).values()) {
             MqListener anno = AnnotatedElementUtils.findMergedAnnotation(method, MqListener.class);
             if (anno != null) {
                 listeners.add(MethodMqListener.of(bean, method, anno));
@@ -49,6 +52,18 @@ public class MqListenerRegistrar implements BeanPostProcessor, SmartInitializing
             }
         }
         return bean;
+    }
+
+    /** 收集目标类及其父类链上的全部方法，同签名（名称+参数）以子类声明为准 */
+    private Map<String, Method> listenerCandidateMethods(Class<?> targetClass) {
+        Map<String, Method> bySignature = new LinkedHashMap<>();
+        for (Class<?> cls = targetClass; cls != null && cls != Object.class; cls = cls.getSuperclass()) {
+            for (Method method : cls.getDeclaredMethods()) {
+                bySignature.putIfAbsent(
+                        method.getName() + java.util.Arrays.toString(method.getParameterTypes()), method);
+            }
+        }
+        return bySignature;
     }
 
     @Override

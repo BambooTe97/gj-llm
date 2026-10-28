@@ -49,8 +49,8 @@ public class RocketMqConfig {
     }
 
     @Bean
-    public RocketMqProducerBinder rocketMqProducerBinder(DefaultMQProducer producer, GjMqProperties properties) {
-        return new RocketMqProducerBinder(producer, properties);
+    public RocketMqProducerBinder rocketMqProducerBinder(DefaultMQProducer producer) {
+        return new RocketMqProducerBinder(producer);
     }
 
     @Bean

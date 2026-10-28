@@ -1,5 +1,6 @@
 package com.gj.llm.mq.service.impl;
 
+import com.gj.llm.mq.constant.MqConstants;
 import com.gj.llm.mq.core.MqMetrics;
 import com.gj.llm.mq.model.GjMessage;
 import com.gj.llm.mq.model.SendResult;
@@ -32,6 +33,7 @@ public class GjMqTemplateImpl implements GjMqTemplate {
 
     @Override
     public SendResult send(String topic, String tag, Object payload) {
+        validateTopic(topic);
         MqProducerBinder binder = binder();
         GjMessage message = GjMessage.of(topic, tag, payload);
         long t0 = System.nanoTime();
@@ -50,19 +52,39 @@ public class GjMqTemplateImpl implements GjMqTemplate {
 
     @Override
     public CompletableFuture<SendResult> sendAsync(String topic, String tag, Object payload) {
-        return binder().sendAsync(GjMessage.of(topic, tag, payload))
-                .whenComplete((result, e) -> metrics.sent(topic, e == null && result.ack()));
+        validateTopic(topic);
+        GjMessage message = GjMessage.of(topic, tag, payload);
+        long t0 = System.nanoTime();
+        return binder().sendAsync(message)
+                .whenComplete((result, e) -> {
+                    metrics.sendDuration(topic, elapsedMillis(t0));
+                    metrics.sent(topic, e == null && result.ack());
+                    if (e != null || !result.ack()) {
+                        log.error("[gj-mq] 异步发送失败: topic={}, messageId={}", topic, message.getMessageId(), e);
+                    }
+                });
     }
 
     @Override
     public void sendDelay(String topic, String tag, Object payload, Duration delay) {
+        validateTopic(topic);
         MqProducerBinder binder = binder();
         if (!binder.capability().supportsDelay()) {
             throw new UnsupportedOperationException(
                     "当前 MQ 适配器不支持延迟投递（capability.supportsDelay()=false）: "
                             + binder.getClass().getSimpleName());
         }
-        binder.sendDelay(GjMessage.of(topic, tag, payload), delay);
+        long t0 = System.nanoTime();
+        try {
+            binder.sendDelay(GjMessage.of(topic, tag, payload), delay);
+            metrics.sendDuration(topic, elapsedMillis(t0));
+            metrics.sent(topic, true);
+        } catch (RuntimeException e) {
+            metrics.sendDuration(topic, elapsedMillis(t0));
+            metrics.sent(topic, false);
+            log.error("[gj-mq] 延迟投递失败: topic={}, tag={}", topic, tag, e);
+            throw e;
+        }
     }
 
     // ==================== 内部 ====================
@@ -75,6 +97,14 @@ public class GjMqTemplateImpl implements GjMqTemplate {
                             + "（rocketmq → rocketmq-client / kafka → spring-boot-starter-kafka）");
         }
         return binder;
+    }
+
+    /** topic 命名防御性校验（RocketMQ 与 Kafka 字符集公共子集），非法值快速失败给出明确诊断 */
+    private void validateTopic(String topic) {
+        if (!MqConstants.isValidTopic(topic)) {
+            throw new IllegalArgumentException(
+                    "[gj-mq] 非法 topic: " + topic + "（命名约定: " + MqConstants.TOPIC_PATTERN + "）");
+        }
     }
 
     private long elapsedMillis(long nanoStart) {

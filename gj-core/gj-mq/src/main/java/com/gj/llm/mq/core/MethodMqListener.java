@@ -1,6 +1,7 @@
 package com.gj.llm.mq.core;
 
 import com.gj.llm.mq.annotation.MqListener;
+import com.gj.llm.mq.constant.MqConstants;
 import com.gj.llm.mq.model.GjMessage;
 import lombok.Getter;
 
@@ -50,9 +51,14 @@ public class MethodMqListener {
     }
 
     /**
-     * 注册期构建：校验方法签名（0 或 1 参数）并解析参数模式。
+     * 注册期构建：校验 topic 命名与方法签名（0 或 1 参数）并解析参数模式。
      */
     public static MethodMqListener of(Object bean, Method method, MqListener anno) {
+        if (!MqConstants.isValidTopic(anno.topic())) {
+            throw new IllegalArgumentException(
+                    "@MqListener 非法 topic: " + anno.topic() + "（命名约定: " + MqConstants.TOPIC_PATTERN + "）: "
+                            + method.getDeclaringClass().getName() + "#" + method.getName());
+        }
         Class<?>[] paramTypes = method.getParameterTypes();
         if (paramTypes.length > 1) {
             throw new IllegalArgumentException(

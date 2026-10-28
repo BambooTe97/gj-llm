@@ -4,8 +4,9 @@ import com.gj.llm.mq.adapter.kafka.KafkaMqConsumerBinder;
 import com.gj.llm.mq.adapter.kafka.KafkaMqProducerBinder;
 import com.gj.llm.mq.config.GjMqProperties;
 import com.gj.llm.mq.core.MqMetrics;
+import io.micrometer.common.util.StringUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -16,9 +17,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -29,13 +30,34 @@ import java.util.Map;
  * 不与使用方的 {@code spring.kafka.*} 序列化器配置互相干扰——基座通道与业务通道彻底隔离。
  * 团队自有 Kafka 使用场景照常走 Boot 标准配置，互不影响。</p>
  *
+ * <p>关键配置（bootstrap/序列化器/手动 ack/发送超时）由基座锁定：{@code properties} 透传
+ * 覆盖这些键会被忽略并记 WARN，避免配置漂移破坏信封格式与至少一次语义。</p>
+ *
  * @author gj-llm
  */
+@Slf4j
 @Configuration
 @ConditionalOnProperty(prefix = "gj.mq", name = "enabled", havingValue = "true")
 @ConditionalOnProperty(prefix = "gj.mq", name = "type", havingValue = "kafka")
 @ConditionalOnClass(KafkaTemplate.class)
 public class KafkaMqConfig {
+
+    /** 生产端关键配置（基座锁定，透传不可覆盖）：信封格式与同步发送超时三件套 */
+    private static final List<String> PRODUCER_CRITICAL_KEYS = List.of(
+            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG,
+            ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
+            ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
+            ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG,
+            ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG,
+            ProducerConfig.MAX_BLOCK_MS_CONFIG);
+
+    /** 消费端关键配置（基座锁定，透传不可覆盖）：信封反序列化与手动 ack（至少一次语义） */
+    private static final List<String> CONSUMER_CRITICAL_KEYS = List.of(
+            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
+            ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
+            ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
+            ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG,
+            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG);
 
     @Bean
     public DefaultKafkaProducerFactory<String, String> gjMqKafkaProducerFactory(GjMqProperties properties) {
@@ -44,8 +66,14 @@ public class KafkaMqConfig {
         configs.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
         configs.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         configs.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        // 团队调优透传（优先级高于内置默认值）
-        configs.putAll(kafka.getProperties());
+        // 同步发送超时三件套联动：Kafka 约束 delivery.timeout.ms >= linger.ms + request.timeout.ms，
+        // 单独配 delivery 会因默认 request.timeout.ms=30s 直接 ConfigException，故三者同值
+        int timeout = Math.max(1, kafka.getSendTimeoutMillis());
+        configs.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, timeout);
+        configs.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, timeout);
+        configs.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, timeout);
+        // 团队调优透传（关键配置受保护，覆盖被忽略并 WARN）
+        putAllProtectingCritical(configs, kafka.getProperties(), PRODUCER_CRITICAL_KEYS);
         return new DefaultKafkaProducerFactory<>(configs);
     }
 
@@ -66,7 +94,8 @@ public class KafkaMqConfig {
         configs.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         // 与 RocketMQ CONSUME_FROM_LAST_OFFSET 行为对齐；历史数据回放用 properties 透传 earliest 覆盖
         configs.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
-        configs.putAll(kafka.getProperties());
+        // 团队调优透传（关键配置受保护，覆盖被忽略并 WARN）
+        putAllProtectingCritical(configs, kafka.getProperties(), CONSUMER_CRITICAL_KEYS);
         return new DefaultKafkaConsumerFactory<>(configs);
     }
 
@@ -86,9 +115,25 @@ public class KafkaMqConfig {
 
     // ==================== 内部 ====================
 
+    /**
+     * 透传合并：{@code properties} 中的关键配置键（基座锁定项）记 WARN 并忽略，其余正常覆盖内置默认值。
+     */
+    private void putAllProtectingCritical(Map<String, Object> configs, Map<String, String> overrides,
+                                          List<String> criticalKeys) {
+        Map<String, Object> reserved = new HashMap<>();
+        for (String key : criticalKeys) {
+            if (overrides.containsKey(key)) {
+                reserved.put(key, configs.get(key));
+                log.warn("[gj-mq] 忽略 properties 透传中的关键配置 {}（由基座锁定，覆盖会破坏信封格式/至少一次语义）", key);
+            }
+        }
+        configs.putAll(overrides);
+        configs.putAll(reserved);
+    }
+
     private GjMqProperties.Kafka requireBootstrap(GjMqProperties properties) {
         GjMqProperties.Kafka kafka = properties.getKafka();
-        if (!StringUtils.hasText(kafka.getBootstrapServers())) {
+        if (StringUtils.isBlank(kafka.getBootstrapServers())) {
             throw new IllegalStateException("[gj-mq] gj.mq.type=kafka 需配置 gj.mq.kafka.bootstrap-servers");
         }
         return kafka;

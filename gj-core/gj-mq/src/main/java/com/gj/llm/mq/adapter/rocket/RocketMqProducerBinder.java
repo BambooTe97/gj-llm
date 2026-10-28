@@ -1,7 +1,6 @@
 package com.gj.llm.mq.adapter.rocket;
 
 import com.gj.llm.common.util.JacksonUtils;
-import com.gj.llm.mq.config.GjMqProperties;
 import com.gj.llm.mq.constant.MqConstants;
 import com.gj.llm.mq.model.GjMessage;
 import com.gj.llm.mq.model.SendResult;
@@ -41,7 +40,6 @@ public class RocketMqProducerBinder implements MqProducerBinder {
     private static final MqCapability CAPABILITY = MqCapability.of(true, false, false);
 
     private final DefaultMQProducer producer;
-    private final GjMqProperties properties;
 
     @Override
     public MqCapability capability() {

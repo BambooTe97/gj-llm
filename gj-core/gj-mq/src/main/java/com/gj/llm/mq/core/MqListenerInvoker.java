@@ -23,8 +23,10 @@ public final class MqListenerInvoker {
             switch (mode) {
                 case NONE -> listener.getMethod().invoke(listener.getBean());
                 case ENVELOPE -> listener.getMethod().invoke(listener.getBean(), message);
+                // String 类型的 payload 原样透传（toJson 会把纯字符串再包一层引号，破坏"原始 JSON"契约）
                 case JSON_STRING -> listener.getMethod().invoke(listener.getBean(),
-                        JacksonUtils.toJson(message.getPayload()));
+                        message.getPayload() instanceof String raw ? raw
+                                : JacksonUtils.toJson(message.getPayload()));
                 case TYPED -> listener.getMethod().invoke(listener.getBean(),
                         message.payloadAs(listener.getPayloadType()));
             }

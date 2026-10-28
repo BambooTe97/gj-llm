@@ -13,8 +13,8 @@ import org.springframework.context.annotation.Configuration;
  * gj-mq 模块总开关 —— {@code gj.mq.enabled=true} 时装配发送门面。
  *
  * <p>适配器实现不在此装配：各适配器配置类按 {@code gj.mq.type} + {@code @ConditionalOnClass}
- * 双条件自装配（见 {@code config/rabbit/RabbitMqConfig}）。enabled=true 但未选型/缺客户端时，
- * 门面仍存在，发送时给出明确错误提示（fail-fast + 可诊断）。</p>
+ * 双条件自装配（见 {@code config/kafka/KafkaMqConfig}、{@code config/rocket/RocketMqConfig}）。
+ * enabled=true 但未选型/缺客户端时，门面仍存在，发送时给出明确错误提示（fail-fast + 可诊断）。</p>
  *
  * @author gj-llm
  */
