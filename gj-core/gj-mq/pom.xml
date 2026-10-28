@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.gj.llm</groupId>
+        <artifactId>gj-core</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>gj-mq</artifactId>
+    <name>gj-mq</name>
+    <description>
+        消息队列基础设施模块 —— 业务无关的 MQ 统一门面：统一消息信封、统一收发 API，
+        具体实现由 gj.mq.type 配置驱动（rocketmq / kafka），使用基座的团队按自有基建选型。
+        设计文档见 GJ_MQ_GUIDE.md，默认关闭（gj.mq.enabled=false）。
+    </description>
+
+    <dependencies>
+        <!-- gj-common：JSON 统一走 JacksonUtils（生产用 Spring 容器 JsonMapper，
+             与全局 Long→String、日期序列化行为一致，不自持 mapper） -->
+        <dependency>
+            <groupId>com.gj.llm</groupId>
+            <artifactId>gj-common</artifactId>
+        </dependency>
+
+        <!-- Spring Boot 自动配置基座：@Configuration/@ConfigurationProperties/@ConditionalOnProperty -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+
+        <!-- Micrometer：收发/消费/耗时指标（Spring Boot 父 BOM 管理版本），无 Registry 时自动降级 Noop -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+
+        <!-- RocketMQ 适配器：裸客户端（remoting 协议，兼容 NameServer+Broker 经典部署）。
+             版本由根 pom 显式管理（Boot BOM 不含 RocketMQ）；optional —— 未选型时不进消费方 classpath，
+             适配器装配被 @ConditionalOnClass 短路 -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Kafka 适配器：spring-kafka 由 Spring Boot 父 BOM 管理版本（kafka.version 属性）。
+             optional —— 未选型时不进消费方 classpath；选型方声明 spring-boot-starter-kafka 即可完整启用 -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- Lombok：简化样板代码 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- 测试：JUnit 5 + ApplicationContextRunner 条件装配单测 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>

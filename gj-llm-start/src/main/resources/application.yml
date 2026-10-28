@@ -3,7 +3,7 @@ spring:
     name: gj-llm
 
   profiles:
-    active: ai, mybatis, file, redis
+    active: ai, mybatis, file, redis, mq
 
   # ==================== 国际化 ====================
   # basename 为中文默认文件（i18n/base_messages.properties 即兜底）；
@@ -106,3 +106,18 @@ gj:
     #   mode: virtual                    # 每会话顺序虚拟线程（JDK 25）
     # shutdown:
     #   grace-seconds: 10
+
+  # ==================== 消息队列基座（gj-mq） ====================
+  # 设计文档：gj-core/gj-mq/GJ_MQ_GUIDE.md；默认关闭，按部署基建选型后开启
+  mq:
+    enabled: false
+    # type: rocketmq                    # rocketmq | kafka；使用基座的团队按自有基建选型
+    # rocket:
+    #   name-server: 127.0.0.1:9876     # NameServer 地址（多个用分号分隔），type=rocketmq 时必填
+    #   producer-group: gj_mq_producer
+    #   max-reconsume-times: 3          # 消费重试上限，超过进死信 topic（%DLQ%{group}）
+    # kafka:
+    #   bootstrap-servers: 127.0.0.1:9092  # type=kafka 时必填
+    #   dlq-suffix: .dlq                # 消费重试耗尽后的死信 topic 后缀
+    #   properties:                     # 客户端调优透传（可选）
+    #     max.poll.records: 100

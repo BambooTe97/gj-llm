@@ -1,0 +1,7 @@
+# gj-mq 模块配置片段 —— gj-llm-start 通过 spring.profiles.active 激活（profile 名: mq）
+# 详见 GJ_MQ_GUIDE.md；模块默认关闭（gj.mq.enabled=false），关闭时零启动。
+#
+# 适配器开关在 gj-llm-start 的 application.yml（gj.mq.* 块）中按部署形态开启。
+# Broker 连接参数与选型强相关（本模块不复刻 Boot 已有标准）：
+#   RocketMQ —— 裸客户端无 Boot 标准属性，由 gj.mq.rocket.name-server 配置（见 GjMqProperties.Rocket）
+#   Kafka    —— 自持 Factory，由 gj.mq.kafka.bootstrap-servers 配置（见 GjMqProperties.Kafka）

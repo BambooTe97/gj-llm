@@ -35,6 +35,7 @@
         <yauaa.version>8.1.1</yauaa.version>
         <langchain4j.version>1.18.0</langchain4j.version>
         <mcp-sdk.version>2.0.0-M2</mcp-sdk.version>
+        <rocketmq.version>5.3.2</rocketmq.version>
     </properties>
 
     <dependencyManagement>
@@ -113,6 +114,20 @@
                 <groupId>com.gj.llm</groupId>
                 <artifactId>gj-redis</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.gj.llm</groupId>
+                <artifactId>gj-mq</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- RocketMQ：裸客户端（Boot BOM 不含 RocketMQ，版本显式管理；
+                 gj-mq 的 RocketMQ 适配器依赖此坐标） -->
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-client</artifactId>
+                <version>${rocketmq.version}</version>
             </dependency>
 
             <!-- 解析客户端操作系统、浏览器等 -->
