@@ -14,21 +14,31 @@ public final class MqConstants {
 
     // ==================== 消息头 ====================
 
-    /** 消息 ID 头（传输层冗余携带，便于在 broker 控制台/日志中检索） */
+    /**
+     * 消息 ID 头（传输层冗余携带，便于在 broker 控制台/日志中检索）
+     */
     public static final String HEADER_MESSAGE_ID = "gj-message-id";
 
-    /** 业务主题头（Kafka 无 tag 概念，tag 携带于消息头） */
+    /**
+     * 业务主题头（Kafka 无 tag 概念，tag 携带于消息头）
+     */
     public static final String HEADER_TAG = "gj-tag";
 
-    /** 消息内容类型 */
+    /**
+     * 消息内容类型
+     */
     public static final String CONTENT_TYPE_JSON = "application/json";
 
     // ==================== topic 命名 ====================
 
-    /** topic 命名约定：小写字母/数字/点/下划线/中划线（RocketMQ 与 Kafka 的公共子集），如 notify.message */
+    /**
+     * topic 命名约定：小写字母/数字/点/下划线/中划线（RocketMQ 与 Kafka 的公共子集），如 notify.message
+     */
     public static final String TOPIC_PATTERN = "[a-zA-Z0-9._-]{1,200}";
 
-    /** 校验 topic 命名（两个适配器对 topic 字符集要求不同，取公共子集防御性校验） */
+    /**
+     * 校验 topic 命名（两个适配器对 topic 字符集要求不同，取公共子集防御性校验）
+     */
     public static boolean isValidTopic(String topic) {
         return topic != null && topic.matches(TOPIC_PATTERN);
     }

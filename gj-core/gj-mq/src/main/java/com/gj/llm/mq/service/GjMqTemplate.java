@@ -19,10 +19,14 @@ import java.util.concurrent.CompletableFuture;
  */
 public interface GjMqTemplate {
 
-    /** 同步发送（无 tag） */
+    /**
+     * 同步发送（无 tag）
+     */
     SendResult send(String topic, Object payload);
 
-    /** 同步发送 */
+    /**
+     * 同步发送
+     */
     SendResult send(String topic, String tag, Object payload);
 
     /**

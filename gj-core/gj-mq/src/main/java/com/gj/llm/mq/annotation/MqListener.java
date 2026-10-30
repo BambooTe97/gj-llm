@@ -27,7 +27,9 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface MqListener {
 
-    /** 业务主题（如 notify.message、rag.document.ingest） */
+    /**
+     * 业务主题（如 notify.message、rag.document.ingest）
+     */
     String topic();
 
     /**
@@ -36,9 +38,13 @@ public @interface MqListener {
      */
     String group() default "default";
 
-    /** 消费并发：-1 = 用适配器默认值（gj.mq.rocket.consume-threads / gj.mq.kafka.concurrency） */
+    /**
+     * 消费并发：-1 = 用适配器默认值（gj.mq.rocket.consume-threads / gj.mq.kafka.concurrency）
+     */
     int concurrency() default -1;
 
-    /** 预留：自定义队列/订阅后缀。P1 未启用，保留占位避免后续加参破坏调用方 */
+    /**
+     * 预留：自定义队列/订阅后缀。P1 未启用，保留占位避免后续加参破坏调用方
+     */
     String queue() default "";
 }

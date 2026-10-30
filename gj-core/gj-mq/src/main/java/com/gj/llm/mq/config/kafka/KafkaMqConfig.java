@@ -1,10 +1,10 @@
 package com.gj.llm.mq.config.kafka;
 
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.mq.adapter.kafka.KafkaMqConsumerBinder;
 import com.gj.llm.mq.adapter.kafka.KafkaMqProducerBinder;
 import com.gj.llm.mq.config.GjMqProperties;
 import com.gj.llm.mq.core.MqMetrics;
-import io.micrometer.common.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;

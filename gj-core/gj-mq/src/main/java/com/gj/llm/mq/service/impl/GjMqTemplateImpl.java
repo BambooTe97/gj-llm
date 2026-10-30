@@ -99,7 +99,9 @@ public class GjMqTemplateImpl implements GjMqTemplate {
         return binder;
     }
 
-    /** topic 命名防御性校验（RocketMQ 与 Kafka 字符集公共子集），非法值快速失败给出明确诊断 */
+    /**
+     * topic 命名防御性校验（RocketMQ 与 Kafka 字符集公共子集），非法值快速失败给出明确诊断
+     */
     private void validateTopic(String topic) {
         if (!MqConstants.isValidTopic(topic)) {
             throw new IllegalArgumentException(

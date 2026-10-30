@@ -15,15 +15,25 @@ import java.lang.reflect.Method;
 @Getter
 public class MethodMqListener {
 
-    /** 监听方法参数模式 */
+    /**
+     * 监听方法参数模式
+     */
     public enum ParamMode {
-        /** 无参 */
+        /**
+         * 无参
+         */
         NONE,
-        /** 参数为 GjMessage 完整信封 */
+        /**
+         * 参数为 GjMessage 完整信封
+         */
         ENVELOPE,
-        /** 参数为 String，取 payload 原始 JSON */
+        /**
+         * 参数为 String，取 payload 原始 JSON
+         */
         JSON_STRING,
-        /** 参数为业务类型，payload 自动反序列化 */
+        /**
+         * 参数为业务类型，payload 自动反序列化
+         */
         TYPED
     }
 
@@ -35,7 +45,9 @@ public class MethodMqListener {
     private final String queue;
     private final ParamMode paramMode;
     private final Class<?> payloadType;
-    /** 竞争消费分组键（group + topic），适配器据此建容器 */
+    /**
+     * 竞争消费分组键（group + topic），适配器据此建容器
+     */
     private final String bindingKey;
 
     private MethodMqListener(Object bean, Method method, MqListener anno, ParamMode paramMode, Class<?> payloadType) {
@@ -61,8 +73,7 @@ public class MethodMqListener {
         }
         Class<?>[] paramTypes = method.getParameterTypes();
         if (paramTypes.length > 1) {
-            throw new IllegalArgumentException(
-                    "@MqListener 方法最多 1 个参数: " + method.getDeclaringClass().getName() + "#" + method.getName());
+            throw new IllegalArgumentException("@MqListener 方法最多 1 个参数: " + method.getDeclaringClass().getName() + "#" + method.getName());
         }
         if (paramTypes.length == 0) {
             return new MethodMqListener(bean, method, anno, ParamMode.NONE, null);

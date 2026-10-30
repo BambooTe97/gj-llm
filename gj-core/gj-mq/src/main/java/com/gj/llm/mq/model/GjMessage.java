@@ -20,25 +20,39 @@ import java.util.UUID;
 @Setter
 public class GjMessage {
 
-    /** 消息 ID（UUID），生产端生成，全链路日志检索键 */
+    /**
+     * 消息 ID（UUID），生产端生成，全链路日志检索键
+     */
     private String messageId;
 
-    /** 业务主题，如 notify.message、rag.document.ingest */
+    /**
+     * 业务主题，如 notify.message、rag.document.ingest
+     */
     private String topic;
 
-    /** 子类型/事件名，可空。RocketMQ 映射为 tag，Kafka 携带于 {@code gj-tag} 消息头 */
+    /**
+     * 子类型/事件名，可空。RocketMQ 映射为 tag，Kafka 携带于 {@code gj-tag} 消息头
+     */
     private String tag;
 
-    /** 扩展头（透传给传输层），如 traceId */
+    /**
+     * 扩展头（透传给传输层），如 traceId
+     */
     private Map<String, String> headers = new LinkedHashMap<>();
 
-    /** 业务负载（嵌套 JSON）。消费端经 {@link #payloadAs(Class)} 转换为目标类型 */
+    /**
+     * 业务负载（嵌套 JSON）。消费端经 {@link #payloadAs(Class)} 转换为目标类型
+     */
     private Object payload;
 
-    /** 发送时间戳（毫秒） */
+    /**
+     * 发送时间戳（毫秒）
+     */
     private long timestamp;
 
-    /** 消费侧重试次数（适配器回填：RocketMQ 取 reconsumeTimes，Kafka 取本地重试计数），仅供观察 */
+    /**
+     * 消费侧重试次数（适配器回填：RocketMQ 取 reconsumeTimes，Kafka 取本地重试计数），仅供观察
+     */
     private int retryCount;
 
     // ==================== 工厂 ====================

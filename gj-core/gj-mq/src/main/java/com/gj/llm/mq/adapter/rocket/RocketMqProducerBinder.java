@@ -31,12 +31,16 @@ import java.util.concurrent.CompletableFuture;
 @RequiredArgsConstructor
 public class RocketMqProducerBinder implements MqProducerBinder {
 
-    /** RocketMQ 原生延迟级别（秒）：messageDelayLevel 默认 18 档 */
+    /**
+     * RocketMQ 原生延迟级别（秒）：messageDelayLevel 默认 18 档
+     */
     static final int[] DELAY_LEVEL_SECONDS = {
             1, 5, 10, 30, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 1200, 1800, 3600, 7200
     };
 
-    /** 业务消息：支持延迟（离散档位）；顺序消费/事务消息 P1 未暴露 */
+    /**
+     * 业务消息：支持延迟（离散档位）；顺序消费/事务消息 P1 未暴露
+     */
     private static final MqCapability CAPABILITY = MqCapability.of(true, false, false);
 
     private final DefaultMQProducer producer;
@@ -110,8 +114,7 @@ public class RocketMqProducerBinder implements MqProducerBinder {
     }
 
     private SendResult toResult(GjMessage message, org.apache.rocketmq.client.producer.SendResult sendResult) {
-        String messageId = message != null ? message.getMessageId()
-                : sendResult.getMsgId();
+        String messageId = message != null ? message.getMessageId() : sendResult.getMsgId();
         boolean ok = sendResult.getSendStatus() == SendStatus.SEND_OK;
         return ok ? SendResult.ok(messageId) : SendResult.fail(messageId, sendResult.getSendStatus().name());
     }

@@ -22,16 +22,24 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "gj.mq")
 public class GjMqProperties {
 
-    /** 模块开关，默认关闭 */
+    /**
+     * 模块开关，默认关闭
+     */
     private boolean enabled = false;
 
-    /** 适配器选型：none=未选型 | rocketmq | kafka */
+    /**
+     * 适配器选型：none=未选型 | rocketmq | kafka
+     */
     private MqType type = MqType.NONE;
 
-    /** RocketMQ 适配器行为面（gj.mq.type=rocketmq 时生效） */
+    /**
+     * RocketMQ 适配器行为面（gj.mq.type=rocketmq 时生效）
+     */
     private final Rocket rocket = new Rocket();
 
-    /** Kafka 适配器行为面（gj.mq.type=kafka 时生效） */
+    /**
+     * Kafka 适配器行为面（gj.mq.type=kafka 时生效）
+     */
     private final Kafka kafka = new Kafka();
 
     public enum MqType {
@@ -45,15 +53,25 @@ public class GjMqProperties {
     @Getter
     @Setter
     public static class Rocket {
-        /** NameServer 地址（多个用分号分隔），type=rocketmq 时必填 */
+        /**
+         * NameServer 地址（多个用分号分隔），type=rocketmq 时必填
+         */
         private String nameServer = "";
-        /** 生产者组 */
+        /**
+         * 生产者组
+         */
         private String producerGroup = "gj_mq_producer";
-        /** 同步发送超时（毫秒） */
+        /**
+         * 同步发送超时（毫秒）
+         */
         private int sendTimeoutMillis = 3000;
-        /** 消费端最大重试次数，超过后 Broker 自动投递到死信 topic（%DLQ%{consumerGroup}） */
+        /**
+         * 消费端最大重试次数，超过后 Broker 自动投递到死信 topic（%DLQ%{consumerGroup}）
+         */
         private int maxReconsumeTimes = 3;
-        /** 每个消费者并发消费线程数 */
+        /**
+         * 每个消费者并发消费线程数
+         */
         private int consumeThreads = 8;
         /** 延迟投递精度：Duration 映射到官方延迟级别（1s/5s/10s/30s/1m/2m/.../30m/1h/2h）取不小于它的最小档 */
         // 说明性注释，无需配置
@@ -66,15 +84,25 @@ public class GjMqProperties {
     @Getter
     @Setter
     public static class Kafka {
-        /** Broker 连接地址（多个用逗号分隔），type=kafka 时必填 */
+        /**
+         * Broker 连接地址（多个用逗号分隔），type=kafka 时必填
+         */
         private String bootstrapServers = "";
-        /** 消费失败重试耗尽后的死信 topic 后缀（Kafka 无原生 DLQ，投递到 {topic}{suffix} 后提交位移） */
+        /**
+         * 消费失败重试耗尽后的死信 topic 后缀（Kafka 无原生 DLQ，投递到 {topic}{suffix} 后提交位移）
+         */
         private String dlqSuffix = ".dlq";
-        /** 默认消费并发（@MqListener 未显式指定时生效；建议不超过目标 topic 分区数） */
+        /**
+         * 默认消费并发（@MqListener 未显式指定时生效；建议不超过目标 topic 分区数）
+         */
         private int concurrency = 1;
-        /** 消费失败本地重试次数（含首次），耗尽后投递死信 topic */
+        /**
+         * 消费失败本地重试次数（含首次），耗尽后投递死信 topic
+         */
         private int maxAttempts = 3;
-        /** 重试退避基础间隔（毫秒） */
+        /**
+         * 重试退避基础间隔（毫秒）
+         */
         private long retryBackoffMillis = 1000;
         /**
          * Kafka 同步发送超时（毫秒）—— 内部映射 request.timeout.ms / delivery.timeout.ms / max.block.ms
@@ -82,9 +110,13 @@ public class GjMqProperties {
          * properties 透传不得覆盖本项。
          */
         private int sendTimeoutMillis = 10000;
-        /** 死信写入失败后的后台重试间隔（毫秒）—— 消费容器暂停期间定时重试写 DLQ，写入成功自动恢复消费 */
+        /**
+         * 死信写入失败后的后台重试间隔（毫秒）—— 消费容器暂停期间定时重试写 DLQ，写入成功自动恢复消费
+         */
         private long dlqRetryIntervalMillis = 10000;
-        /** 追加透传的客户端属性（producer/consumer 共用），如 max.poll.records；优先级高于内置默认值（序列化器/手动 ack/超时等关键配置除外） */
+        /**
+         * 追加透传的客户端属性（producer/consumer 共用），如 max.poll.records；优先级高于内置默认值（序列化器/手动 ack/超时等关键配置除外）
+         */
         private Map<String, String> properties = new LinkedHashMap<>();
     }
 }

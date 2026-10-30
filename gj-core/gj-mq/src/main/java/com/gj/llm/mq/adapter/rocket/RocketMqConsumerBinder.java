@@ -10,11 +10,13 @@ import com.gj.llm.mq.model.GjMessage;
 import com.gj.llm.mq.spi.MqConsumerBinder;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
+import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
 import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.springframework.beans.factory.DisposableBean;
 
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -46,15 +48,14 @@ public class RocketMqConsumerBinder implements MqConsumerBinder, DisposableBean 
     public void bind(List<MethodMqListener> listeners) {
         // 同 group+topic 多方法 = 竞争消费（消息只到一个方法），告警并仅绑首个
         Map<String, List<MethodMqListener>> grouped = listeners.stream()
-                .collect(Collectors.groupingBy(MethodMqListener::getBindingKey,
-                        java.util.LinkedHashMap::new, Collectors.toList()));
+                .collect(Collectors.groupingBy(MethodMqListener::getBindingKey, LinkedHashMap::new, Collectors.toList()));
         grouped.forEach((key, group) -> {
             if (group.size() > 1) {
                 log.warn("[gj-mq] bindingKey={} 存在 {} 个 @MqListener 方法（竞争消费），仅绑定第一个: {}#{}",
-                        key, group.size(), group.get(0).getBean().getClass().getSimpleName(),
-                        group.get(0).getMethod().getName());
+                        key, group.size(), group.getFirst().getBean().getClass().getSimpleName(),
+                        group.getFirst().getMethod().getName());
             }
-            startConsumer(group.get(0));
+            startConsumer(group.getFirst());
         });
     }
 
@@ -76,9 +77,7 @@ public class RocketMqConsumerBinder implements MqConsumerBinder, DisposableBean 
         consumer.setConsumeMessageBatchMaxSize(1);
         consumer.setMaxReconsumeTimes(rocket.getMaxReconsumeTimes());
         consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET);
-        consumer.registerMessageListener(
-                (org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently)
-                        (msgs, context) -> consume(listener, msgs));
+        consumer.registerMessageListener((MessageListenerConcurrently) (msgs, _) -> consume(listener, msgs));
         try {
             consumer.start();
         } catch (Exception e) {

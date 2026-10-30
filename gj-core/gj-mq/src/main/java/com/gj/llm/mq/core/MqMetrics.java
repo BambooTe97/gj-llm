@@ -56,12 +56,16 @@ public class MqMetrics {
 
     // ==================== 死信（Kafka 适配器） ====================
 
-    /** 死信写入成功计数（topic tag 用原始业务主题，低基数） */
+    /**
+     * 死信写入成功计数（topic tag 用原始业务主题，低基数）
+     */
     public void dlqSent(String topic) {
         registry.counter("gj.mq.dlq.sent", "topic", topic).increment();
     }
 
-    /** 死信写入失败计数（累计失败尝试；持续增长意味着消费容器处于暂停自愈状态，需运维介入） */
+    /**
+     * 死信写入失败计数（累计失败尝试；持续增长意味着消费容器处于暂停自愈状态，需运维介入）
+     */
     public void dlqFailed(String topic) {
         registry.counter("gj.mq.dlq.failed", "topic", topic).increment();
     }

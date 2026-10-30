@@ -13,6 +13,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.listener.AcknowledgingMessageListener;
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.support.Acknowledgment;
@@ -49,7 +50,9 @@ public class KafkaMqConsumerBinder implements MqConsumerBinder, DisposableBean {
     private final GjMqProperties properties;
     private final MqMetrics metrics;
     private final List<ConcurrentMessageListenerContainer<String, String>> containers = new ArrayList<>();
-    /** 死信重试线程（daemon）：消费容器暂停期间定时重试写 DLQ，随应用关闭 */
+    /**
+     * 死信重试线程（daemon）：消费容器暂停期间定时重试写 DLQ，随应用关闭
+     */
     private final ScheduledExecutorService dlqRetryExecutor =
             Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "gj-mq-dlq-retry");
@@ -77,10 +80,10 @@ public class KafkaMqConsumerBinder implements MqConsumerBinder, DisposableBean {
         grouped.forEach((key, group) -> {
             if (group.size() > 1) {
                 log.warn("[gj-mq] bindingKey={} 存在 {} 个 @MqListener 方法（竞争消费），仅绑定第一个: {}#{}",
-                        key, group.size(), group.get(0).getBean().getClass().getSimpleName(),
-                        group.get(0).getMethod().getName());
+                        key, group.size(), group.getFirst().getBean().getClass().getSimpleName(),
+                        group.getFirst().getMethod().getName());
             }
-            startContainer(group.get(0));
+            startContainer(group.getFirst());
         });
     }
 
@@ -98,9 +101,7 @@ public class KafkaMqConsumerBinder implements MqConsumerBinder, DisposableBean {
 
         // 容器引用经 holder 回传（死信兜底路径在消费期才使用，彼时容器必已创建）
         AtomicReference<ConcurrentMessageListenerContainer<String, String>> containerRef = new AtomicReference<>();
-        containerProps.setMessageListener(
-                (org.springframework.kafka.listener.AcknowledgingMessageListener<String, String>)
-                        (record, acknowledgment) -> consume(listener, containerRef.get(), record, acknowledgment));
+        containerProps.setMessageListener((AcknowledgingMessageListener<String, String>) (record, acknowledgment) -> consume(listener, containerRef.get(), record, acknowledgment));
 
         ConcurrentMessageListenerContainer<String, String> container =
                 new ConcurrentMessageListenerContainer<>(consumerFactory, containerProps);
@@ -108,13 +109,11 @@ public class KafkaMqConsumerBinder implements MqConsumerBinder, DisposableBean {
         containerRef.set(container);
         container.start();
         containers.add(container);
-        log.info("[gj-mq] Kafka 消费容器启动: topic={}, group={}, concurrency={}",
-                listener.getTopic(), listener.getGroup(), concurrency);
+        log.info("[gj-mq] Kafka 消费容器启动: topic={}, group={}, concurrency={}", listener.getTopic(), listener.getGroup(), concurrency);
         log.info("[gj-mq] 死信兜底依赖 {}{} 可写：生产环境（auto.create 关闭）请预建该 topic，否则毒消息会触发本容器暂停自愈",
                 listener.getTopic(), kafka.getDlqSuffix());
     }
 
-    @SuppressWarnings("unchecked")
     private void consume(MethodMqListener listener,
                          ConcurrentMessageListenerContainer<String, String> container,
                          ConsumerRecord<String, String> record,
@@ -209,7 +208,9 @@ public class KafkaMqConsumerBinder implements MqConsumerBinder, DisposableBean {
         }
     }
 
-    /** 单次死信发送尝试；发送超时由 producer 配置（delivery.timeout.ms，见 KafkaMqConfig）约束 */
+    /**
+     * 单次死信发送尝试；发送超时由 producer 配置（delivery.timeout.ms，见 KafkaMqConfig）约束
+     */
     private boolean trySendToDlq(String topic, String dlqTopic, String payload) {
         try {
             kafkaTemplate.send(dlqTopic, payload).get();
@@ -222,7 +223,9 @@ public class KafkaMqConsumerBinder implements MqConsumerBinder, DisposableBean {
         }
     }
 
-    /** 启动期校验：本地退避总时长相对 max.poll.interval.ms（默认 5min），阻塞 poll 线程过久会触发 rebalance */
+    /**
+     * 启动期校验：本地退避总时长相对 max.poll.interval.ms（默认 5min），阻塞 poll 线程过久会触发 rebalance
+     */
     private void warnRetryBackoffVsPollInterval() {
         GjMqProperties.Kafka kafka = properties.getKafka();
         long totalBackoff = (long) (Math.max(1, kafka.getMaxAttempts()) - 1) * kafka.getRetryBackoffMillis();

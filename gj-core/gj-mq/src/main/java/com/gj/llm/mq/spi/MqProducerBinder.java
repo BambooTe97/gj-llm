@@ -16,15 +16,23 @@ import java.util.concurrent.CompletableFuture;
  */
 public interface MqProducerBinder {
 
-    /** 能力声明（延迟/顺序/事务），门面据此做能力前置校验 */
+    /**
+     * 能力声明（延迟/顺序/事务），门面据此做能力前置校验
+     */
     MqCapability capability();
 
-    /** 同步发送：成功送达 Broker 即返回 */
+    /**
+     * 同步发送：成功送达 Broker 即返回
+     */
     SendResult send(GjMessage message);
 
-    /** 异步发送：不阻塞调用线程，回执经 future 返回 */
+    /**
+     * 异步发送：不阻塞调用线程，回执经 future 返回
+     */
     CompletableFuture<SendResult> sendAsync(GjMessage message);
 
-    /** 延迟投递：实现不支持时抛 UnsupportedOperationException */
+    /**
+     * 延迟投递：实现不支持时抛 UnsupportedOperationException
+     */
     void sendDelay(GjMessage message, Duration delay);
 }

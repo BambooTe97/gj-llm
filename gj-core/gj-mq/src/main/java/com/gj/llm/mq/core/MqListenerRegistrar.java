@@ -54,7 +54,9 @@ public class MqListenerRegistrar implements BeanPostProcessor, SmartInitializing
         return bean;
     }
 
-    /** 收集目标类及其父类链上的全部方法，同签名（名称+参数）以子类声明为准 */
+    /**
+     * 收集目标类及其父类链上的全部方法，同签名（名称+参数）以子类声明为准
+     */
     private Map<String, Method> listenerCandidateMethods(Class<?> targetClass) {
         Map<String, Method> bySignature = new LinkedHashMap<>();
         for (Class<?> cls = targetClass; cls != null && cls != Object.class; cls = cls.getSuperclass()) {

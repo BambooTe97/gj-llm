@@ -15,6 +15,8 @@ import java.util.List;
  */
 public interface MqConsumerBinder {
 
-    /** 注册所有 @MqListener 方法（单例全部实例化后由 MqListenerRegistrar 调用一次） */
+    /**
+     * 注册所有 @MqListener 方法（单例全部实例化后由 MqListenerRegistrar 调用一次）
+     */
     void bind(List<MethodMqListener> listeners);
 }

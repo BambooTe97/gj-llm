@@ -1,6 +1,7 @@
 package com.gj.llm.mq.adapter.kafka;
 
 import com.gj.llm.common.util.JacksonUtils;
+import com.gj.llm.common.util.StringUtils;
 import com.gj.llm.mq.constant.MqConstants;
 import com.gj.llm.mq.model.GjMessage;
 import com.gj.llm.mq.model.SendResult;
@@ -28,7 +29,9 @@ import java.util.concurrent.CompletableFuture;
 @RequiredArgsConstructor
 public class KafkaMqProducerBinder implements MqProducerBinder {
 
-    /** Kafka 不支持延迟投递（可另建延迟 topic 方案，P1 不引入） */
+    /**
+     * Kafka 不支持延迟投递（可另建延迟 topic 方案，P1 不引入）
+     */
     private static final MqCapability CAPABILITY = MqCapability.of(false, false, false);
 
     private final KafkaTemplate<String, String> kafkaTemplate;
@@ -52,28 +55,23 @@ public class KafkaMqProducerBinder implements MqProducerBinder {
     @Override
     public CompletableFuture<SendResult> sendAsync(GjMessage message) {
         return kafkaTemplate.send(toRecord(message))
-                .handle((result, e) -> e == null
+                .handle((_, e) -> e == null
                         ? SendResult.ok(message.getMessageId())
                         : SendResult.fail(message.getMessageId(), e.getMessage()));
     }
 
     @Override
     public void sendDelay(GjMessage message, Duration delay) {
-        throw new UnsupportedOperationException(
-                "Kafka 适配器不支持延迟投递（capability.supportsDelay()=false），"
-                        + "可改用 RocketMQ 适配器或自建延迟 topic 方案");
+        throw new UnsupportedOperationException("Kafka 适配器不支持延迟投递（capability.supportsDelay()=false），可改用 RocketMQ 适配器或自建延迟 topic 方案");
     }
 
     // ==================== 内部 ====================
 
     private ProducerRecord<String, String> toRecord(GjMessage message) {
-        ProducerRecord<String, String> record =
-                new ProducerRecord<>(message.getTopic(), JacksonUtils.toJson(message));
-        record.headers().add(new RecordHeader(MqConstants.HEADER_MESSAGE_ID,
-                message.getMessageId().getBytes(StandardCharsets.UTF_8)));
-        if (message.getTag() != null && !message.getTag().isBlank()) {
-            record.headers().add(new RecordHeader(MqConstants.HEADER_TAG,
-                    message.getTag().getBytes(StandardCharsets.UTF_8)));
+        ProducerRecord<String, String> record = new ProducerRecord<>(message.getTopic(), JacksonUtils.toJson(message));
+        record.headers().add(new RecordHeader(MqConstants.HEADER_MESSAGE_ID, message.getMessageId().getBytes(StandardCharsets.UTF_8)));
+        if (StringUtils.isNotBlank(message.getTag())) {
+            record.headers().add(new RecordHeader(MqConstants.HEADER_TAG, message.getTag().getBytes(StandardCharsets.UTF_8)));
         }
         message.getHeaders().forEach((name, value) -> record.headers().add(new RecordHeader(name,
                 value == null ? new byte[0] : value.getBytes(StandardCharsets.UTF_8))));
